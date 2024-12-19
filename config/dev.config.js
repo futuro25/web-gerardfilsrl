@@ -9,7 +9,7 @@ self.config = {
 		color: "#000000",
 		url_site: base_url + "/",
 		og_image: "https://i.postimg.cc/fLBM1fLs/photo-2024-12-16-23-37-24.jpg",
-		canonical: "http://www.gerardfilsrl.com.ar",
+		canonical: "http://gerardfilsrl.com.ar/",
 		description: "Gerardfil SRL",
 	},
 	sitePathCom: base_url,
