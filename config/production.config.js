@@ -8,7 +8,8 @@ self.config = {
 		title: ". : Gerardfil SRL : .",
 		color: "#000000",
 		url_site: base_url + "/",
-		og_image: "https://i.postimg.cc/fLBM1fLs/photo-2024-12-16-23-37-24.jpg",
+		// og_image: "https://i.postimg.cc/fLBM1fLs/photo-2024-12-16-23-37-24.jpg",
+		og_image: "",
 		canonical: "http://gerardfilsrl.com.ar/",
 		description: "Gerardfil SRL",
 	},
@@ -16,8 +17,8 @@ self.config = {
 	sitePathComAr: base_url,
 	sitePath: base_url,
 	sourcePath: base_url + "/statics",
-	phoneChat: "https://wa.me/5491158888423",
-	portfolio: "https://www.behance.net/leandrogedeon",
+	phoneChat: "",
+	portfolio: "",
 };
 
 module.exports = self;
