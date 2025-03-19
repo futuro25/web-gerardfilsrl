@@ -6,10 +6,7 @@
     "start": "node ./bin/www",
     "start-dev": "nodemon ./bin/www"
   },
-    "engines" : { 
-    "npm" : ">=9.0.0 <10.0.0",
-    "node" : ">=18.0.0 <20.0.0"
-  },
+  "stack": "heroku-24",
   "dependencies": {
     "cookie-parser": "~1.4.3",
     "debug": "~2.6.9",
