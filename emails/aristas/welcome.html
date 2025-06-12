@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bienvenid@ a Gerardfil</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .email-container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 20px;
+            box-sizing: border-box;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .email-header {
+            text-align: left;
+            margin-bottom: 20px;
+        }
+        .email-header h1 {
+            font-size: 24px;
+            color: #333333;
+            margin: 0;
+        }
+        .email-body {
+            font-size: 16px;
+            color: #555555;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            text-align: left;
+        }
+        .email-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #14CC9E;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .email-button:hover {
+            background-color: #14CC9E;
+            color: #ffffff;
+            text-decoration: none;
+        }
+        .footer {
+            text-align: center;
+            font-size: 12px;
+            color: #777777;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="email-header">
+            <h1>Bienvenid@ {{USER_NAME}}!</h1>
+        </div>
+        <div class="email-body">
+            <p>Gracias por registrarse en Gerardfil. Haz clic en el botón de abajo para terminar de configurar tu cuenta. Luego de eso, ya podrás empezar a utilizar el servicio.</p>
+        </div>
+        <div style="text-align: center;">
+            <a href="{{LINK_CONFIRM_ACCOUNT}}" class="email-button">Habilita tu cuenta</a>
+        </div>
+        <div class="footer">
+            <p>&copy; 2025 Gerardfil, Todos los derechos reservados.</p>
+        </div>
+    </div>
+</body>
+</html>

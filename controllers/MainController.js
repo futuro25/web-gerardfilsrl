@@ -1,24 +1,30 @@
-"use strict"
+"use strict";
 
-const config = require('../config/config');
 const self = {};
-const hbsUtils = require('hbs');
-const fs = require('fs');
 
+const _ = require("lodash");
 
-// HOME
-self.sitemap = (req, res) => {
-	res.type('application/xml');
-	res.send('<?xml version="1.0" encoding="UTF-8"?> <urlset xmlns="https://www.sitemaps.org/schemas/sitemap/0.9"> <url><loc>http://www.somosvos.org</loc></url></urlset>');
-}
-
-self.home = (req, res) => {
-	const section = req.originalUrl.replace("/", "");
-	var template = hbsUtils.compile(fs.readFileSync('views/home.hbs', 'utf8'));
-	var context = { config: config, device: res.locals.device, section: section };
-	var html = template(context);
-	res.send(html);
+self.getMain = async (req, res) => {
+  try {
+    res.json({ status: "ok" });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
 };
 
+
+self.getMore = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("users") // nombre de la tabla
+      .select("*")      // columnas a seleccionar
+
+    if (error) throw error;
+
+    res.json({ status: "ok", data });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+};
 
 module.exports = self;
