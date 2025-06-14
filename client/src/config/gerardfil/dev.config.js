@@ -26,6 +26,7 @@ export const config = {
       quaternaryColor: "#9013FE",
       textMenuColor: "#FFFFFF",
       textMenuHoverColor: "#FFFFFF",
+      textMenuBrandColor: "#000000",
     },
   },
 };
