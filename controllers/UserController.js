@@ -110,7 +110,7 @@ self.createUser = async (req, res) => {
       .insert(user)
       .select();
 
-    const inviteLink = "http://localhost:3000/invite?inviteId=" + newUser.id;
+    const inviteLink = `${config.baseUrl}invite?inviteId=${newUser.id}`;
 
     const html =
       '<div className="flex text-sm w-full px-4"><div className="w-full py-4 flex flex-col justify-start"><p className="p-2">Bienvenid@ ' +

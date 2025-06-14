@@ -3,7 +3,6 @@ const EMAIL_USER = "gerardfil.dev@gmail.com";
 const SUBJECT = "Invitacion a la plataforma de gerardfil";
 
 async function sendEmail(to, html) {
-  return true;
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   const msg = {
     to: to,
