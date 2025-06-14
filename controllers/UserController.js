@@ -124,27 +124,7 @@ self.createUser = async (req, res) => {
       inviteLink +
       '">click aqui</a></p></div></div>';
 
-    // await sendEmail(user.email, html);
-
-    console.log("API_KEY", process.env.SENDGRID_API_KEY);
-
-    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-    const msg = {
-      to: user.email,
-      from: EMAIL_USER,
-      subject: SUBJECT,
-      text: SUBJECT,
-      html: html,
-    };
-
-    sgMail
-      .send(msg)
-      .then(() => {
-        console.log("Email sent.");
-      })
-      .catch((error) => {
-        console.error(error);
-      });
+    await sendEmail(user.email, html);
 
     return res.json(newUser);
   } catch (e) {

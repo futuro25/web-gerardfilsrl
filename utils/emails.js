@@ -3,12 +3,8 @@ const EMAIL_USER = "gerardfil.dev@gmail.com";
 const SUBJECT = "Invitacion a la plataforma de gerardfil";
 
 async function sendEmail(to, html) {
-  console.log("API_KEY", process.env.SENDGRID_API_KEY);
   console.log("SENDGRID_API_KEY exists?", !!process.env.SENDGRID_API_KEY);
-  console.log(
-    "SENDGRID_API_KEY (preview):",
-    process.env.SENDGRID_API_KEY?.slice?.(0, 5)
-  );
+  console.log("SENDGRID_API_KEY:", process.env.SENDGRID_API_KEY?.slice?.(0, 5));
 
   sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   const msg = {
