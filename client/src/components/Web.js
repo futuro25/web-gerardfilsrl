@@ -12,11 +12,14 @@ export default function Web() {
         <p class="text-gray-500 mt-2 text-xs">Sitio en construccion</p>
       </div>
       <footer
-        className={`bg-gray-800 text-white py-4 mt-8 bottom-0 absolute w-full text-center`}
+        className={`bg-gray-800 text-xs text-white py-4 mt-8 bottom-0 absolute w-full text-center`}
       >
         <p>
           &copy; {new Date().getFullYear()} {config.brand}. Todos los derechos
           reservados.
+          <a href="/login" className="text-white ml-4 py-2">
+            Acceso
+          </a>
         </p>
       </footer>
     </main>
