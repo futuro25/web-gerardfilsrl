@@ -108,7 +108,8 @@ self.createUser = async (req, res) => {
     const { data: newUser, error } = await supabase
       .from("users")
       .insert(user)
-      .select();
+      .select()
+      .single();
 
     const inviteLink = `${config.baseUrl}invite?inviteId=${newUser.id}`;
 
