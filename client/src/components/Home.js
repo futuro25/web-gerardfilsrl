@@ -6,8 +6,13 @@ import {
   ReceiptTextIcon,
   FileInvoiceIcon,
   SettingsIcon,
+  TruckIcon,
+  FileChartColumnIncreasing,
   IdCardLanyardIcon,
   CircleDollarSign,
+  PackageOpen,
+  Package,
+  UserPlus,
   LogOutIcon,
 } from "lucide-react";
 import React, { useState, useEffect } from "react";
@@ -18,14 +23,20 @@ export default function Home() {
   }, []);
 
   const navItems = [
-    // { label: "Inicio", icon: HouseIcon, path: "/home" },
-    { label: "Usuarios", icon: UsersIcon, path: "/usuarios" },
-    { label: "Pagos", icon: CreditCardIcon, path: "/pagos" },
-    { label: "Facturas", icon: ReceiptTextIcon, path: "/facturas" },
-    { label: "Proveedores", icon: ReceiptTextIcon, path: "/proveedores" },
+    // { label: "Pagos", icon: CreditCardIcon, path: "/pagos" },
+    { label: "Facturas", icon: FileChartColumnIncreasing, path: "/facturas" },
+    { label: "Entregas", icon: Package, path: "/entregas" },
+    { label: "Proveedores", icon: TruckIcon, path: "/proveedores" },
+    { label: "Clientes", icon: UsersIcon, path: "/clientes" },
     { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow" },
     { label: "Logout", icon: LogOutIcon, path: "/logout" },
   ];
+
+  if (sessionStorage.type === "ADMIN") {
+    navItems.pop();
+    navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios" });
+    navItems.push({ label: "Logout", icon: LogOutIcon, path: "/logout" });
+  }
 
   return (
     <div className="px-4 h-full overflow-auto mt-0 flex flex-col items-center justify-start">

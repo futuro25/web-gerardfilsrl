@@ -12,29 +12,29 @@ import { sortBy } from "lodash";
 
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import {
-  useInvoicesQuery,
-  useCreateInvoiceMutation,
-  useUpdateInvoiceMutation,
-  useDeleteInvoiceMutation,
-} from "../apis/api.invoices";
-import { useSuppliersQuery } from "../apis/api.suppliers";
-import { queryInvoicesKey, querySuppliersKey } from "../apis/queryKeys";
+  useDeliveriesQuery,
+  useCreateDeliveryMutation,
+  useUpdateDeliveryMutation,
+  useDeleteDeliveryMutation,
+} from "../apis/api.deliveries";
+import { useClientsQuery } from "../apis/api.clients";
+import { queryDeliveryKey, queryClientsKey } from "../apis/queryKeys";
 
 var moment = require("moment");
 
-export default function Invoices() {
+export default function Deliveries() {
   const [stage, setStage] = useState("LIST");
   const [search, setSearch] = useState("");
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [viewOnly, setViewOnly] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState(null);
-  const [supplier, setSupplier] = useState(null);
+  const [selectedDelivery, setSelectedDelivery] = useState(null);
+  const [client, setClient] = useState(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const [invoiceLetter, setInvoiceLetter] = useState("");
-  const [invoiceFirst4, setInvoiceFirst4] = useState("");
-  const [invoiceLast8, setInvoiceLast8] = useState("");
+  const [deliveryLetter, setDeliveryLetter] = useState("");
+  const [deliveryFirst4, setDeliveryFirst4] = useState("");
+  const [deliveryLast8, setDeliveryLast8] = useState("");
   const [formSubmitted, setFormSubmitted] = useState(false);
 
   const {
@@ -48,17 +48,17 @@ export default function Invoices() {
   } = useForm();
 
   const { data, isLoading, error } = useQuery({
-    queryKey: queryInvoicesKey(),
-    queryFn: useInvoicesQuery,
+    queryKey: queryDeliveryKey(),
+    queryFn: useDeliveriesQuery,
   });
 
   const {
-    data: suppliers,
-    isLoading: isLoadingSuppliers,
-    error: errorSuppliers,
+    data: clients,
+    isLoading: isLoadingClients,
+    error: errorClients,
   } = useQuery({
-    queryKey: querySuppliersKey(),
-    queryFn: useSuppliersQuery,
+    queryKey: queryClientsKey(),
+    queryFn: useClientsQuery,
   });
 
   const dataFiltered =
@@ -74,42 +74,42 @@ export default function Invoices() {
   if (error) console.log(error);
 
   const createMutation = useMutation({
-    mutationFn: useCreateInvoiceMutation,
+    mutationFn: useCreateDeliveryMutation,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryInvoicesKey() });
-      console.log("Factura creada:", data);
+      queryClient.invalidateQueries({ queryKey: queryDeliveryKey() });
+      console.log("Entrega creada:", data);
     },
     onError: (error) => {
-      console.error("Error creando factura:", error);
+      console.error("Error creando entrega:", error);
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: useUpdateInvoiceMutation,
+    mutationFn: useUpdateDeliveryMutation,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryInvoicesKey() });
-      console.log("Factura creada:", data);
+      queryClient.invalidateQueries({ queryKey: queryDeliveryKey() });
+      console.log("Entrega creada:", data);
     },
     onError: (error) => {
-      console.error("Error creando factura:", error);
+      console.error("Error creando entrega:", error);
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: useDeleteInvoiceMutation,
+    mutationFn: useDeleteDeliveryMutation,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryInvoicesKey() });
-      console.log("Factura eliminada:", data);
+      queryClient.invalidateQueries({ queryKey: queryDeliveryKey() });
+      console.log("Entrega eliminada:", data);
     },
     onError: (error) => {
-      console.error("Error eliminando factura:", error);
+      console.error("Error eliminando entrega:", error);
     },
   });
 
-  const removeInvoice = async (invoiceId) => {
-    if (window.confirm("Seguro desea eliminar esta factura?")) {
+  const removeDelivery = async (deliveryId) => {
+    if (window.confirm("Seguro desea eliminar esta entrega?")) {
       try {
-        await deleteMutation.mutate(invoiceId);
+        await deleteMutation.mutate(deliveryId);
         setStage("LIST");
       } catch (e) {
         console.log(e);
@@ -117,45 +117,33 @@ export default function Invoices() {
     }
   };
 
-  const invoiceValidation = (value) => {
-    const concatenatedNumber = concatenateInvoiceNumber();
-    if (!concatenatedNumber) return true;
-
-    const existingInvoice = data.find(
-      (invoice) =>
-        invoice.invoice_number === concatenatedNumber &&
-        (!selectedInvoice || invoice.id !== selectedInvoice.id)
-    );
-    return !existingInvoice || "Factura ya existe";
-  };
-
   const onSubmit = async (data) => {
     try {
       setFormSubmitted(true);
 
       // Validar que todos los campos del número de factura estén completos
-      if (!invoiceLetter || !invoiceFirst4 || !invoiceLast8) {
+      if (!deliveryLetter || !deliveryFirst4 || !deliveryLast8) {
         return;
       }
 
-      // Validar que hay un proveedor seleccionado
-      if (!data.supplier || !data.supplier.id) {
+      // Validar que hay un cliente seleccionado
+      if (!data.client || !data.client.id) {
         return;
       }
 
       setIsLoadingSubmit(true);
 
-      const concatenatedInvoiceNumber = concatenateInvoiceNumber();
+      const concatenatedDeliveryNumber = concatenateDeliveryNumber();
 
       const body = {
-        supplier_id: data.supplier.id,
+        client_id: data.client.id,
         amount: data.amount,
         description: data.description,
-        invoice_number: concatenatedInvoiceNumber,
+        invoice_number: concatenatedDeliveryNumber,
       };
 
-      if (selectedInvoice) {
-        updateMutation.mutate({ ...body, id: selectedInvoice.id });
+      if (selectedDelivery) {
+        updateMutation.mutate({ ...body, id: selectedDelivery.id });
       } else {
         createMutation.mutate(body);
       }
@@ -165,86 +153,86 @@ export default function Invoices() {
       console.log(e);
     }
   };
-  const getSupplierFantasyName = (id) =>
-    suppliers?.find((s) => s.id === id).fantasy_name;
+  const getClientFantasyName = (id) =>
+    clients?.find((s) => s.id === id).fantasy_name;
 
-  const concatenateInvoiceNumber = () => {
-    return `${invoiceLetter}${invoiceFirst4}${invoiceLast8}`;
+  const concatenateDeliveryNumber = () => {
+    return `${deliveryLetter}${deliveryFirst4}${deliveryLast8}`;
   };
 
-  const splitInvoiceNumber = (invoiceNumber) => {
-    if (!invoiceNumber) return { letter: "", first4: "", last8: "" };
-    const letter = invoiceNumber.charAt(0);
-    const numbers = invoiceNumber.slice(1);
+  const splitDeliveryNumber = (deliveryNumber) => {
+    if (!deliveryNumber) return { letter: "", first4: "", last8: "" };
+    const letter = deliveryNumber.charAt(0);
+    const numbers = deliveryNumber.slice(1);
     const first4 = numbers.slice(0, 4);
     const last8 = numbers.slice(4);
     return { letter, first4, last8 };
   };
 
-  const onEdit = (invoiceId) => {
+  const onEdit = (deliveryId) => {
     reset();
-    const invoice = data.find((invoice) => invoice.id === invoiceId) || null;
-    setSelectedInvoice(invoice);
+    const delivery =
+      data.find((delivery) => delivery.id === deliveryId) || null;
+    setSelectedDelivery(delivery);
     setFormSubmitted(false);
 
-    if (invoice?.invoice_number) {
-      const { letter, first4, last8 } = splitInvoiceNumber(
-        invoice.invoice_number
+    if (delivery?.invoice_number) {
+      const { letter, first4, last8 } = splitDeliveryNumber(
+        delivery.invoice_number
       );
-      setInvoiceLetter(letter);
-      setInvoiceFirst4(first4);
-      setInvoiceLast8(last8);
+      setDeliveryLetter(letter);
+      setDeliveryFirst4(first4);
+      setDeliveryLast8(last8);
     } else {
-      setInvoiceLetter("");
-      setInvoiceFirst4("");
-      setInvoiceLast8("");
+      setDeliveryLetter("");
+      setDeliveryFirst4("");
+      setDeliveryLast8("");
     }
 
     // Establecer el proveedor seleccionado para edición
-    if (invoice?.supplier_id && suppliers) {
-      const selectedSupplier = suppliers.find(
-        (s) => s.id === invoice.supplier_id
-      );
-      if (selectedSupplier) {
-        const supplierOption = {
-          id: selectedSupplier.id,
-          name: selectedSupplier.name,
-          label: selectedSupplier.name,
+    if (delivery?.client_id && clients) {
+      const selectedClient = clients.find((s) => s.id === delivery.client_id);
+      if (selectedClient) {
+        const clientOption = {
+          id: selectedClient.id,
+          name: selectedClient.name,
+          label: selectedClient.name,
         };
-        setValue("supplier", supplierOption);
-        setSupplier(supplierOption);
+        setValue("client", clientOption);
+        setClient(clientOption);
       }
     }
 
     setStage("CREATE");
   };
 
-  const onView = (invoiceId) => {
-    const invoice = data.find((invoice) => invoice.id === invoiceId) || null;
-    setSelectedInvoice(invoice);
+  const onView = (deliveryId) => {
+    const delivery =
+      data.find((delivery) => delivery.id === deliveryId) || null;
+    setSelectedDelivery(delivery);
     setViewOnly(true);
     setStage("CREATE");
   };
 
   const onCreate = () => {
-    setSelectedInvoice(null);
-    setInvoiceLetter("");
-    setInvoiceFirst4("");
-    setInvoiceLast8("");
+    setSelectedDelivery(null);
+    setDeliveryLetter("");
+    setDeliveryFirst4("");
+    setDeliveryLast8("");
     setFormSubmitted(false);
-    setSupplier(null);
+    setClient(null);
     setStage("CREATE");
   };
 
   const onCancel = () => {
-    setSelectedInvoice(null);
+    setSelectedDelivery(null);
     setViewOnly(false);
     setIsLoadingSubmit(false);
-    setInvoiceLetter("");
-    setInvoiceFirst4("");
-    setInvoiceLast8("");
+    setDeliveryLetter("");
+    setDeliveryFirst4("");
+    setDeliveryLast8("");
     setFormSubmitted(false);
-    setSupplier(null);
+    setClient(null);
     reset();
     setStage("LIST");
   };
@@ -266,7 +254,7 @@ export default function Invoices() {
             onClick={redirectNavigation}
           >
             <ArrowLeftIcon className="h-5 w-5 cursor-pointer" />
-            <div>Facturas</div>
+            <div>Entregas</div>
           </div>
           {stage === "LIST" && !viewOnly && (
             <Button
@@ -308,7 +296,7 @@ export default function Invoices() {
         {stage === "LIST" && data && (
           <div className="my-4 mb-28">
             <p className="pl-1 pb-1 text-slate-500">
-              Total de facturas {data.length}
+              Total de entregas {data.length}
             </p>
             <div className="not-prose relative bg-slate-50 rounded-xl overflow-hidden ">
               <div
@@ -324,7 +312,7 @@ export default function Invoices() {
                           #
                         </th>
                         <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
-                          Proveedor
+                          Cliente
                         </th>
                         <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
                           Fc nro
@@ -339,48 +327,48 @@ export default function Invoices() {
                     </thead>
                     <tbody className="bg-white ">
                       {dataFiltered.length ? (
-                        dataFiltered.map((invoice, index) => (
+                        dataFiltered.map((delivery, index) => (
                           <tr
-                            key={invoice.id}
+                            key={delivery.id}
                             className={utils.cn(
                               "border-b last:border-b-0 hover:bg-gray-100",
                               index % 2 === 0 && "bg-gray-50"
                             )}
                           >
                             <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
-                              {invoice.id}
+                              {delivery.id}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
-                              {getSupplierFantasyName(invoice.supplier_id)}
+                              {getClientFantasyName(delivery.client_id)}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
                               {utils.formatInvoiceNumber(
-                                invoice.invoice_number
+                                delivery.invoice_number
                               )}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
-                              {utils.formatAmount(invoice.amount)}
+                              {utils.formatAmount(delivery.amount)}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  text-slate-500 w-10">
                               <div className="flex gap-2">
                                 <button
                                   className="flex items-center justify-center w-8 h-8"
                                   title="Ver detalle"
-                                  onClick={() => onView(invoice.id)}
+                                  onClick={() => onView(delivery.id)}
                                 >
                                   <EyeIcon />
                                 </button>
                                 <button
                                   className="flex items-center justify-center w-8 h-8"
                                   title="Editar"
-                                  onClick={() => onEdit(invoice.id)}
+                                  onClick={() => onEdit(delivery.id)}
                                 >
                                   <EditIcon />
                                 </button>
                                 <button
                                   className="flex items-center justify-center w-8 h-8"
                                   title="Eliminar"
-                                  onClick={() => removeInvoice(invoice.id)}
+                                  onClick={() => removeDelivery(delivery.id)}
                                 >
                                   <TrashIcon />
                                 </button>
@@ -427,33 +415,33 @@ export default function Invoices() {
                           <td>
                             <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
                               <label className="text-slate-500 md:w-20 font-bold">
-                                Proveedor:
+                                Cliente:
                               </label>
                               <div className="flex flex-col gap-2">
                                 {viewOnly ? (
-                                  <>{selectedInvoice?.supplier.fantasy_name}</>
+                                  <>{selectedDelivery?.client.fantasy_name}</>
                                 ) : (
                                   <Controller
-                                    name="supplier"
+                                    name="client"
                                     control={control}
                                     rules={{ required: true }}
                                     defaultValue={null}
                                     render={({ field }) => (
                                       <SelectComboBox
                                         options={sortBy(
-                                          suppliers,
+                                          clients,
                                           "fantasy_name"
-                                        ).map((supplier) => ({
-                                          id: supplier.id,
-                                          name: supplier.name,
-                                          label: supplier.name,
+                                        ).map((client) => ({
+                                          id: client.id,
+                                          name: client.fantasy_name,
+                                          label: client.name,
                                         }))}
                                         value={field.value}
                                         onChange={(option) => {
                                           field.onChange(option);
-                                          setValue("supplier", option);
-                                          setSupplier(option);
-                                          trigger("supplier");
+                                          setValue("client", option);
+                                          setClient(option);
+                                          trigger("client");
                                         }}
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter") {
@@ -464,7 +452,7 @@ export default function Invoices() {
                                     )}
                                   />
                                 )}
-                                {errors.supplier && (
+                                {errors.client && (
                                   <span className="text-red-500 text-sm">
                                     * Obligatorio
                                   </span>
@@ -483,16 +471,16 @@ export default function Invoices() {
                               {viewOnly ? (
                                 <label className="text-slate-500">
                                   {utils.formatInvoiceNumber(
-                                    selectedInvoice?.invoice_number
+                                    selectedDelivery?.invoice_number
                                   )}
                                 </label>
                               ) : (
                                 <div className="flex flex-col gap-2">
                                   <div className="flex gap-2 items-center">
                                     <select
-                                      value={invoiceLetter}
+                                      value={deliveryLetter}
                                       onChange={(e) =>
-                                        setInvoiceLetter(e.target.value)
+                                        setDeliveryLetter(e.target.value)
                                       }
                                       className="rounded border border-slate-200 p-4 text-slate-500 w-16 text-center"
                                     >
@@ -505,12 +493,12 @@ export default function Invoices() {
                                     <span className="text-slate-400">-</span>
                                     <input
                                       type="text"
-                                      value={invoiceFirst4}
+                                      value={deliveryFirst4}
                                       onChange={(e) => {
                                         const value = e.target.value
                                           .replace(/\D/g, "")
                                           .slice(0, 4);
-                                        setInvoiceFirst4(value);
+                                        setDeliveryFirst4(value);
                                       }}
                                       placeholder="0001"
                                       maxLength={4}
@@ -519,12 +507,12 @@ export default function Invoices() {
                                     <span className="text-slate-400">-</span>
                                     <input
                                       type="text"
-                                      value={invoiceLast8}
+                                      value={deliveryLast8}
                                       onChange={(e) => {
                                         const value = e.target.value
                                           .replace(/\D/g, "")
                                           .slice(0, 8);
-                                        setInvoiceLast8(value);
+                                        setDeliveryLast8(value);
                                       }}
                                       placeholder="00000001"
                                       maxLength={8}
@@ -532,9 +520,9 @@ export default function Invoices() {
                                     />
                                   </div>
                                   {formSubmitted &&
-                                    (!invoiceLetter ||
-                                      !invoiceFirst4 ||
-                                      !invoiceLast8) && (
+                                    (!deliveryLetter ||
+                                      !deliveryFirst4 ||
+                                      !deliveryLast8) && (
                                       <span className="text-red-500 text-sm">
                                         * Todos los campos son obligatorios
                                       </span>
@@ -553,7 +541,7 @@ export default function Invoices() {
                               </label>
                               {viewOnly ? (
                                 <label className="text-slate-500">
-                                  {utils.formatAmount(selectedInvoice?.amount)}
+                                  {utils.formatAmount(selectedDelivery?.amount)}
                                 </label>
                               ) : (
                                 <div className="flex flex-col gap-2">
@@ -563,7 +551,9 @@ export default function Invoices() {
                                     name="amount"
                                     {...register("amount", { required: true })}
                                     placeholder="Ingrese el importe"
-                                    defaultValue={selectedInvoice?.amount || ""}
+                                    defaultValue={
+                                      selectedDelivery?.amount || ""
+                                    }
                                     className="rounded border border-slate-200 p-4 text-slate-500 w-full md:w-auto"
                                   />
                                   {errors.amount && (
@@ -585,14 +575,14 @@ export default function Invoices() {
                               </label>
                               {viewOnly ? (
                                 <label className="text-slate-500">
-                                  {selectedInvoice?.description}
+                                  {selectedDelivery?.description}
                                 </label>
                               ) : (
                                 <div className="flex flex-col gap-2 w-full">
                                   <textarea
                                     type="text"
                                     defaultValue={
-                                      selectedInvoice?.description || ""
+                                      selectedDelivery?.description || ""
                                     }
                                     {...register("description", {
                                       required: true,

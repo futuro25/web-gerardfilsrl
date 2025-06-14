@@ -1,0 +1,107 @@
+"use strict";
+
+const self = {};
+const supabase = require("./db");
+const _ = require("lodash");
+
+self.getCashflows = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("cashflow")
+      .select("*")
+      .is("deleted_at", null);
+
+    if (error) throw error;
+
+    res.json(data);
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+};
+
+self.getCashflowById = async (req, res) => {
+  const cashflow_id = req.params.cashflow_id;
+  try {
+    const { data, error } = await supabase
+      .from("cashflow")
+      .select("*")
+      .eq("id", cashflow_id)
+      .is("deleted_at", null);
+
+    if (error) throw error;
+
+    res.json(_.first(data));
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+};
+
+self.createCashflow = async (req, res) => {
+  try {
+    const cashflow = {
+      type: req.body.type,
+      category: req.body.category,
+      amount: req.body.amount,
+      date: req.body.date,
+      description: req.body.description,
+      provider: req.body.provider,
+      reference: req.body.reference,
+    };
+
+    const { data: newCashflow, error } = await supabase
+      .from("cashflow")
+      .insert(cashflow)
+      .select();
+
+    if (error) throw error;
+
+    return res.json(newCashflow);
+  } catch (e) {
+    console.log("Cashflow creation error", e.message);
+    return res.json({ error: e.message });
+  }
+};
+
+self.updateCashflowById = async (req, res) => {
+  try {
+    const cashflow_id = req.params.cashflow_id;
+    const update = req.body;
+
+    if (update.id) {
+      delete update.id;
+    }
+
+    const { data: updatedCashflow, error } = await supabase
+      .from("cashflow")
+      .update(update)
+      .eq("id", cashflow_id)
+      .is("deleted_at", null);
+
+    if (error) throw error;
+
+    res.json(updatedCashflow);
+  } catch (e) {
+    console.error("update cashflow by id", e.message);
+    res.json({ error: e.message });
+  }
+};
+
+self.deleteCashflowById = async (req, res) => {
+  try {
+    const cashflow_id = req.params.cashflow_id;
+    const update = { deleted_at: new Date() };
+    const { data: deletedCashflow, error } = await supabase
+      .from("cashflow")
+      .update(update)
+      .eq("id", cashflow_id);
+
+    if (error) throw error;
+
+    res.json(deletedCashflow);
+  } catch (e) {
+    console.error("delete cashflow by id", e.message);
+    res.json({ error: e.message });
+  }
+};
+
+module.exports = self;

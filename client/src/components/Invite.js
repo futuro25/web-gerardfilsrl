@@ -1,14 +1,16 @@
 import { useNavigate } from "react-router-dom";
 import React, { useState } from "react";
 import Button from "./common/Button";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import Spinner from "./common/Spinner";
 import { useForm } from "react-hook-form";
-import { useMutation, useQuery } from "@tanstack/react-query";
 import { useUpdateUserMutation, useUserByIdQuery } from "../apis/api.users";
 import { queryUserKey } from "../apis/queryKeys";
 
 export default function Invite({ inviteId }) {
   const [errorInvite, setErrorInvite] = useState("");
+  const [selectedUser, setSelectedUser] = useState();
+  const queryClient = useQueryClient();
   const {
     register,
     handleSubmit,
@@ -34,9 +36,10 @@ export default function Invite({ inviteId }) {
   });
 
   const onSubmit = async (formData) => {
+    debugger;
     if (formData.username === data.username && formData.password) {
       // formData.password = md5(formData.password);
-      updateMutation.mutate(selectedUser.id, formData);
+      await updateMutation.mutateAsync({ id: data.id, ...formData });
       navigate("/login");
     } else {
       setErrorInvite("Ingrese una clave");

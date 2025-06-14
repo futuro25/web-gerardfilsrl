@@ -17,10 +17,10 @@ self.sendWhatsApp = async ({
   const prefixNumber = prefix || "+549";
   const clientNumber = prefixNumber + cellphone;
 
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const twilioWhatsAppNumber = process.env.TWILIO_WHATSAPP_NUMBER;
-  const whatsAppTemplate = process.env.TWILIO_TEMPLATES_CONFIRMED_APPOINTMENT;
+  const accountSid = config.twilio.account_sid;
+  const authToken = config.twilio.auth_token;
+  const twilioWhatsAppNumber = config.twilio.whatsapp_number;
+  const whatsAppTemplate = config.twilio.templates[template];
 
   if (!whatsAppTemplate) {
     return { error: "Template not found" };
@@ -110,10 +110,10 @@ self.createConfirmAccountTemplate = async (name, emailTo) => {
 };
 
 self.sendEmail = async (emailTo, subject, html) => {
-  sgMail.setApiKey(process.env.SENGRID_API_KEY);
+  sgMail.setApiKey(config.sendgrid.api_key);
   const msg = {
     to: emailTo,
-    from: process.env.SENGRID_EMAIL,
+    from: config.sendgrid.email,
     subject: subject,
     text: subject,
     html: html,

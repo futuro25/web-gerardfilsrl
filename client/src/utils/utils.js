@@ -76,3 +76,11 @@ export function formatAmount(numero) {
     maximumFractionDigits: 2,
   }).format(numero);
 }
+
+export function formatInvoiceNumber(numero) {
+  const letra = numero.charAt(0);
+  const numeros = numero.slice(1);
+  const parte1 = numeros.slice(0, 4);
+  const parte2 = numeros.slice(4);
+  return `${letra} ${parte1}-${parte2}`.toUpperCase();
+}

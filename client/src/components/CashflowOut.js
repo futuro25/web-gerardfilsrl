@@ -3,12 +3,25 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { ArrowLeft, User } from "lucide-react";
 import Button from "./common/Button";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCreateCashflowMutation } from "../apis/api.cashflow";
+import { queryCashflowKey } from "../apis/queryKeys";
 
-export default function CashflowOut({ onCancel, onSubmit, isLoading = false }) {
+export default function CashflowOut({}) {
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [stage, setStage] = useState("LIST");
-  const [viewOnly, setViewOnly] = useState(false);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const createMutation = useMutation({
+    mutationFn: useCreateCashflowMutation,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryCashflowKey() });
+    },
+    onError: (error) => {
+      console.error("Error creando Cashflow:", error);
+    },
+  });
 
   const {
     register,
@@ -16,6 +29,14 @@ export default function CashflowOut({ onCancel, onSubmit, isLoading = false }) {
     reset,
     formState: { errors },
   } = useForm();
+
+  const onCancel = () => {
+    navigate("/cashflow");
+  };
+  const onSubmit = (body) => {
+    createMutation.mutate(body);
+    navigate("/cashflow");
+  };
 
   const handleFormSubmit = async (data) => {
     try {

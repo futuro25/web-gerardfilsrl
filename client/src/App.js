@@ -14,6 +14,8 @@ import Payments from "./components/Payments";
 import Users from "./components/Users";
 import Home from "./components/Home";
 import Cashflow from "./components/Cashflow";
+import Deliveries from "./components/Deliveries";
+import Clients from "./components/Clients";
 import CashflowSelector from "./components/CashflowSelector";
 import CashflowIn from "./components/CashflowIn";
 import CashflowOut from "./components/CashflowOut";
@@ -81,6 +83,8 @@ export default function App() {
           <Route path="cashflowin" element={<CashflowIn />} />
           <Route path="cashflowout" element={<CashflowOut />} />
           <Route path="home" element={<Home />} />
+          <Route path="entregas" element={<Deliveries />} />
+          <Route path="clientes" element={<Clients />} />
           <Route path="logout" element={<Logout />} />
         </Route>
         <Route

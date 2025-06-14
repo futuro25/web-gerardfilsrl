@@ -3,62 +3,14 @@ import { HouseIcon, PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import React, { useState, useEffect } from "react";
 import Button from "./common/Button";
+import { DateTime } from "luxon";
 import { Input } from "./common/Input";
 import { Badge } from "./common/Badge";
 import { Card, CardContent } from "./common/Card";
-
-const mockMovements = [
-  {
-    id: "1",
-    date: "5/18/2025",
-    description: "Venta de productos",
-    category: "Ventas",
-    amount: 150000,
-    type: "ingreso",
-    provider: "Cliente ABC",
-    reference: "FAC-001",
-  },
-  {
-    id: "2",
-    date: "6/2/2025",
-    description: "Pago de servicios",
-    category: "Servicios",
-    amount: -45000,
-    type: "egreso",
-    provider: "Empresa XYZ",
-    reference: "REC-002",
-  },
-  {
-    id: "3",
-    date: "6/9/2025",
-    description: "Consultoría",
-    category: "Servicios profesionales",
-    amount: 280000,
-    type: "ingreso",
-    provider: "Consultora DEF",
-    reference: "FAC-003",
-  },
-  {
-    id: "4",
-    date: "6/15/2025",
-    description: "Compra de materiales",
-    category: "Materiales",
-    amount: -75000,
-    type: "egreso",
-    provider: "Proveedor GHI",
-    reference: "FAC-004",
-  },
-  {
-    id: "5",
-    date: "6/20/2025",
-    description: "Honorarios",
-    category: "Servicios profesionales",
-    amount: 320000,
-    type: "ingreso",
-    provider: "Cliente JKL",
-    reference: "FAC-005",
-  },
-];
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
+import { useCashflowsQuery } from "../apis/api.cashflow";
+import { queryCashflowKey } from "../apis/queryKeys";
+import Spinner from "./common/Spinner";
 
 export default function Cashflow() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -68,7 +20,12 @@ export default function Cashflow() {
   const [viewOnly, setViewOnly] = useState(false);
   const navigate = useNavigate();
 
-  const filteredMovements = mockMovements.filter((movement) => {
+  const { data, isLoading, error } = useQuery({
+    queryKey: queryCashflowKey(),
+    queryFn: useCashflowsQuery,
+  });
+
+  const filteredMovements = data?.filter((movement) => {
     const matchesSearch =
       movement.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
       movement.provider?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -80,15 +37,15 @@ export default function Cashflow() {
     return matchesSearch && matchesType;
   });
 
-  const totalIngresos = mockMovements
-    .filter((m) => m.type === "ingreso")
+  const totalIngresos = data
+    ?.filter((m) => m.type === "ingreso")
     .reduce((sum, m) => sum + m.amount, 0);
 
-  const totalEgresos = mockMovements
-    .filter((m) => m.type === "egreso")
+  const totalEgresos = data
+    ?.filter((m) => m.type === "egreso")
     .reduce((sum, m) => sum + Math.abs(m.amount), 0);
 
-  const totalCashflow = filteredMovements.reduce((sum, m) => {
+  const totalCashflow = filteredMovements?.reduce((sum, m) => {
     return sum + (m.type === "ingreso" ? m.amount : -Math.abs(m.amount));
   }, 0);
 
@@ -175,7 +132,7 @@ export default function Cashflow() {
               <div className="w-12 h-12 mx-auto bg-red-100 rounded-full flex items-center justify-center">
                 <HouseIcon className="h-6 w-6 text-red-600" />
               </div>
-              <h3 className="font-medium text-gray-900 mb-1">Ingresos</h3>
+              <h3 className="font-medium text-gray-900 mb-1">Egresos</h3>
               <p className="text-sm text-red-600 font-semibold">
                 {formatCurrency(totalEgresos)}
               </p>
@@ -195,9 +152,15 @@ export default function Cashflow() {
             />
           </div>
 
+          {isLoading && (
+            <div>
+              <Spinner />
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <p className="text-sm text-gray-600">
-              Total de movimientos: {filteredMovements.length}
+              Total de movimientos: {filteredMovements?.length}
             </p>
             {selectedType !== "all" && (
               <Button
@@ -213,13 +176,15 @@ export default function Cashflow() {
 
         {/* Movements List */}
         <div className="space-y-3 w-full">
-          {filteredMovements.length === 0 ? (
+          {Array.isArray(filteredMovements) &&
+          filteredMovements.length === 0 ? (
             <Card>
               <CardContent className="p-8 text-center">
                 <p className="text-gray-500">No se encontraron movimientos</p>
               </CardContent>
             </Card>
           ) : (
+            Array.isArray(filteredMovements) &&
             filteredMovements.map((movement) => (
               <Card
                 key={movement.id}
@@ -250,7 +215,12 @@ export default function Cashflow() {
 
                       <div className="space-y-1">
                         <div className="flex items-center gap-4 text-sm text-gray-600">
-                          <span>{movement.date}</span>
+                          <span>
+                            {DateTime.fromISO(movement.date).toFormat(
+                              "dd/MM/yyyy"
+                            )}
+                          </span>
+
                           <span>{movement.category}</span>
                         </div>
 
@@ -286,7 +256,7 @@ export default function Cashflow() {
             ))
           )}
 
-          {filteredMovements.length > 0 && (
+          {Array.isArray(filteredMovements) && filteredMovements.length > 0 && (
             <Card className="!mt-10">
               <CardContent className="!p-2 text-center flex items-center justify-between">
                 <h3 className="font-bold text-gray-900">Total</h3>

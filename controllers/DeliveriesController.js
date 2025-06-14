@@ -4,14 +4,14 @@ const self = {};
 const supabase = require("./db");
 const _ = require("lodash");
 
-self.getInvoices = async (req, res) => {
+self.getDeliveries = async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from("invoices")
+      .from("deliveries")
       .select(
         `
         *,  
-        supplier:suppliers (
+        client:clients (
           id,
           fantasy_name
         )
@@ -27,13 +27,13 @@ self.getInvoices = async (req, res) => {
   }
 };
 
-self.getInvoiceById = async (req, res) => {
-  const invoice_id = req.params.invoice_id;
+self.getDeliveryById = async (req, res) => {
+  const delivery_id = req.params.delivery_id;
   try {
     const { data, error } = await supabase
-      .from("invoices")
+      .from("deliveries")
       .select("*")
-      .eq("id", invoice_id)
+      .eq("id", delivery_id)
       .is("deleted_at", null);
 
     if (error) throw error;
@@ -44,64 +44,65 @@ self.getInvoiceById = async (req, res) => {
   }
 };
 
-self.createInvoice = async (req, res) => {
+self.createDelivery = async (req, res) => {
   try {
-    const invoice = {
-      supplier_id: req.body.supplier_id,
+    const delivery = {
+      client_id: req.body.client_id,
       amount: req.body.amount,
       invoice_number: req.body.invoice_number,
       description: req.body.description,
       due_date: req.body.due_date,
     };
 
-    const { data: newInvoice, error } = await supabase
-      .from("invoices")
-      .insert(invoice)
+    const { data: newDelivery, error } = await supabase
+      .from("deliveries")
+      .insert(delivery)
       .select();
 
-    return res.json(newInvoice);
+    console.log(error);
+    return res.json(newDelivery);
   } catch (e) {
-    console.log("Invoice creation error", e.message);
+    console.log("Delivery creation error", e.message);
     return res.json(e);
   }
 };
 
-self.getInvoiceByIdAndUpdate = async (req, res) => {
+self.getDeliveryByIdAndUpdate = async (req, res) => {
   try {
-    const invoice_id = req.params.invoice_id;
+    const delivery_id = req.params.delivery_id;
     const update = req.body;
 
     if (update.id) {
       delete update.id;
     }
 
-    const { data: updatedInvoice, error } = await supabase
-      .from("invoices")
+    const { data: updatedDelivery, error } = await supabase
+      .from("deliveries")
       .update(update)
-      .eq("id", invoice_id)
+      .eq("id", delivery_id)
       .is("deleted_at", null);
 
     if (error) throw error;
 
-    res.json(updatedInvoice);
+    res.json(updatedDelivery);
   } catch (e) {
-    console.error("delete invoice by id", e.message);
+    console.error("delete delivery by id", e.message);
     res.json({ error: e.message });
   }
 };
 
-self.deleteInvoiceById = async (req, res) => {
+self.deleteDeliveryById = async (req, res) => {
   try {
-    const invoice_id = req.params.invoice_id;
+    const delivery_id = req.params.delivery_id;
     const update = { deleted_at: new Date() };
-    const { data: updatedInvoice, error } = await supabase
-      .from("invoices")
+    const { data: updatedDelivery, error } = await supabase
+      .from("deliveries")
       .update(update)
-      .eq("id", invoice_id);
+      .eq("id", delivery_id);
 
-    res.json(updatedInvoice);
+    res.json(updatedDelivery);
   } catch (e) {
-    console.error("delete invoice by id", e.message);
+    console.error("delete delivery by id", e.message);
     res.json({ error: e.message });
   }
 };

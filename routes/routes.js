@@ -4,9 +4,12 @@ const express = require("express");
 const router = express.Router();
 const UserController = require("../controllers/UserController.js");
 const SupplierController = require("../controllers/SupplierController.js");
+const ClientController = require("../controllers/ClientController.js");
 const InvoicesController = require("../controllers/InvoicesController.js");
+const DeliveriesController = require("../controllers/DeliveriesController.js");
 const UtilsController = require("../controllers/UtilsController.js");
 const PaymentsController = require("../controllers/PaymentsController.js");
+const CashflowController = require("../controllers/CashflowController");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -100,13 +103,43 @@ router.delete("/suppliers/:supplier_id", (req, res, next) =>
   SupplierController.deleteSupplierById(req, res, next)
 );
 
+// CLIENTS
+
+router.get("/clients", (req, res, next) =>
+  ClientController.getClients(req, res, next)
+);
+
+router.get("/clients/:client_id", (req, res, next) =>
+  ClientController.getClientById(req, res, next)
+);
+
+router.get("/clients/name/:fantasy_name", (req, res, next) =>
+  ClientController.getClientByClientName(req, res, next)
+);
+
+router.get("/clients/email/:email", (req, res, next) =>
+  ClientController.getClientByEmail(req, res, next)
+);
+
+router.post("/clients", (req, res, next) =>
+  ClientController.createClient(req, res, next)
+);
+
+router.patch("/clients/:client_id", (req, res, next) =>
+  ClientController.getClientByIdAndUpdate(req, res, next)
+);
+
+router.delete("/clients/:client_id", (req, res, next) =>
+  ClientController.deleteClientById(req, res, next)
+);
+
 // INVOICES
 
 router.get("/invoices", (req, res, next) =>
   InvoicesController.getInvoices(req, res, next)
 );
 
-router.get("/invoices/:supplier_id", (req, res, next) =>
+router.get("/invoices/:invoice_id", (req, res, next) =>
   InvoicesController.getInvoiceById(req, res, next)
 );
 
@@ -114,12 +147,56 @@ router.post("/invoices", (req, res, next) =>
   InvoicesController.createInvoice(req, res, next)
 );
 
-router.patch("/invoices/:supplier_id", (req, res, next) =>
+router.patch("/invoices/:invoice_id", (req, res, next) =>
   InvoicesController.getInvoiceByIdAndUpdate(req, res, next)
 );
 
-router.delete("/invoices/:supplier_id", (req, res, next) =>
+router.delete("/invoices/:invoice_id", (req, res, next) =>
   InvoicesController.deleteInvoiceById(req, res, next)
+);
+
+// DELIVERIES
+
+router.get("/deliveries", (req, res, next) =>
+  DeliveriesController.getDeliveries(req, res, next)
+);
+
+router.get("/deliveries/:delivery_id", (req, res, next) =>
+  DeliveriesController.getDeliveryById(req, res, next)
+);
+
+router.post("/deliveries", (req, res, next) =>
+  DeliveriesController.createDelivery(req, res, next)
+);
+
+router.patch("/deliveries/:delivery_id", (req, res, next) =>
+  DeliveriesController.getDeliveryByIdAndUpdate(req, res, next)
+);
+
+router.delete("/deliveries/:delivery_id", (req, res, next) =>
+  DeliveriesController.deleteDeliveryById(req, res, next)
+);
+
+// CASHFLOW
+
+router.get("/cashflow", (req, res, next) =>
+  CashflowController.getCashflows(req, res, next)
+);
+
+router.get("/cashflow/:cashflow_id", (req, res, next) =>
+  CashflowController.getCashflowById(req, res, next)
+);
+
+router.post("/cashflow", (req, res, next) =>
+  CashflowController.createCashflow(req, res, next)
+);
+
+router.patch("/cashflow/:cashflow_id", (req, res, next) =>
+  CashflowController.updateCashflowById(req, res, next)
+);
+
+router.delete("/cashflow/:cashflow_id", (req, res, next) =>
+  CashflowController.deleteCashflowById(req, res, next)
 );
 
 // UTILS
