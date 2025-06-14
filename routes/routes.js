@@ -208,11 +208,12 @@ router.post("/utils/email", (req, res, next) =>
   UtilsController.createConfirmAccountTemplate(req, res, next)
 );
 
-app.get("/debug-env", (req, res) => {
+router.get("/debug-env", (req, res) => {
   res.send(
     `SENDGRID_API_KEY: ${
       process.env.SENDGRID_API_KEY?.slice(0, 5) || "undefined"
     }`
   );
 });
+
 module.exports = router;
