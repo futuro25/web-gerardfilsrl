@@ -21,7 +21,7 @@ export const config = {
   theme: {
     logo: baseUrl + "/logo.png",
     colors: {
-      primaryColor: "#4A90E2",
+      primaryColor: "#d1d5db",
       secondaryColor: "#50E3C2",
       tertiaryColor: "#F5A623",
       quaternaryColor: "#9013FE",
