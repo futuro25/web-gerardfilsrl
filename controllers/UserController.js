@@ -4,7 +4,11 @@ const self = {};
 const supabase = require("./db");
 const sendEmail = require("../utils/emails");
 const config = require("../config");
+const sgMail = require("@sendgrid/mail");
 const _ = require("lodash");
+
+const EMAIL_USER = "gerardfil.dev@gmail.com";
+const SUBJECT = "Invitacion a la plataforma de gerardfil";
 
 self.getUsers = async (req, res) => {
   try {
@@ -120,7 +124,27 @@ self.createUser = async (req, res) => {
       inviteLink +
       '">click aqui</a></p></div></div>';
 
-    await sendEmail(user.email, html);
+    // await sendEmail(user.email, html);
+
+    console.log("API_KEY", process.env.SENDGRID_API_KEY);
+
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    const msg = {
+      to: user.email,
+      from: EMAIL_USER,
+      subject: SUBJECT,
+      text: SUBJECT,
+      html: html,
+    };
+
+    sgMail
+      .send(msg)
+      .then(() => {
+        console.log("Email sent.");
+      })
+      .catch((error) => {
+        console.error(error);
+      });
 
     return res.json(newUser);
   } catch (e) {
