@@ -57,7 +57,8 @@ export default function Login() {
     try {
       const userLogin = await loginMutation.mutateAsync(body);
       const user_id = userLogin.id;
-      updateMutation.mutate(user_id, {
+      updateMutation.mutate({
+        id: user_id,
         last_login: new Date(),
       });
       setCredentials(userLogin);
