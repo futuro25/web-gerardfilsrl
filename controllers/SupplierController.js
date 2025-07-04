@@ -78,6 +78,9 @@ self.createSupplier = async (req, res) => {
       fantasy_name: req.body.fantasy_name,
       email: req.body.email,
       phone: req.body.phone,
+      service: req.body.service,
+      industry: req.body.industry,
+      tax_regime: req.body.tax_regime,
     };
 
     const { data: newSupplier, error } = await supabase

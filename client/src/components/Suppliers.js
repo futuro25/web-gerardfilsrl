@@ -493,6 +493,133 @@ export default function Suppliers() {
                           </td>
                         </tr>
                         {/* ================ */}
+                        {/* Service */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Servicio:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500">
+                                  {selectedSupplier?.service}
+                                </label>
+                              ) : (
+                                <select
+                                  defaultValue={selectedSupplier?.service || ""}
+                                  {...register("service", { required: true })}
+                                  className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
+                                >
+                                  <option value="">Seleccionar</option>
+                                  {/* Agregá tus opciones acá */}
+                                  <option value="BIENES">BIENES</option>
+                                  <option value="SERVICIOS">SERVICIOS</option>
+                                  <option value="MANTENIMIENTO">
+                                    MANTENIMIENTO
+                                  </option>
+                                  <option value="PROFESIONALES">
+                                    PROFESIONALES
+                                  </option>
+                                  <option value="LOGISTICA">LOGISTICA</option>
+                                  <option value="OTROS">OTROS</option>
+                                </select>
+                              )}
+                              {errors.service && (
+                                <span className="px-2 text-red-500">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Industry */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Industria:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500">
+                                  {selectedSupplier?.industry}
+                                </label>
+                              ) : (
+                                <select
+                                  defaultValue={
+                                    selectedSupplier?.industry || ""
+                                  }
+                                  {...register("industry", { required: true })}
+                                  className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
+                                >
+                                  <option value="">Seleccionar</option>
+                                  <option value="TECNOLOGÍA">TECNOLOGÍA</option>
+                                  <option value="ALIMENTACION">
+                                    ALIMENTACION
+                                  </option>
+                                  <option value="LIMPIEZA">LIMPIEZA</option>
+                                  <option value="TRANSPORTE">TRANSPORTE</option>
+                                  <option value="CONSTRUCCIÓN">
+                                    CONSTRUCCIÓN
+                                  </option>
+                                  <option value="TEXTIL">TEXTIL</option>
+                                  <option value="OTROS">OTROS</option>
+                                  {/* Agregá tus opciones acá */}
+                                </select>
+                              )}
+                              {errors.service && (
+                                <span className="px-2 text-red-500">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Tax Regime */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Régimen:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500">
+                                  {selectedSupplier?.tax_regime}
+                                </label>
+                              ) : (
+                                <select
+                                  defaultValue={
+                                    selectedSupplier?.tax_regime || ""
+                                  }
+                                  {...register("tax_regime", {
+                                    required: true,
+                                  })}
+                                  className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
+                                >
+                                  <option value="">Seleccionar</option>
+                                  {/* Agregá tus opciones acá */}
+                                  <option value="RESPONSABLE INSCRIPTO">
+                                    RESPONSABLE INSCRIPTO
+                                  </option>
+                                  <option value="MONOTRIBUTISTA">
+                                    MONOTRIBUTISTA
+                                  </option>
+                                  <option value="EXENTO">EXENTO</option>
+                                  <option value="CONSUMIDOR FINAL">
+                                    CONSUMIDOR FINAL
+                                  </option>
+                                </select>
+                              )}
+                              {errors.service && (
+                                <span className="px-2 text-red-500">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
                         <tr>
                           <td>
                             <div className="p-4 gap-4 flex items-center justify-end">
