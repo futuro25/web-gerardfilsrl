@@ -394,7 +394,7 @@ export default function Suppliers() {
                           <td>
                             <div className="p-4 gap-4 flex items-center">
                               <label className="text-slate-500 w-20 font-bold">
-                                Proveedor:
+                                Fantasia:
                               </label>
                               {viewOnly ? (
                                 <label className="text-slate-500 w-20">
