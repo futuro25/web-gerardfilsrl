@@ -40,7 +40,7 @@ export default function Home() {
 
   return (
     <div className="px-4 h-full overflow-auto mt-0 flex flex-col items-center justify-start">
-      <div className="w-full flex flex-col sticky top-0 z-10 bg-cold-white rounded pb-4 items-center justify-center mt-10">
+      <div className="w-full flex flex-col sticky top-0 z-10 rounded pb-4 items-center justify-center mt-10">
         <h1 className="inline-block font-extrabold text-gray-900 tracking-tight ">
           Bienvenido {sessionStorage.name}
         </h1>
