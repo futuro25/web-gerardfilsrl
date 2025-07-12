@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { EditIcon, TrashIcon, EyeIcon, CloseIcon } from "./icons";
@@ -10,23 +10,20 @@ import Spinner from "./common/Spinner";
 
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import {
-  useClientsQuery,
-  useCreateClientMutation,
-  useUpdateClientMutation,
-  useDeleteClientMutation,
-} from "../apis/api.clients";
-import { queryClientsKey } from "../apis/queryKeys";
+  useProductsQuery,
+  useCreateProductMutation,
+  useUpdateProductMutation,
+  useDeleteProductMutation,
+} from "../apis/api.products";
+import { queryProductsKey } from "../apis/queryKeys";
 
-export default function Clients() {
+export default function Products() {
   const [stage, setStage] = useState("LIST");
   const [search, setSearch] = useState("");
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [viewOnly, setViewOnly] = useState(false);
 
-  const params = new URLSearchParams(window.location.search);
-  const createParam = params.get("create");
-
-  const [selectedClient, setSelectedClient] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -34,26 +31,13 @@ export default function Clients() {
     register,
     handleSubmit,
     reset,
-    watch,
     formState: { errors },
   } = useForm();
 
   const { data, isLoading, error } = useQuery({
-    queryKey: queryClientsKey(),
-    queryFn: useClientsQuery,
+    queryKey: queryProductsKey(),
+    queryFn: useProductsQuery,
   });
-
-  useEffect(() => {
-    if (createParam) {
-      setStage("CREATE");
-      setSelectedClient(null);
-      setViewOnly(false);
-    } else {
-      setStage("LIST");
-      setSelectedClient(null);
-      setViewOnly(false);
-    }
-  }, [createParam]);
 
   const dataFiltered =
     data &&
@@ -61,49 +45,48 @@ export default function Clients() {
     data?.filter((d) =>
       search
         ? d.name.toLowerCase().includes(search.toLowerCase()) ||
-          d.last_name.toLowerCase().includes(search.toLowerCase()) ||
-          d.fantasy_name.toLowerCase().includes(search.toLowerCase())
+          d.last_name.toLowerCase().includes(search.toLowerCase())
         : d
     );
   if (error) console.log(error);
 
   const createMutation = useMutation({
-    mutationFn: useCreateClientMutation,
+    mutationFn: useCreateProductMutation,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryClientsKey() });
-      console.log("Cliente creado:", data);
+      queryClient.invalidateQueries({ queryKey: queryProductsKey() });
+      console.log("Producto creado:", data);
     },
     onError: (error) => {
-      console.error("Error creando cliente:", error);
+      console.error("Error creando producto:", error);
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: useUpdateClientMutation,
+    mutationFn: useUpdateProductMutation,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryClientsKey() });
-      console.log("Cliente creado:", data);
+      queryClient.invalidateQueries({ queryKey: queryProductsKey() });
+      console.log("Producto creado:", data);
     },
     onError: (error) => {
-      console.error("Error creando cliente:", error);
+      console.error("Error creando producto:", error);
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: useDeleteClientMutation,
+    mutationFn: useDeleteProductMutation,
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryClientsKey() });
-      console.log("Cliente eliminado:", data);
+      queryClient.invalidateQueries({ queryKey: queryProductsKey() });
+      console.log("Producto eliminado:", data);
     },
     onError: (error) => {
-      console.error("Error eliminando cliente:", error);
+      console.error("Error eliminando producto:", error);
     },
   });
 
-  const removeUser = async (clientId) => {
-    if (window.confirm("Seguro desea eliminar este Cliente?")) {
+  const removeUser = async (productId) => {
+    if (window.confirm("Seguro desea eliminar este Producto?")) {
       try {
-        await deleteMutation.mutate(clientId);
+        await deleteMutation.mutate(productId);
         setStage("LIST");
       } catch (e) {
         console.log(e);
@@ -120,19 +103,13 @@ export default function Clients() {
         ...data,
       };
 
-      if (selectedClient) {
-        updateMutation.mutate({ ...body, id: selectedClient.id });
+      if (selectedProduct) {
+        updateMutation.mutate({ ...body, id: selectedProduct.id });
       } else {
         createMutation.mutate(body);
       }
       setIsLoadingSubmit(false);
       setStage("LIST");
-
-      if (createParam) {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("create");
-        window.history.pushState({}, "", url);
-      }
     } catch (e) {
       console.log(e);
     }
@@ -141,24 +118,24 @@ export default function Clients() {
   const onEdit = (user_id) => {
     reset();
     const user = data.find((user) => user.id === user_id) || null;
-    setSelectedClient(user);
+    setSelectedProduct(user);
     setStage("CREATE");
   };
 
   const onView = (user_id) => {
     const user = data.find((user) => user.id === user_id) || null;
-    setSelectedClient(user);
+    setSelectedProduct(user);
     setViewOnly(true);
     setStage("CREATE");
   };
 
   const onCreate = () => {
-    setSelectedClient(null);
+    setSelectedProduct(null);
     setStage("CREATE");
   };
 
   const onCancel = () => {
-    setSelectedClient(null);
+    setSelectedProduct(null);
     setViewOnly(false);
     setIsLoadingSubmit(false);
     reset();
@@ -172,7 +149,7 @@ export default function Clients() {
   };
 
   const emailValidation = (email) => {
-    if (selectedClient && selectedClient.email === email) {
+    if (selectedProduct && selectedProduct.email === email) {
       return true; // If the email is the same as the selected user, allow it
     }
     // Check if the email already exists in the data
@@ -198,7 +175,7 @@ export default function Clients() {
             onClick={redirectNavigation}
           >
             <ArrowLeftIcon className="h-5 w-5 cursor-pointer" />
-            <div>Clientes</div>
+            <div>Productos</div>
           </div>
           {stage === "LIST" && !viewOnly && (
             <Button
@@ -240,7 +217,7 @@ export default function Clients() {
         {stage === "LIST" && data && (
           <div className="my-4 mb-28">
             <p className="pl-1 pb-1 text-slate-500">
-              Total de clientes {data.length}
+              Total de productos {data.length}
             </p>
             <div className="not-prose relative bg-slate-50 rounded-xl overflow-hidden ">
               <div
@@ -256,16 +233,19 @@ export default function Clients() {
                           #
                         </th>
                         <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
-                          Cliente
+                          Producto
                         </th>
                         <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
-                          Nombre
+                          Talle
                         </th>
                         <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Apellido
+                          Color
                         </th>
                         <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Documento
+                          Stock
+                        </th>
+                        <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          Precio
                         </th>
                         <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                           Acciones
@@ -274,51 +254,52 @@ export default function Clients() {
                     </thead>
                     <tbody className="bg-white ">
                       {dataFiltered.length ? (
-                        dataFiltered.map((client, index) => (
+                        dataFiltered.map((product, index) => (
                           <tr
-                            key={client.id}
+                            key={product.id}
                             className={utils.cn(
                               "border-b last:border-b-0 hover:bg-gray-100",
                               index % 2 === 0 && "bg-gray-50"
                             )}
                           >
                             <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
-                              {client.id}
+                              {product.id}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
-                              {client.fantasy_name}
+                              {product.name}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
-                              {client.name}
+                              {product.size}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
-                              {client.last_name}
+                              {product.color}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
-                              {client.document_type +
-                                " " +
-                                client.document_number}
+                              {product.stock}
+                            </td>
+                            <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
+                              {product.price}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  text-slate-500 w-10">
                               <div className="flex gap-2">
                                 <button
                                   className="flex items-center justify-center w-8 h-8"
                                   title="Ver detalle"
-                                  onClick={() => onView(client.id)}
+                                  onClick={() => onView(product.id)}
                                 >
                                   <EyeIcon />
                                 </button>
                                 <button
                                   className="flex items-center justify-center w-8 h-8"
                                   title="Editar"
-                                  onClick={() => onEdit(client.id)}
+                                  onClick={() => onEdit(product.id)}
                                 >
                                   <EditIcon />
                                 </button>
                                 <button
                                   className="flex items-center justify-center w-8 h-8"
                                   title="Eliminar"
-                                  onClick={() => removeUser(client.id)}
+                                  onClick={() => removeUser(product.id)}
                                 >
                                   <TrashIcon />
                                 </button>
@@ -329,7 +310,7 @@ export default function Clients() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={6}
+                            colSpan={7}
                             className="border-b border-slate-100  p-4  text-slate-500 "
                           >
                             No data
@@ -369,14 +350,14 @@ export default function Clients() {
                               </label>
                               {viewOnly ? (
                                 <label className="text-slate-500 w-20">
-                                  {selectedClient?.name}
+                                  {selectedProduct?.name}
                                 </label>
                               ) : (
                                 <input
                                   type="text"
-                                  defaultValue={selectedClient?.name || ""}
+                                  defaultValue={selectedProduct?.name || ""}
                                   {...register("name", { required: true })}
-                                  className="rounded border border-slate-200 p-4 text-slate-500 w-[250px]"
+                                  className="rounded border border-slate-200  p-4  text-slate-500 "
                                 />
                               )}
                               {errors.name && (
@@ -392,21 +373,21 @@ export default function Clients() {
                           <td>
                             <div className="p-4 gap-4 flex items-center">
                               <label className="text-slate-500 w-20 font-bold">
-                                Apellido:
+                                Precio:
                               </label>
                               {viewOnly ? (
                                 <label className="text-slate-500 w-20">
-                                  {selectedClient?.last_name}
+                                  {selectedProduct?.price}
                                 </label>
                               ) : (
                                 <input
                                   type="text"
-                                  defaultValue={selectedClient?.last_name || ""}
-                                  {...register("last_name", { required: true })}
-                                  className="rounded border border-slate-200 p-4 text-slate-500 w-[250px]"
+                                  defaultValue={selectedProduct?.price || ""}
+                                  {...register("price", { required: true })}
+                                  className="rounded border border-slate-200  p-4  text-slate-500 "
                                 />
                               )}
-                              {errors.last_name && (
+                              {errors.price && (
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
                                 </span>
@@ -419,68 +400,62 @@ export default function Clients() {
                           <td>
                             <div className="p-4 gap-4 flex items-center">
                               <label className="text-slate-500 w-20 font-bold">
-                                Razon Social:
+                                Stock:
                               </label>
                               {viewOnly ? (
                                 <label className="text-slate-500 w-20">
-                                  {selectedClient?.fantasy_name}
+                                  {selectedProduct?.stock}
                                 </label>
                               ) : (
                                 <input
-                                  type="text"
-                                  id="fantasy_name"
-                                  name="fantasy_name"
-                                  defaultValue={
-                                    selectedClient?.fantasy_name || ""
-                                  }
-                                  {...register("fantasy_name", {
+                                  type="number"
+                                  id="stock"
+                                  name="stock"
+                                  defaultValue={selectedProduct?.stock || ""}
+                                  {...register("stock", {
                                     required: true,
-                                    validate: fantasyNameValidation,
                                   })}
-                                  className="rounded border border-slate-200  p-4 text-slate-500 w-[250px]"
+                                  className="rounded border border-slate-200  p-4 text-slate-500 "
                                 />
                               )}
-                              {errors.fantasy_name?.type === "required" && (
+                              {errors.stock?.type === "required" && (
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
-                                </span>
-                              )}
-                              {errors.fantasy_name?.type === "validate" && (
-                                <span className="px-2 text-red-500">
-                                  * Cliente existente
                                 </span>
                               )}
                             </div>
                           </td>
                         </tr>
-
-                        {/* Tipo Documento */}
+                        {/* ================ */}
                         <tr>
                           <td>
                             <div className="p-4 gap-4 flex items-center">
                               <label className="text-slate-500 w-20 font-bold">
-                                Tipo Documento:
+                                Talle:
                               </label>
-                              <select
-                                {...register("document_type", {
-                                  required: true,
-                                })}
-                                className="rounded border border-slate-200 p-4 text-slate-500 text-xs !w-[250px]"
-                                defaultValue={selectedClient?.document_type}
-                              >
-                                <option value="">Seleccionar</option>
-                                {utils
-                                  .getDocumentTypes()
-                                  .map((documentType) => (
-                                    <option
-                                      key={documentType}
-                                      value={documentType}
-                                    >
-                                      {documentType}
-                                    </option>
-                                  ))}
-                              </select>
-                              {errors.document_type && (
+                              {viewOnly ? (
+                                <label className="text-slate-500">
+                                  {selectedProduct?.size}
+                                </label>
+                              ) : (
+                                <select
+                                  defaultValue={selectedProduct?.size || ""}
+                                  {...register("size", { required: true })}
+                                  className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
+                                >
+                                  <option value="">Seleccionar Talle</option>
+                                  <option value="XS">XS</option>
+                                  <option value="S">S</option>
+                                  <option value="L">L</option>
+                                  <option value="M">M</option>
+                                  <option value="XL">XL</option>
+                                  <option value="2XL">2XL</option>
+                                  <option value="3XL">3XL</option>
+                                  <option value="OTROS">OTROS</option>
+                                  {/* Agregá tus opciones acá */}
+                                </select>
+                              )}
+                              {errors.size && (
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
                                 </span>
@@ -489,97 +464,71 @@ export default function Clients() {
                           </td>
                         </tr>
 
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Color:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500">
+                                  {selectedProduct?.color}
+                                </label>
+                              ) : (
+                                <select
+                                  defaultValue={selectedProduct?.color || ""}
+                                  {...register("color", {
+                                    required: true,
+                                  })}
+                                  className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
+                                >
+                                  <option value="">Seleccionar Color</option>
+                                  {/* Agregá tus opciones acá */}
+                                  <option value="MARRON">MARRON</option>
+                                  <option value="BEIGE">BEIGE</option>
+                                  <option value="VERDE">VERDE</option>
+                                  <option value="CELESTE">CELESTE</option>
+                                  <option value="BLANCO">BLANCO</option>
+                                </select>
+                              )}
+                              {errors.service && (
+                                <span className="px-2 text-red-500">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
                         {/* ================ */}
                         <tr>
                           <td>
                             <div className="p-4 gap-4 flex items-center">
                               <label className="text-slate-500 w-20 font-bold">
-                                Nro {watch("document_type")}:
+                                Descripcion:
                               </label>
                               {viewOnly ? (
                                 <label className="text-slate-500 w-20">
-                                  {selectedClient?.document_number}
+                                  {selectedProduct?.description}
                                 </label>
                               ) : (
-                                <input
-                                  type="text"
-                                  id="document_number"
-                                  name="document_number"
+                                <textarea
+                                  rows={3}
+                                  cols={50}
+                                  placeholder="Descripcion del producto"
+                                  autoComplete="off"
+                                  autoCorrect="off"
+                                  spellCheck="false"
+                                  autoCapitalize="off"
+                                  id="description"
+                                  name="description"
                                   defaultValue={
-                                    selectedClient?.document_number || ""
+                                    selectedProduct?.description || ""
                                   }
-                                  {...register("document_number", {
-                                    required: true,
-                                  })}
-                                  className="rounded border border-slate-200 p-4 text-slate-500 w-[250px]"
+                                  {...register("description", {})}
+                                  className="rounded border border-slate-200  p-4 text-slate-500 "
                                 />
                               )}
-                              {errors.document_number?.type === "required" && (
-                                <span className="px-2 text-red-500">
-                                  * Obligatorio
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {/* ================ */}
-                        {/* ================ */}
-                        <tr>
-                          <td>
-                            <div className="p-4 gap-4 flex items-center">
-                              <label className="text-slate-500 w-20 font-bold">
-                                Email:
-                              </label>
-                              {viewOnly ? (
-                                <label className="text-slate-500 w-20">
-                                  {selectedClient?.email}
-                                </label>
-                              ) : (
-                                <input
-                                  type="text"
-                                  id="email"
-                                  name="email"
-                                  defaultValue={selectedClient?.email || ""}
-                                  {...register("email", {
-                                    required: true,
-                                    validate: emailValidation,
-                                  })}
-                                  className="rounded border border-slate-200 p-4 text-slate-500 w-[250px]"
-                                />
-                              )}
-                              {errors.email?.type === "required" && (
-                                <span className="px-2 text-red-500">
-                                  * Obligatorio
-                                </span>
-                              )}
-                              {errors.email?.type === "validate" && (
-                                <span className="px-2 text-red-500">
-                                  * Email existente
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {/* ================ */}
-                        <tr>
-                          <td>
-                            <div className="p-4 gap-4 flex items-center">
-                              <label className="text-slate-500 w-20 font-bold">
-                                Telefono:
-                              </label>
-                              {viewOnly ? (
-                                <label className="text-slate-500 w-20">
-                                  {selectedClient?.phone}
-                                </label>
-                              ) : (
-                                <input
-                                  type="text"
-                                  defaultValue={selectedClient?.phone || ""}
-                                  {...register("phone", { required: true })}
-                                  className="rounded border border-slate-200 p-4 text-slate-500 w-[250px]"
-                                />
-                              )}
-                              {errors.phone && (
+                              {errors.description?.type === "required" && (
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
                                 </span>

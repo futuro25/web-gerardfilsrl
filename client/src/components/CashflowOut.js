@@ -1,17 +1,52 @@
+import { ExternalLinkIcon, LinkIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
+import { Controller } from "react-hook-form";
+import SelectComboBox from "./common/SelectComboBox";
+import { sortBy } from "lodash";
 import { ArrowLeft, User } from "lucide-react";
+import * as utils from "../utils/utils";
 import Button from "./common/Button";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useCreateCashflowMutation } from "../apis/api.cashflow";
-import { queryCashflowKey } from "../apis/queryKeys";
+import { useSuppliersQuery } from "../apis/api.suppliers";
+import {
+  queryCashflowKey,
+  queryPaychecksKey,
+  querySuppliersKey,
+} from "../apis/queryKeys";
+import { useCreatePaycheckMutation } from "../apis/api.paychecks";
 
 export default function CashflowOut({}) {
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [stage, setStage] = useState("LIST");
+  const [provider, setProvider] = useState("LIST");
+  const [taxes, setTaxes] = useState([{ type: "IVA", value: "" }]);
+  const [amountWithTaxes, setAmountWithTaxes] = useState(0);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const [invoiceLetter, setInvoiceLetter] = useState("A");
+  const [invoiceFirst4, setInvoiceFirst4] = useState("");
+  const [invoiceLast8, setInvoiceLast8] = useState("");
+  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [withoutInvoice, setWithoutInvoice] = useState(false);
+
+  const [chequeData, setChequeData] = useState({
+    number: "",
+    bank: "",
+    amount: "",
+    paymentDate: new Date().toISOString().split("T")[0],
+  });
+
+  const [paymentMethod, setPaymentMethod] = useState(
+    utils.getPaymentMethods()[0] || ""
+  );
+
+  const concatenateInvoiceNumber = () => {
+    return `${invoiceLetter}${invoiceFirst4}${invoiceLast8}`;
+  };
 
   const createMutation = useMutation({
     mutationFn: useCreateCashflowMutation,
@@ -24,9 +59,33 @@ export default function CashflowOut({}) {
   });
 
   const {
+    data: providers,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: querySuppliersKey(),
+    queryFn: useSuppliersQuery,
+  });
+
+  const createPaycheckMutation = useMutation({
+    mutationFn: useCreatePaycheckMutation,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryPaychecksKey() });
+      console.log("Cheque creado:", data);
+    },
+    onError: (error) => {
+      console.error("Error creando cheque:", error);
+    },
+  });
+
+  const {
     register,
+    watch,
     handleSubmit,
     reset,
+    trigger,
+    control,
+    setValue,
     formState: { errors },
   } = useForm();
 
@@ -40,24 +99,68 @@ export default function CashflowOut({}) {
 
   const handleFormSubmit = async (data) => {
     try {
+      setFormSubmitted(true);
+
+      let concatenatedNumber = "";
+
+      // Validar que todos los campos del número de factura estén completos
+      if (withoutInvoice) {
+        setInvoiceLetter("");
+        setInvoiceFirst4("");
+        setInvoiceLast8("");
+      } else {
+        if (!invoiceLetter || !invoiceFirst4 || !invoiceLast8) {
+          return;
+        }
+        setInvoiceLetter(invoiceLetter || "A");
+        setInvoiceFirst4(invoiceFirst4 || "");
+        setInvoiceLast8(invoiceLast8 || "");
+        concatenatedNumber = concatenateInvoiceNumber();
+      }
+
       setIsLoadingSubmit(true);
       const body = {
         ...data,
         amount: -Math.abs(Number(data.amount)), // Negative for expenses
-        type: "egreso",
+        type: "EGRESO",
+        payment_method: data.paymentMethod || utils.getPaymentMethods()[0],
+        category: data.category + " - " + data.subcategory,
+        provider: data.provider.id,
+        taxes: taxes.filter((t) => t.value !== ""),
+        date: new Date().toISOString().split("T")[0],
       };
-      await onSubmit(body);
+
+      const movement = await createMutation.mutateAsync(body);
+
+      if (data.paymentMethod === utils.getPaycheckString()) {
+        console.log(chequeData);
+        // Create the paycheck using the mutation
+        createPaycheckMutation.mutate({
+          number: chequeData.number,
+          client_id: data.provider.id,
+          bank: chequeData.bank,
+          due_date: chequeData.paymentDate,
+          amount: Number(data.amount),
+          type: "OUT",
+          movement_id: movement[0].id,
+        });
+      }
+
       setIsLoadingSubmit(false);
+      setFormSubmitted(false);
       reset();
+      navigate("/cashflow");
     } catch (e) {
       console.log(e);
       setIsLoadingSubmit(false);
+      setFormSubmitted(false);
     }
   };
 
   const handleCancel = () => {
     reset();
     setIsLoadingSubmit(false);
+    setFormSubmitted(false);
     onCancel();
   };
   const redirectNavigation = () => {
@@ -67,6 +170,21 @@ export default function CashflowOut({}) {
       setStage("LIST");
     }
   };
+
+  const getTotalAmount = (taxes, amount) => {
+    const totalTaxes = taxes?.reduce((acc, tax) => {
+      const taxValue = parseFloat(tax.value) || 0;
+      return acc + taxValue;
+    }, 0);
+
+    return (parseFloat(amount) || 0) + (totalTaxes || 0);
+  };
+
+  const watchedAmount = watch("amount");
+
+  useEffect(() => {
+    setAmountWithTaxes(getTotalAmount(taxes, watchedAmount));
+  }, [watchedAmount, taxes]);
 
   return (
     <>
@@ -119,6 +237,110 @@ export default function CashflowOut({}) {
                         </td>
                       </tr>
 
+                      {/* Forma de pago */}
+                      <tr>
+                        <td>
+                          <div className="p-4 gap-4 flex items-center">
+                            <label className="text-slate-500 w-24 font-bold">
+                              Forma de pago:
+                            </label>
+                            <select
+                              {...register("paymentMethod", { required: true })}
+                              className="flex-1 rounded border border-slate-200 p-4 text-slate-500 text-xs"
+                              defaultValue={utils.getPaymentMethods()[0] || ""}
+                              onChange={(e) => setPaymentMethod(e.target.value)}
+                            >
+                              {utils.getPaymentMethods().map((method) => (
+                                <option key={method} value={method}>
+                                  {method}
+                                </option>
+                              ))}
+                            </select>
+                            {errors.paymentMethod && (
+                              <span className="px-2 text-red-500">
+                                * Obligatorio
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {paymentMethod === utils.getPaycheckString() && (
+                        <>
+                          {/* Número de cheque */}
+                          <tr>
+                            <td>
+                              <div className="p-4 gap-4 flex items-center">
+                                <label className="text-slate-500 w-24 font-bold">
+                                  Nº Cheque:
+                                </label>
+                                <input
+                                  type="text"
+                                  className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
+                                  value={chequeData.number}
+                                  onChange={(e) =>
+                                    setChequeData({
+                                      ...chequeData,
+                                      number: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Banco */}
+                          <tr>
+                            <td>
+                              <div className="p-4 gap-4 flex items-center">
+                                <label className="text-slate-500 w-24 font-bold">
+                                  Banco:
+                                </label>
+                                <select
+                                  className="flex-1 rounded border border-slate-200 p-4 text-slate-500 text-xs"
+                                  value={chequeData.bank}
+                                  onChange={(e) =>
+                                    setChequeData({
+                                      ...chequeData,
+                                      bank: e.target.value,
+                                    })
+                                  }
+                                >
+                                  <option value="">SELECCIONAR</option>
+                                  {utils.getBanks().map((bank) => (
+                                    <option key={bank} value={bank}>
+                                      {bank}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Fecha de pago */}
+                          <tr>
+                            <td>
+                              <div className="p-4 gap-4 flex items-center">
+                                <label className="text-slate-500 w-24 font-bold">
+                                  Fecha de pago:
+                                </label>
+                                <input
+                                  type="date"
+                                  className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
+                                  value={chequeData.paymentDate}
+                                  onChange={(e) =>
+                                    setChequeData({
+                                      ...chequeData,
+                                      paymentDate: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        </>
+                      )}
+
                       {/* Monto */}
                       <tr>
                         <td>
@@ -160,21 +382,45 @@ export default function CashflowOut({}) {
                             </label>
                             <select
                               {...register("category", { required: true })}
-                              className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
+                              className="flex-1 rounded border border-slate-200 p-4 text-slate-500 text-xs"
                             >
-                              <option value="">Seleccionar categoría</option>
-                              <option value="Servicios">Servicios</option>
-                              <option value="Materiales">Materiales</option>
-                              <option value="Suministros">Suministros</option>
-                              <option value="Alquiler">Alquiler</option>
-                              <option value="Transporte">Transporte</option>
-                              <option value="Impuestos">Impuestos</option>
-                              <option value="Gastos administrativos">
-                                Gastos administrativos
-                              </option>
-                              <option value="Otros gastos">Otros gastos</option>
+                              <option value="">SELECCIONAR</option>
+                              {utils.getCashflowOutCategories().map((cat) => (
+                                <option key={cat} value={cat}>
+                                  {cat.toUpperCase()}
+                                </option>
+                              ))}
                             </select>
                             {errors.category && (
+                              <span className="px-2 text-red-500">
+                                * Obligatorio
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Categoría */}
+                      <tr>
+                        <td>
+                          <div className="p-4 gap-4 flex items-center">
+                            <label className="text-slate-500 w-24 font-bold">
+                              Servicio:
+                            </label>
+                            <select
+                              {...register("subcategory", { required: true })}
+                              className="flex-1 rounded border border-slate-200 p-4 text-slate-500 text-xs w-24"
+                            >
+                              <option value="">SELECCIONAR</option>
+                              {utils
+                                .getExpensesCategories()
+                                .map((subcategory) => (
+                                  <option key={subcategory} value={subcategory}>
+                                    {subcategory}
+                                  </option>
+                                ))}
+                            </select>
+                            {errors.subcategory && (
                               <span className="px-2 text-red-500">
                                 * Obligatorio
                               </span>
@@ -190,23 +436,156 @@ export default function CashflowOut({}) {
                             <label className="text-slate-500 w-24 font-bold">
                               Proveedor:
                             </label>
-                            <input
-                              type="text"
-                              {...register("provider", { required: true })}
-                              className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
-                              placeholder="Nombre del proveedor"
-                            />
-                            {errors.provider && (
-                              <span className="px-2 text-red-500">
-                                * Obligatorio
-                              </span>
-                            )}
+                            <div className="flex flex-col gap-2">
+                              <div className="flex flex-col sm:flex-row gap-2 w-full items-start sm:items-center justify-start ml-4 pl-1 sm:pl-0 sm:ml-0">
+                                <Controller
+                                  name="provider"
+                                  control={control}
+                                  rules={{ required: true }}
+                                  defaultValue={null}
+                                  render={({ field }) => (
+                                    <SelectComboBox
+                                      options={sortBy(providers, "name").map(
+                                        (provider) => ({
+                                          id: provider.id,
+                                          name: provider.fantasy_name,
+                                          label: provider.name,
+                                        })
+                                      )}
+                                      value={field.value}
+                                      onChange={(option) => {
+                                        field.onChange(option);
+                                        setValue("provider", option);
+                                        setProvider(option);
+                                        trigger("provider");
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                        }
+                                      }}
+                                    />
+                                  )}
+                                />
+
+                                <Button
+                                  variant="alternative"
+                                  className="h-8"
+                                  onClick={() => {
+                                    navigate("/proveedores?create=true");
+                                  }}
+                                >
+                                  Nuevo Proveedor
+                                  <ExternalLinkIcon className="ml-1 h-4 w-4" />
+                                </Button>
+                              </div>
+                              {errors.provider && (
+                                <span className="text-red-500 text-sm ml-4">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>
 
                       {/* Referencia */}
                       <tr>
+                        <td>
+                          <div className="p-4 gap-4 flex items-center">
+                            <label className="text-slate-500 w-24 font-bold">
+                              Factura:
+                            </label>
+                            <div className="flex flex-col gap-2">
+                              <div className="flex sm:flex-row flex-col gap-2 items-start sm:items-center justify-start sm:ml-0">
+                                <select
+                                  disabled={withoutInvoice}
+                                  value={invoiceLetter}
+                                  onChange={(e) =>
+                                    setInvoiceLetter(e.target.value)
+                                  }
+                                  className="rounded border border-slate-300 p-4 text-slate-500 w-16 text-center disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-slate-500"
+                                >
+                                  <option value="A">A</option>
+                                  <option value="B">B</option>
+                                  <option value="C">C</option>
+                                </select>
+                                {window.innerWidth > 600 && (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                                <input
+                                  type="text"
+                                  value={invoiceFirst4}
+                                  disabled={withoutInvoice}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                      .replace(/\D/g, "")
+                                      .slice(0, 4);
+                                    setInvoiceFirst4(value);
+                                  }}
+                                  placeholder="0001"
+                                  maxLength={4}
+                                  className="rounded border border-slate-200 p-4 text-slate-500 w-20 text-center disabled:cursor-not-allowed h-[52px]"
+                                />
+                                {window.innerWidth > 600 && (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                                <input
+                                  disabled={withoutInvoice}
+                                  type="text"
+                                  value={invoiceLast8}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                      .replace(/\D/g, "")
+                                      .slice(0, 8);
+                                    setInvoiceLast8(value);
+                                  }}
+                                  placeholder="00000001"
+                                  maxLength={8}
+                                  className="rounded border border-slate-200 p-4 text-slate-500 w-28 text-center disabled:cursor-not-allowed h-[52px]"
+                                />
+                                <label className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={
+                                      !invoiceLetter &&
+                                      !invoiceFirst4 &&
+                                      !invoiceLast8
+                                    }
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setInvoiceLetter("");
+                                        setInvoiceFirst4("");
+                                        setInvoiceLast8("");
+                                        setWithoutInvoice(true);
+                                      } else {
+                                        setInvoiceLetter("A");
+                                        setInvoiceFirst4("");
+                                        setInvoiceLast8("");
+                                        setWithoutInvoice(false);
+                                      }
+                                    }}
+                                    className="rounded border border-slate-200 p-2 text-slate-500"
+                                  />
+                                  Sin Factura
+                                </label>
+                              </div>
+                              {formSubmitted &&
+                                !withoutInvoice &&
+                                (!invoiceLetter ||
+                                  !invoiceFirst4 ||
+                                  !invoiceLast8) && (
+                                  <span className="text-red-500 text-sm">
+                                    * Todos los campos son obligatorios
+                                  </span>
+                                )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Referencia */}
+                      {/* <tr>
                         <td>
                           <div className="p-4 gap-4 flex items-center">
                             <label className="text-slate-500 w-24 font-bold">
@@ -220,10 +599,75 @@ export default function CashflowOut({}) {
                             />
                           </div>
                         </td>
+                      </tr> */}
+
+                      <tr>
+                        <td>
+                          <div className="p-4 flex flex-col gap-2">
+                            <label className="text-slate-500 font-bold">
+                              Impuestos:
+                            </label>
+                            {taxes?.map((tax, index) => (
+                              <div
+                                key={index}
+                                className="flex items-center gap-2 sm:ml-[110px]"
+                              >
+                                <select
+                                  value={tax.type}
+                                  onChange={(e) => {
+                                    const updated = [...taxes];
+                                    updated[index].type = e.target.value;
+                                    setTaxes(updated);
+                                  }}
+                                  className="rounded border border-slate-200 p-2 text-slate-500 w-32"
+                                >
+                                  {utils.getTaxes().map((t) => (
+                                    <option key={t.type} value={t.type}>
+                                      {t.type}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  placeholder="Valor"
+                                  value={tax.value}
+                                  onChange={(e) => {
+                                    const updated = [...taxes];
+                                    updated[index].value = e.target.value;
+                                    setTaxes(updated);
+                                  }}
+                                  className="rounded border border-slate-200 p-2 text-slate-500 w-32"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = taxes.filter(
+                                      (_, i) => i !== index
+                                    );
+                                    setTaxes(updated);
+                                  }}
+                                  className="text-red-500 font-bold text-lg"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setTaxes([...taxes, { type: "IVA", value: "" }])
+                              }
+                              className="text-sm text-blue-600 underline mt-2 text-left sm:ml-[110px]"
+                            >
+                              + Agregar impuesto
+                            </button>
+                          </div>
+                        </td>
                       </tr>
+                      {/* ================ */}
 
                       {/* Fecha */}
-                      <tr>
+                      {/* <tr>
                         <td>
                           <div className="p-4 gap-4 flex items-center">
                             <label className="text-slate-500 w-24 font-bold">
@@ -242,6 +686,20 @@ export default function CashflowOut({}) {
                                 * Obligatorio
                               </span>
                             )}
+                          </div>
+                        </td>
+                      </tr> */}
+
+                      {/* ================ */}
+                      <tr>
+                        <td>
+                          <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
+                            <label className="text-slate-500 md:w-20 font-bold">
+                              Total:
+                            </label>
+                            <label className="text-slate-500">
+                              {utils.formatAmount(amountWithTaxes)}
+                            </label>
                           </div>
                         </td>
                       </tr>

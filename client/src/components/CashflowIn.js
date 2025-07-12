@@ -1,17 +1,56 @@
+import { ExternalLinkIcon, LinkIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import * as utils from "../utils/utils";
 import { useForm } from "react-hook-form";
+import { DateTime } from "luxon";
+import { Controller } from "react-hook-form";
 import { ArrowLeft, Home } from "lucide-react";
+import SelectComboBox from "./common/SelectComboBox";
+import { setWith, sortBy } from "lodash";
 import Button from "./common/Button";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useCreateCashflowMutation } from "../apis/api.cashflow";
-import { queryCashflowKey } from "../apis/queryKeys";
+import { useCreatePaycheckMutation } from "../apis/api.paychecks";
+import { useClientsQuery } from "../apis/api.clients";
+import {
+  queryCashflowKey,
+  queryPaychecksKey,
+  queryClientsKey,
+} from "../apis/queryKeys";
 
 export default function CashflowIn({}) {
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [stage, setStage] = useState("LIST");
+  const [client, setClient] = useState();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const [invoiceLetter, setInvoiceLetter] = useState("A");
+  const [invoiceFirst4, setInvoiceFirst4] = useState("");
+  const [invoiceLast8, setInvoiceLast8] = useState("");
+  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [withoutInvoice, setWithoutInvoice] = useState(false);
+
+  const [chequeData, setChequeData] = useState({
+    number: "",
+    bank: "",
+    amount: "",
+    paymentDate: new Date().toISOString().split("T")[0],
+  });
+
+  const [paymentMethod, setPaymentMethod] = useState(
+    utils.getPaymentMethods()[0] || ""
+  );
+  console.log(paymentMethod);
+  const {
+    data: clients,
+    isLoading: isLoadingClients,
+    error: errorClients,
+  } = useQuery({
+    queryKey: queryClientsKey(),
+    queryFn: useClientsQuery,
+  });
 
   const createMutation = useMutation({
     mutationFn: useCreateCashflowMutation,
@@ -27,37 +66,92 @@ export default function CashflowIn({}) {
     register,
     handleSubmit,
     reset,
+    trigger,
+    control,
+    setValue,
     formState: { errors },
   } = useForm();
 
   const onCancel = () => {
     navigate("/cashflow");
   };
-  const onSubmit = (body) => {
-    createMutation.mutate(body);
-    navigate("/cashflow");
+
+  const createPaycheckMutation = useMutation({
+    mutationFn: useCreatePaycheckMutation,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryPaychecksKey() });
+      console.log("Cheque creado:", data);
+    },
+    onError: (error) => {
+      console.error("Error creando cheque:", error);
+    },
+  });
+
+  const concatenateInvoiceNumber = () => {
+    return `${invoiceLetter}${invoiceFirst4}${invoiceLast8}`;
   };
 
   const handleFormSubmit = async (data) => {
     try {
+      setFormSubmitted(true);
+
+      let concatenatedNumber = "";
+
+      // Validar que todos los campos del número de factura estén completos
+      if (withoutInvoice) {
+        setInvoiceLetter("");
+        setInvoiceFirst4("");
+        setInvoiceLast8("");
+      } else {
+        if (!invoiceLetter || !invoiceFirst4 || !invoiceLast8) {
+          return;
+        }
+        setInvoiceLetter(invoiceLetter || "A");
+        setInvoiceFirst4(invoiceFirst4 || "");
+        setInvoiceLast8(invoiceLast8 || "");
+        concatenatedNumber = concatenateInvoiceNumber();
+      }
+
       setIsLoadingSubmit(true);
       const body = {
         ...data,
         amount: Number(data.amount),
-        type: "ingreso",
+        type: "INGRESO",
+        payment_method: data.paymentMethod,
+        provider: data.client.id,
+        reference: concatenatedNumber,
       };
-      await onSubmit(body);
+
+      const movement = await createMutation.mutateAsync(body);
+
+      if (data.paymentMethod === utils.getPaycheckString()) {
+        // Create the paycheck using the mutation
+        createPaycheckMutation.mutate({
+          number: chequeData.number,
+          client_id: data.client.id,
+          bank: chequeData.bank,
+          due_date: chequeData.paymentDate,
+          amount: Number(data.amount),
+          type: "IN",
+          movement_id: movement[0].id,
+        });
+      }
+
       setIsLoadingSubmit(false);
+      setFormSubmitted(false);
       reset();
+      navigate("/cashflow");
     } catch (e) {
       console.log(e);
       setIsLoadingSubmit(false);
+      setFormSubmitted(false);
     }
   };
 
   const handleCancel = () => {
     reset();
     setIsLoadingSubmit(false);
+    setFormSubmitted(false);
     onCancel();
   };
 
@@ -120,6 +214,110 @@ export default function CashflowIn({}) {
                         </td>
                       </tr>
 
+                      {/* Forma de pago */}
+                      <tr>
+                        <td>
+                          <div className="p-4 gap-4 flex items-center">
+                            <label className="text-slate-500 w-24 font-bold">
+                              Forma de pago:
+                            </label>
+                            <select
+                              {...register("paymentMethod", { required: true })}
+                              className="flex-1 rounded border border-slate-200 p-4 text-slate-500 text-xs"
+                              defaultValue={paymentMethod}
+                              onChange={(e) => setPaymentMethod(e.target.value)}
+                            >
+                              {utils.getPaymentMethods().map((method) => (
+                                <option key={method} value={method}>
+                                  {method}
+                                </option>
+                              ))}
+                            </select>
+                            {errors.paymentMethod && (
+                              <span className="px-2 text-red-500">
+                                * Obligatorio
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {paymentMethod === utils.getPaycheckString() && (
+                        <>
+                          {/* Número de cheque */}
+                          <tr>
+                            <td>
+                              <div className="p-4 gap-4 flex items-center">
+                                <label className="text-slate-500 w-24 font-bold">
+                                  Nº Cheque:
+                                </label>
+                                <input
+                                  type="text"
+                                  className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
+                                  value={chequeData.number}
+                                  onChange={(e) =>
+                                    setChequeData({
+                                      ...chequeData,
+                                      number: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Banco */}
+                          <tr>
+                            <td>
+                              <div className="p-4 gap-4 flex items-center">
+                                <label className="text-slate-500 w-24 font-bold">
+                                  Banco:
+                                </label>
+                                <select
+                                  className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
+                                  value={chequeData.bank}
+                                  onChange={(e) =>
+                                    setChequeData({
+                                      ...chequeData,
+                                      bank: e.target.value,
+                                    })
+                                  }
+                                >
+                                  <option value="">Seleccionar banco</option>
+                                  {utils.getBanks().map((bank) => (
+                                    <option key={bank} value={bank}>
+                                      {bank}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* Fecha de pago */}
+                          <tr>
+                            <td>
+                              <div className="p-4 gap-4 flex items-center">
+                                <label className="text-slate-500 w-24 font-bold">
+                                  Fecha de pago:
+                                </label>
+                                <input
+                                  type="date"
+                                  className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
+                                  value={chequeData.paymentDate}
+                                  onChange={(e) =>
+                                    setChequeData({
+                                      ...chequeData,
+                                      paymentDate: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        </>
+                      )}
+
                       {/* Monto */}
                       <tr>
                         <td>
@@ -161,19 +359,14 @@ export default function CashflowIn({}) {
                             </label>
                             <select
                               {...register("category", { required: true })}
-                              className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
+                              className="flex-1 rounded border border-slate-200 p-4 text-slate-500 text-xs"
                             >
-                              <option value="">Seleccionar categoría</option>
-                              <option value="Ventas">Ventas</option>
-                              <option value="Servicios profesionales">
-                                Servicios profesionales
-                              </option>
-                              <option value="Honorarios">Honorarios</option>
-                              <option value="Consultoría">Consultoría</option>
-                              <option value="Comisiones">Comisiones</option>
-                              <option value="Otros ingresos">
-                                Otros ingresos
-                              </option>
+                              <option value="">SELECCIONAR</option>
+                              {utils.getCashflowInCategories().map((cat) => (
+                                <option key={cat} value={cat}>
+                                  {cat.toUpperCase()}
+                                </option>
+                              ))}
                             </select>
                             {errors.category && (
                               <span className="px-2 text-red-500">
@@ -184,45 +377,162 @@ export default function CashflowIn({}) {
                         </td>
                       </tr>
 
-                      {/* Proveedor/Cliente */}
+                      {/* ================ */}
                       <tr>
                         <td>
-                          <div className="p-4 gap-4 flex items-center">
-                            <label className="text-slate-500 w-24 font-bold">
+                          <div className="p-4 flex md:flex-row gap-2 md:gap-4 md:items-center">
+                            <label className="text-slate-500 md:w-20 font-bold">
                               Cliente:
                             </label>
-                            <input
-                              type="text"
-                              {...register("provider", { required: true })}
-                              className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
-                              placeholder="Nombre del cliente"
-                            />
-                            {errors.provider && (
-                              <span className="px-2 text-red-500">
-                                * Obligatorio
-                              </span>
-                            )}
+                            <div className="flex flex-col gap-2">
+                              <div className="flex flex-col sm:flex-row gap-2 w-full items-start sm:items-center justify-start ml-12 pl-1 sm:pl-0 sm:ml-4">
+                                <Controller
+                                  name="client"
+                                  control={control}
+                                  rules={{ required: true }}
+                                  defaultValue={null}
+                                  render={({ field }) => (
+                                    <SelectComboBox
+                                      options={sortBy(
+                                        clients,
+                                        "fantasy_name"
+                                      ).map((client) => ({
+                                        id: client.id,
+                                        name: client.fantasy_name,
+                                        label: client.name,
+                                      }))}
+                                      value={field.value}
+                                      onChange={(option) => {
+                                        field.onChange(option);
+                                        setValue("client", option);
+                                        setClient(option);
+                                        trigger("client");
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.preventDefault();
+                                        }
+                                      }}
+                                    />
+                                  )}
+                                />
+
+                                <Button
+                                  variant="alternative"
+                                  className="h-8"
+                                  onClick={() => {
+                                    navigate("/clientes?create=true");
+                                  }}
+                                >
+                                  Nuevo Cliente
+                                  <ExternalLinkIcon className="ml-1 h-4 w-4" />
+                                </Button>
+                              </div>
+                              {errors.client && (
+                                <span className="text-red-500 text-sm ml-4">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>
+                      {/* ================ */}
 
                       {/* Referencia */}
                       <tr>
                         <td>
                           <div className="p-4 gap-4 flex items-center">
                             <label className="text-slate-500 w-24 font-bold">
-                              Referencia:
+                              Factura:
                             </label>
-                            <input
-                              type="text"
-                              {...register("reference")}
-                              className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
-                              placeholder="Ej: FAC-001, REC-002"
-                            />
+                            <div className="flex flex-col gap-2">
+                              <div className="flex sm:flex-row flex-col gap-2 items-start sm:items-center justify-start sm:ml-0">
+                                <select
+                                  disabled={withoutInvoice}
+                                  value={invoiceLetter}
+                                  onChange={(e) =>
+                                    setInvoiceLetter(e.target.value)
+                                  }
+                                  className="rounded border border-slate-300 p-4 text-slate-500 w-16 text-center disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-slate-500"
+                                >
+                                  <option value="A">A</option>
+                                  <option value="B">B</option>
+                                  <option value="C">C</option>
+                                </select>
+                                {window.innerWidth > 600 && (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                                <input
+                                  type="text"
+                                  value={invoiceFirst4}
+                                  disabled={withoutInvoice}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                      .replace(/\D/g, "")
+                                      .slice(0, 4);
+                                    setInvoiceFirst4(value);
+                                  }}
+                                  placeholder="0001"
+                                  maxLength={4}
+                                  className="rounded border border-slate-200 p-4 text-slate-500 w-20 text-center disabled:cursor-not-allowed h-[52px]"
+                                />
+                                {window.innerWidth > 600 && (
+                                  <span className="text-slate-400">-</span>
+                                )}
+                                <input
+                                  disabled={withoutInvoice}
+                                  type="text"
+                                  value={invoiceLast8}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                      .replace(/\D/g, "")
+                                      .slice(0, 8);
+                                    setInvoiceLast8(value);
+                                  }}
+                                  placeholder="00000001"
+                                  maxLength={8}
+                                  className="rounded border border-slate-200 p-4 text-slate-500 w-28 text-center disabled:cursor-not-allowed h-[52px]"
+                                />
+                                <label className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={
+                                      !invoiceLetter &&
+                                      !invoiceFirst4 &&
+                                      !invoiceLast8
+                                    }
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setInvoiceLetter("");
+                                        setInvoiceFirst4("");
+                                        setInvoiceLast8("");
+                                        setWithoutInvoice(true);
+                                      } else {
+                                        setInvoiceLetter("A");
+                                        setInvoiceFirst4("");
+                                        setInvoiceLast8("");
+                                        setWithoutInvoice(false);
+                                      }
+                                    }}
+                                    className="rounded border border-slate-200 p-2 text-slate-500"
+                                  />
+                                  Sin Factura
+                                </label>
+                              </div>
+                              {formSubmitted &&
+                                !withoutInvoice &&
+                                (!invoiceLetter ||
+                                  !invoiceFirst4 ||
+                                  !invoiceLast8) && (
+                                  <span className="text-red-500 text-sm">
+                                    * Todos los campos son obligatorios
+                                  </span>
+                                )}
+                            </div>
                           </div>
                         </td>
                       </tr>
-
                       {/* Fecha */}
                       <tr>
                         <td>

@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { EditIcon, TrashIcon, EyeIcon, CloseIcon } from "./icons";
@@ -19,8 +19,7 @@ import {
 } from "../apis/api.invoices";
 import { useSuppliersQuery } from "../apis/api.suppliers";
 import { queryInvoicesKey, querySuppliersKey } from "../apis/queryKeys";
-
-var moment = require("moment");
+import { ExternalLinkIcon, LinkIcon } from "lucide-react";
 
 export default function Invoices() {
   const [stage, setStage] = useState("LIST");
@@ -28,11 +27,13 @@ export default function Invoices() {
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [viewOnly, setViewOnly] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [taxes, setTaxes] = useState([{ type: "IVA", value: "" }]);
+  const [amountWithTaxes, setAmountWithTaxes] = useState(0);
   const [supplier, setSupplier] = useState(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const [invoiceLetter, setInvoiceLetter] = useState("");
+  const [invoiceLetter, setInvoiceLetter] = useState("A");
   const [invoiceFirst4, setInvoiceFirst4] = useState("");
   const [invoiceLast8, setInvoiceLast8] = useState("");
   const [formSubmitted, setFormSubmitted] = useState(false);
@@ -43,6 +44,7 @@ export default function Invoices() {
     reset,
     trigger,
     setValue,
+    watch,
     control,
     formState: { errors },
   } = useForm();
@@ -65,11 +67,7 @@ export default function Invoices() {
     data &&
     data?.length > 0 &&
     data?.filter((d) =>
-      search
-        ? d.name.toLowerCase().includes(search.toLowerCase()) ||
-          d.last_name.toLowerCase().includes(search.toLowerCase()) ||
-          d.username.toLowerCase().includes(search.toLowerCase())
-        : d
+      search ? d.name.toLowerCase().includes(search.toLowerCase()) : d
     );
   if (error) console.log(error);
 
@@ -129,6 +127,21 @@ export default function Invoices() {
     return !existingInvoice || "Factura ya existe";
   };
 
+  const getTotalAmount = (taxes, amount) => {
+    const totalTaxes = taxes?.reduce((acc, tax) => {
+      const taxValue = parseFloat(tax.value) || 0;
+      return acc + taxValue;
+    }, 0);
+
+    return (parseFloat(amount) || 0) + (totalTaxes || 0);
+  };
+
+  const watchedAmount = watch("amount");
+
+  useEffect(() => {
+    setAmountWithTaxes(getTotalAmount(taxes, watchedAmount));
+  }, [watchedAmount, taxes]);
+
   const onSubmit = async (data) => {
     try {
       setFormSubmitted(true);
@@ -152,6 +165,8 @@ export default function Invoices() {
         amount: data.amount,
         description: data.description,
         invoice_number: concatenatedInvoiceNumber,
+        taxes: taxes.filter((t) => t.value !== ""),
+        total: getTotalAmount(taxes, data.amount),
       };
 
       if (selectedInvoice) {
@@ -184,6 +199,18 @@ export default function Invoices() {
   const onEdit = (invoiceId) => {
     reset();
     const invoice = data.find((invoice) => invoice.id === invoiceId) || null;
+
+    // Si existen impuestos en la entrega, setearlos
+    if (invoice?.taxes && Array.isArray(invoice.taxes)) {
+      const mappedTaxes = invoice.taxes.map((t) => ({
+        type: t.name || t.type,
+        value: String(t.amount),
+      }));
+      setTaxes(mappedTaxes);
+    } else {
+      setTaxes([{ type: "IVA", value: "" }]);
+    }
+
     setSelectedInvoice(invoice);
     setFormSubmitted(false);
 
@@ -195,7 +222,7 @@ export default function Invoices() {
       setInvoiceFirst4(first4);
       setInvoiceLast8(last8);
     } else {
-      setInvoiceLetter("");
+      setInvoiceLetter("A");
       setInvoiceFirst4("");
       setInvoiceLast8("");
     }
@@ -228,7 +255,7 @@ export default function Invoices() {
 
   const onCreate = () => {
     setSelectedInvoice(null);
-    setInvoiceLetter("");
+    setInvoiceLetter("A");
     setInvoiceFirst4("");
     setInvoiceLast8("");
     setFormSubmitted(false);
@@ -240,11 +267,12 @@ export default function Invoices() {
     setSelectedInvoice(null);
     setViewOnly(false);
     setIsLoadingSubmit(false);
-    setInvoiceLetter("");
+    setInvoiceLetter("A");
     setInvoiceFirst4("");
     setInvoiceLast8("");
     setFormSubmitted(false);
     setSupplier(null);
+    setTaxes([{ type: "IVA", value: "" }]);
     reset();
     setStage("LIST");
   };
@@ -359,7 +387,7 @@ export default function Invoices() {
                               )}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
-                              {utils.formatAmount(invoice.amount)}
+                              {utils.formatAmount(invoice.total)}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  text-slate-500 w-10">
                               <div className="flex gap-2">
@@ -433,36 +461,48 @@ export default function Invoices() {
                                 {viewOnly ? (
                                   <>{selectedInvoice?.supplier.fantasy_name}</>
                                 ) : (
-                                  <Controller
-                                    name="supplier"
-                                    control={control}
-                                    rules={{ required: true }}
-                                    defaultValue={null}
-                                    render={({ field }) => (
-                                      <SelectComboBox
-                                        options={sortBy(
-                                          suppliers,
-                                          "fantasy_name"
-                                        ).map((supplier) => ({
-                                          id: supplier.id,
-                                          name: supplier.name,
-                                          label: supplier.name,
-                                        }))}
-                                        value={field.value}
-                                        onChange={(option) => {
-                                          field.onChange(option);
-                                          setValue("supplier", option);
-                                          setSupplier(option);
-                                          trigger("supplier");
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") {
-                                            e.preventDefault();
-                                          }
-                                        }}
-                                      />
-                                    )}
-                                  />
+                                  <div className="flex gap-2 w-full items-center">
+                                    <Controller
+                                      name="supplier"
+                                      control={control}
+                                      rules={{ required: true }}
+                                      defaultValue={null}
+                                      render={({ field }) => (
+                                        <SelectComboBox
+                                          options={sortBy(
+                                            suppliers,
+                                            "fantasy_name"
+                                          ).map((supplier) => ({
+                                            id: supplier.id,
+                                            name: supplier.name,
+                                            label: supplier.name,
+                                          }))}
+                                          value={field.value}
+                                          onChange={(option) => {
+                                            field.onChange(option);
+                                            setValue("supplier", option);
+                                            setSupplier(option);
+                                            trigger("supplier");
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              e.preventDefault();
+                                            }
+                                          }}
+                                        />
+                                      )}
+                                    />
+                                    <Button
+                                      variant="alternative"
+                                      className="h-8"
+                                      onClick={() => {
+                                        navigate("/proveedores?create=true");
+                                      }}
+                                    >
+                                      Nuevo Proveedor
+                                      <ExternalLinkIcon className="ml-1 h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 )}
                                 {errors.supplier && (
                                   <span className="text-red-500 text-sm">
@@ -498,9 +538,7 @@ export default function Invoices() {
                                     >
                                       <option value="A">A</option>
                                       <option value="B">B</option>
-                                      <option value="C" selected>
-                                        C
-                                      </option>
+                                      <option value="C">C</option>
                                     </select>
                                     <span className="text-slate-400">-</span>
                                     <input
@@ -577,6 +615,88 @@ export default function Invoices() {
                           </td>
                         </tr>
                         {/* ================ */}
+                        {!viewOnly && (
+                          <tr>
+                            <td>
+                              <div className="p-4 flex flex-col gap-2">
+                                <label className="text-slate-500 font-bold">
+                                  Impuestos:
+                                </label>
+                                {taxes?.map((tax, index) => (
+                                  <div
+                                    key={index}
+                                    className="flex items-center gap-2 sm:ml-24"
+                                  >
+                                    <select
+                                      value={tax.type}
+                                      onChange={(e) => {
+                                        const updated = [...taxes];
+                                        updated[index].type = e.target.value;
+                                        setTaxes(updated);
+                                      }}
+                                      className="rounded border border-slate-200 p-2 text-slate-500 w-32"
+                                    >
+                                      {utils.getTaxes().map((t) => (
+                                        <option key={t.type} value={t.type}>
+                                          {t.type}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      type="number"
+                                      placeholder="Valor"
+                                      value={tax.value}
+                                      onChange={(e) => {
+                                        const updated = [...taxes];
+                                        updated[index].value = e.target.value;
+                                        setTaxes(updated);
+                                      }}
+                                      className="rounded border border-slate-200 p-2 text-slate-500 w-32"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const updated = taxes.filter(
+                                          (_, i) => i !== index
+                                        );
+                                        setTaxes(updated);
+                                      }}
+                                      className="text-red-500 font-bold text-lg"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setTaxes([
+                                      ...taxes,
+                                      { type: "IVA", value: "" },
+                                    ])
+                                  }
+                                  className="text-sm text-blue-600 underline mt-2 text-left sm:ml-24"
+                                >
+                                  + Agregar impuesto
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
+                              <label className="text-slate-500 md:w-20 font-bold">
+                                Total:
+                              </label>
+                              <label className="text-slate-500">
+                                {utils.formatAmount(amountWithTaxes)}
+                              </label>
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
                         <tr>
                           <td>
                             <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-start">
@@ -594,9 +714,7 @@ export default function Invoices() {
                                     defaultValue={
                                       selectedInvoice?.description || ""
                                     }
-                                    {...register("description", {
-                                      required: true,
-                                    })}
+                                    {...register("description")}
                                     id="description"
                                     name="description"
                                     className="rounded border border-slate-200 p-4 text-slate-500 w-full md:w-[400px] h-[100px]"

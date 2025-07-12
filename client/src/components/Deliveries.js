@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { EditIcon, TrashIcon, EyeIcon, CloseIcon } from "./icons";
@@ -8,7 +8,7 @@ import { Input } from "./common/Input";
 import Button from "./common/Button";
 import Spinner from "./common/Spinner";
 import SelectComboBox from "./common/SelectComboBox";
-import { sortBy } from "lodash";
+import { get, sortBy } from "lodash";
 
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import {
@@ -17,10 +17,15 @@ import {
   useUpdateDeliveryMutation,
   useDeleteDeliveryMutation,
 } from "../apis/api.deliveries";
+import { useDeliveryNotesQuery } from "../apis/api.deliverynotes";
 import { useClientsQuery } from "../apis/api.clients";
-import { queryDeliveryKey, queryClientsKey } from "../apis/queryKeys";
+import {
+  queryDeliveryKey,
+  queryClientsKey,
+  queryDeliveryNotesKey,
+} from "../apis/queryKeys";
 
-var moment = require("moment");
+const SELL_TYPES = ["VENTA DIRECTA", "CONSIGNACION"];
 
 export default function Deliveries() {
   const [stage, setStage] = useState("LIST");
@@ -28,7 +33,11 @@ export default function Deliveries() {
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [viewOnly, setViewOnly] = useState(false);
   const [selectedDelivery, setSelectedDelivery] = useState(null);
+  const [taxes, setTaxes] = useState([{ type: "IVA", value: "" }]);
+  const [amountWithTaxes, setAmountWithTaxes] = useState(0);
   const [client, setClient] = useState(null);
+  const [type, setType] = useState(null);
+  const [deliveryNote, setDeliveryNote] = useState(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -42,6 +51,7 @@ export default function Deliveries() {
     handleSubmit,
     reset,
     trigger,
+    watch,
     setValue,
     control,
     formState: { errors },
@@ -61,17 +71,69 @@ export default function Deliveries() {
     queryFn: useClientsQuery,
   });
 
+  const {
+    data: deliveryNotes,
+    isLoading: isLoadingDeliveryNotes,
+    error: errorDeliveryNotes,
+  } = useQuery({
+    queryKey: queryDeliveryNotesKey(),
+    queryFn: useDeliveryNotesQuery,
+  });
+
   const dataFiltered =
     data &&
     data?.length > 0 &&
     data?.filter((d) =>
-      search
-        ? d.name.toLowerCase().includes(search.toLowerCase()) ||
-          d.last_name.toLowerCase().includes(search.toLowerCase()) ||
-          d.username.toLowerCase().includes(search.toLowerCase())
-        : d
+      search ? d.name.toLowerCase().includes(search.toLowerCase()) : d
     );
   if (error) console.log(error);
+
+  const getTotalAmount = (taxes, amount) => {
+    const totalTaxes = taxes?.reduce((acc, tax) => {
+      const taxValue = parseFloat(tax.value) || 0;
+      return acc + taxValue;
+    }, 0);
+
+    return (parseFloat(amount) || 0) + (totalTaxes || 0);
+  };
+
+  const watchedAmount = watch("amount");
+
+  useEffect(() => {
+    setAmountWithTaxes(getTotalAmount(taxes, watchedAmount));
+  }, [watchedAmount, taxes]);
+
+  const getDeliverynoteDefaultValue = () => {
+    // buscar en deliveryNotes el invoice_id del selectedDelivery
+    if (selectedDelivery && deliveryNotes) {
+      const deliveryNoteFound = deliveryNotes.find(
+        (dn) => dn.invoice_id === selectedDelivery.id
+      );
+      if (deliveryNoteFound) {
+        return {
+          id: deliveryNoteFound.id,
+          name: getLabelDeliveryNote(deliveryNoteFound),
+          label: getLabelDeliveryNote(deliveryNoteFound),
+        };
+      }
+    }
+  };
+
+  const getTypeDefaultValue = (type) => {
+    if (type) {
+      return {
+        id: type,
+        name: type,
+        label: type,
+      };
+    } else {
+      return {
+        id: SELL_TYPES[0],
+        name: SELL_TYPES[0],
+        label: SELL_TYPES[0],
+      };
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: useCreateDeliveryMutation,
@@ -140,6 +202,9 @@ export default function Deliveries() {
         amount: data.amount,
         description: data.description,
         invoice_number: concatenatedDeliveryNumber,
+        delivery_note: deliveryNote.id || null,
+        type: type,
+        total: getTotalAmount(taxes, data.amount),
       };
 
       if (selectedDelivery) {
@@ -153,6 +218,17 @@ export default function Deliveries() {
       console.log(e);
     }
   };
+
+  const getLabelDeliveryNote = (deliveryNote) => {
+    console.log(deliveryNote);
+    return (
+      "Nro: " +
+      deliveryNote.id +
+      " - " +
+      utils.formatAmount(deliveryNote.amount)
+    );
+  };
+
   const getClientFantasyName = (id) =>
     clients?.find((s) => s.id === id).fantasy_name;
 
@@ -175,6 +251,17 @@ export default function Deliveries() {
       data.find((delivery) => delivery.id === deliveryId) || null;
     setSelectedDelivery(delivery);
     setFormSubmitted(false);
+
+    // Si existen impuestos en la entrega, setearlos
+    if (delivery?.taxes && Array.isArray(delivery.taxes)) {
+      const mappedTaxes = delivery.taxes.map((t) => ({
+        type: t.name || t.type,
+        value: String(t.amount),
+      }));
+      setTaxes(mappedTaxes);
+    } else {
+      setTaxes([{ type: "IVA", value: "" }]);
+    }
 
     if (delivery?.invoice_number) {
       const { letter, first4, last8 } = splitDeliveryNumber(
@@ -233,13 +320,14 @@ export default function Deliveries() {
     setDeliveryLast8("");
     setFormSubmitted(false);
     setClient(null);
+    setTaxes([{ type: "IVA", value: "" }]);
     reset();
     setStage("LIST");
   };
 
   const redirectNavigation = () => {
     if (stage === "LIST") {
-      navigate("/home");
+      navigate("/entregas-selector");
     } else {
       setStage("LIST");
     }
@@ -347,7 +435,7 @@ export default function Deliveries() {
                               )}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
-                              {utils.formatAmount(delivery.amount)}
+                              {utils.formatAmount(delivery.total)}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  text-slate-500 w-10">
                               <div className="flex gap-2">
@@ -379,7 +467,7 @@ export default function Deliveries() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={4}
+                            colSpan={5}
                             className="border-b border-slate-100  p-4  text-slate-500 "
                           >
                             No data
@@ -453,6 +541,118 @@ export default function Deliveries() {
                                   />
                                 )}
                                 {errors.client && (
+                                  <span className="text-red-500 text-sm">
+                                    * Obligatorio
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
+                              <label className="text-slate-500 md:w-20 font-bold">
+                                Remito:
+                              </label>
+                              <div className="flex flex-col gap-2">
+                                {viewOnly ? (
+                                  <>{selectedDelivery?.id}</>
+                                ) : (
+                                  <Controller
+                                    name="deliverynote"
+                                    control={control}
+                                    rules={{ required: true }}
+                                    defaultValue={getDeliverynoteDefaultValue(
+                                      selectedDelivery
+                                    )}
+                                    render={({ field }) => (
+                                      <SelectComboBox
+                                        options={deliveryNotes
+                                          .filter(
+                                            (dn) => dn.client_id === client?.id
+                                          )
+                                          .map((deliveryNote) => ({
+                                            id: deliveryNote.id,
+                                            name: getLabelDeliveryNote(
+                                              deliveryNote
+                                            ),
+                                            label:
+                                              getLabelDeliveryNote(
+                                                deliveryNote
+                                              ),
+                                          }))}
+                                        value={field.value}
+                                        onChange={(option) => {
+                                          field.onChange(option);
+                                          setValue("deliverynote", option);
+                                          setDeliveryNote(option);
+                                          trigger("deliverynote");
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") {
+                                            e.preventDefault();
+                                          }
+                                        }}
+                                      />
+                                    )}
+                                  />
+                                )}
+                                {errors.deliverynote && (
+                                  <span className="text-red-500 text-sm">
+                                    * Obligatorio
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
+                              <label className="text-slate-500 md:w-20 font-bold">
+                                Tipo:
+                              </label>
+                              <div className="flex flex-col gap-2">
+                                {viewOnly ? (
+                                  <>{selectedDelivery?.type}</>
+                                ) : (
+                                  <Controller
+                                    name="type"
+                                    control={control}
+                                    rules={{ required: true }}
+                                    defaultValue={getTypeDefaultValue(
+                                      selectedDelivery?.type
+                                    )}
+                                    render={({ field }) => {
+                                      return (
+                                        <SelectComboBox
+                                          options={SELL_TYPES.map((type) => ({
+                                            id: type,
+                                            name: type,
+                                            label: type,
+                                          }))}
+                                          value={field.value}
+                                          onChange={(option) => {
+                                            field.onChange(option);
+                                            setValue("type", option);
+                                            setType(option);
+                                            trigger("type");
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") {
+                                              e.preventDefault();
+                                            }
+                                          }}
+                                        />
+                                      );
+                                    }}
+                                  />
+                                )}
+                                {errors.type && (
                                   <span className="text-red-500 text-sm">
                                     * Obligatorio
                                   </span>
@@ -567,6 +767,89 @@ export default function Deliveries() {
                           </td>
                         </tr>
                         {/* ================ */}
+                        {/* ================ */}
+                        {!viewOnly && (
+                          <tr>
+                            <td>
+                              <div className="p-4 flex flex-col gap-2">
+                                <label className="text-slate-500 font-bold">
+                                  Impuestos:
+                                </label>
+                                {taxes?.map((tax, index) => (
+                                  <div
+                                    key={index}
+                                    className="flex items-center gap-2 sm:ml-24"
+                                  >
+                                    <select
+                                      value={tax.type}
+                                      onChange={(e) => {
+                                        const updated = [...taxes];
+                                        updated[index].type = e.target.value;
+                                        setTaxes(updated);
+                                      }}
+                                      className="rounded border border-slate-200 p-2 text-slate-500 w-32"
+                                    >
+                                      {utils.getTaxes().map((t) => (
+                                        <option key={t.type} value={t.type}>
+                                          {t.type}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      type="number"
+                                      placeholder="Valor"
+                                      value={tax.value}
+                                      onChange={(e) => {
+                                        const updated = [...taxes];
+                                        updated[index].value = e.target.value;
+                                        setTaxes(updated);
+                                      }}
+                                      className="rounded border border-slate-200 p-2 text-slate-500 w-32"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const updated = taxes.filter(
+                                          (_, i) => i !== index
+                                        );
+                                        setTaxes(updated);
+                                      }}
+                                      className="text-red-500 font-bold text-lg"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setTaxes([
+                                      ...taxes,
+                                      { type: "IVA", value: "" },
+                                    ])
+                                  }
+                                  className="text-sm text-blue-600 underline mt-2 text-left sm:ml-24"
+                                >
+                                  + Agregar impuesto
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
+                              <label className="text-slate-500 md:w-20 font-bold">
+                                Total:
+                              </label>
+                              <label className="text-slate-500">
+                                {utils.formatAmount(amountWithTaxes)}
+                              </label>
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
                         <tr>
                           <td>
                             <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-start">
@@ -584,9 +867,7 @@ export default function Deliveries() {
                                     defaultValue={
                                       selectedDelivery?.description || ""
                                     }
-                                    {...register("description", {
-                                      required: true,
-                                    })}
+                                    {...register("description")}
                                     id="description"
                                     name="description"
                                     className="rounded border border-slate-200 p-4 text-slate-500 w-full md:w-[400px] h-[100px]"

@@ -9,7 +9,8 @@ self.getClients = async (req, res) => {
     const { data, error } = await supabase
       .from("clients")
       .select("*")
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .order("id", { ascending: true });
 
     if (error) throw error;
 
@@ -78,6 +79,8 @@ self.createClient = async (req, res) => {
       fantasy_name: req.body.fantasy_name,
       email: req.body.email,
       phone: req.body.phone,
+      document_number: req.body.document_number,
+      document_type: req.body.document_type,
     };
 
     const { data: newClient, error } = await supabase

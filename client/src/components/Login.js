@@ -133,13 +133,13 @@ export default function Login() {
                 </form>
               </div>
               <div className="flex flex-col items-center justify-center mt-4">
-                <p className="mt-4 text-sm text-gray-500">
+                {/* <p className="mt-4 text-sm text-gray-500">
                   No tenés cuenta?{" "}
                   <a href="/register" className="text-gray-900 underline">
                     Registrate
                   </a>
-                </p>
-                <p className="mt-2 text-sm text-gray-500">
+                </p> */}
+                {/* <p className="mt-2 text-sm text-gray-500">
                   Olvidaste tu contraseña?{" "}
                   <a
                     href="/forgot-password"
@@ -147,7 +147,7 @@ export default function Login() {
                   >
                     Recuperar contraseña
                   </a>
-                </p>
+                </p> */}
               </div>
             </div>
           </div>

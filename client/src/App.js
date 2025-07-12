@@ -15,13 +15,17 @@ import Users from "./components/Users";
 import Home from "./components/Home";
 import Cashflow from "./components/Cashflow";
 import Deliveries from "./components/Deliveries";
+import Navigation from "./components/Navigation";
+import DeliveryNotes from "./components/DeliveryNotes";
 import Clients from "./components/Clients";
 import CashflowSelector from "./components/CashflowSelector";
 import CashflowIn from "./components/CashflowIn";
 import CashflowOut from "./components/CashflowOut";
 import Invite from "./components/Invite";
 import Invoices from "./components/Invoices";
+import Paychecks from "./components/Paychecks";
 import Suppliers from "./components/Suppliers";
+import Products from "./components/Products";
 import Web from "./components/Web";
 import Logout from "./components/Logout";
 import _, { capitalize } from "lodash";
@@ -82,9 +86,13 @@ export default function App() {
           <Route path="cashflow-selector" element={<CashflowSelector />} />
           <Route path="cashflowin" element={<CashflowIn />} />
           <Route path="cashflowout" element={<CashflowOut />} />
+          <Route path="cheques" element={<Paychecks />} />
           <Route path="home" element={<Home />} />
           <Route path="entregas" element={<Deliveries />} />
+          <Route path="remitos" element={<DeliveryNotes />} />
+          <Route path="entregas-selector" element={<Navigation />} />
           <Route path="clientes" element={<Clients />} />
+          <Route path="productos" element={<Products />} />
           <Route path="logout" element={<Logout />} />
         </Route>
         <Route

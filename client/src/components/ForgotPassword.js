@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import Button from "./common/Button";
 import logo from "../logo.svg";
@@ -16,25 +17,29 @@ export default function RecoverPasswordForm() {
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
+  const forgotPasswordMutation = useMutation({
+    mutationFn: useUserForgotPasswordMutation,
+    onSuccess: (data) => {
+      setSuccessMsg("Te enviamos un enlace para restablecer tu contraseña.");
+      queryClient.invalidateQueries({ queryKey: queryUsersKey() });
+      console.log("Forgot password success:", data);
+    },
+    onError: (error) => {
+      setErrorMsg(error.message);
+      console.error("Forgot password error:", error);
+    },
+  });
+
   const onSubmit = async (data) => {
     setLoading(true);
     setErrorMsg("");
     setSuccessMsg("");
 
-    const forgotPasswordMutation = useMutation({
-      mutationFn: useUserForgotPasswordMutation,
-      onSuccess: (data) => {
-        setSuccessMsg("Te enviamos un enlace para restablecer tu contraseña.");
-        queryClient.invalidateQueries({ queryKey: queryUsersKey() });
-        console.log("Forgot password success:", data);
-      },
-      onError: (error) => {
-        setErrorMsg(error.message);
-        console.error("Forgot password error:", error);
-      },
+    const requestResetPassword = await forgotPasswordMutation.mutateAsync({
+      email: data.email,
     });
 
-    forgotPasswordMutation.mutate(data.email);
+    console.log(requestResetPassword);
 
     setLoading(false);
   };

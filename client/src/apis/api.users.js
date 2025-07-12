@@ -35,6 +35,7 @@ export const useLoginUserMutation = async (body) => {
     },
     body: JSON.stringify(body),
   });
+
   if (!res.ok) {
     throw new Error("Error en la petición");
   }
@@ -128,6 +129,7 @@ export const useRegisterUserMutation = async (body) => {
 };
 
 export const useUserForgotPasswordMutation = async (body) => {
+  debugger;
   const res = await fetch(`${BASE_URL}/forgot-password`, {
     method: "POST",
     headers: {

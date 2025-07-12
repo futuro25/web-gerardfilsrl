@@ -10,6 +10,9 @@ const DeliveriesController = require("../controllers/DeliveriesController.js");
 const UtilsController = require("../controllers/UtilsController.js");
 const PaymentsController = require("../controllers/PaymentsController.js");
 const CashflowController = require("../controllers/CashflowController");
+const ProductController = require("../controllers/ProductController.js");
+const DeliveryNoteController = require("../controllers/DeliveryNoteController.js");
+const PaycheckController = require("../controllers/PaycheckController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -103,6 +106,62 @@ router.delete("/suppliers/:supplier_id", (req, res, next) =>
   SupplierController.deleteSupplierById(req, res, next)
 );
 
+// DELIVERY_NOTE
+
+router.get("/deliverynotes", (req, res, next) =>
+  DeliveryNoteController.getDeliveryNotes(req, res, next)
+);
+
+router.get("/deliverynotes/:deliverynote_id", (req, res, next) =>
+  DeliveryNoteController.getDeliveryNoteById(req, res, next)
+);
+
+router.get("/deliverynotes/name/:fantasy_name", (req, res, next) =>
+  DeliveryNoteController.getDeliveryNoteByDeliveryNoteName(req, res, next)
+);
+
+router.get("/deliverynotes/email/:email", (req, res, next) =>
+  DeliveryNoteController.getDeliveryNoteByEmail(req, res, next)
+);
+
+router.post("/deliverynotes", (req, res, next) =>
+  DeliveryNoteController.createDeliveryNote(req, res, next)
+);
+
+router.patch("/deliverynotes/:deliverynote_id", (req, res, next) =>
+  DeliveryNoteController.getDeliveryNoteByIdAndUpdate(req, res, next)
+);
+
+router.delete("/deliverynotes/:deliverynote_id", (req, res, next) =>
+  DeliveryNoteController.deleteDeliveryNoteById(req, res, next)
+);
+
+// PRODUCTS
+
+router.get("/products", (req, res, next) =>
+  ProductController.getProducts(req, res, next)
+);
+
+router.get("/products/:product_id", (req, res, next) =>
+  ProductController.getProductById(req, res, next)
+);
+
+router.get("/products/name/:name", (req, res, next) =>
+  ProductController.getProductByProductName(req, res, next)
+);
+
+router.post("/products", (req, res, next) =>
+  ProductController.createProduct(req, res, next)
+);
+
+router.patch("/products/:product_id", (req, res, next) =>
+  ProductController.getProductByIdAndUpdate(req, res, next)
+);
+
+router.delete("/products/:product_id", (req, res, next) =>
+  ProductController.deleteProductById(req, res, next)
+);
+
 // CLIENTS
 
 router.get("/clients", (req, res, next) =>
@@ -175,6 +234,28 @@ router.patch("/deliveries/:delivery_id", (req, res, next) =>
 
 router.delete("/deliveries/:delivery_id", (req, res, next) =>
   DeliveriesController.deleteDeliveryById(req, res, next)
+);
+
+// PAYCHECKS
+
+router.get("/paychecks", (req, res, next) =>
+  PaycheckController.getPaychecks(req, res, next)
+);
+
+router.get("/paychecks/:paycheck_id", (req, res, next) =>
+  PaycheckController.getPaycheckById(req, res, next)
+);
+
+router.post("/paychecks", (req, res, next) =>
+  PaycheckController.createPaycheck(req, res, next)
+);
+
+router.patch("/paychecks/:paycheck_id", (req, res, next) =>
+  PaycheckController.getPaycheckByIdAndUpdate(req, res, next)
+);
+
+router.delete("/paychecks/:paycheck_id", (req, res, next) =>
+  PaycheckController.deletePaycheckById(req, res, next)
 );
 
 // CASHFLOW

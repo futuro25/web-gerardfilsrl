@@ -3,14 +3,21 @@ import { HouseIcon, PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import React, { useState, useEffect } from "react";
 import Button from "./common/Button";
+import * as utils from "../utils/utils";
 import { DateTime } from "luxon";
 import { Input } from "./common/Input";
 import { Badge } from "./common/Badge";
 import { Card, CardContent } from "./common/Card";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useCashflowsQuery } from "../apis/api.cashflow";
-import { queryCashflowKey } from "../apis/queryKeys";
+import { useSuppliersQuery } from "../apis/api.suppliers";
+import {
+  queryCashflowKey,
+  queryPaychecksKey,
+  querySuppliersKey,
+} from "../apis/queryKeys";
 import Spinner from "./common/Spinner";
+import { usePaychecksQuery } from "../apis/api.paychecks";
 
 export default function Cashflow() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -25,6 +32,24 @@ export default function Cashflow() {
     queryFn: useCashflowsQuery,
   });
 
+  const {
+    data: suppliers,
+    isLoadingSuppliers,
+    errorSuppliers,
+  } = useQuery({
+    queryKey: querySuppliersKey(),
+    queryFn: useSuppliersQuery,
+  });
+
+  const {
+    data: paychecks,
+    isLoadingPaychecks,
+    errorPaychecks,
+  } = useQuery({
+    queryKey: queryPaychecksKey(),
+    queryFn: usePaychecksQuery,
+  });
+
   const filteredMovements = data?.filter((movement) => {
     const matchesSearch =
       movement.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -32,22 +57,61 @@ export default function Cashflow() {
       movement.category.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesType =
-      selectedType === "all" || movement.type === selectedType;
+      selectedType === "all" || movement.type.toLowerCase() === selectedType;
 
     return matchesSearch && matchesType;
   });
 
-  const totalIngresos = data
-    ?.filter((m) => m.type === "ingreso")
-    .reduce((sum, m) => sum + m.amount, 0);
+  const totalIngresos =
+    data
+      ?.filter((m) => m.type.toLowerCase() === "ingreso")
+      .reduce((sum, m) => sum + m.amount, 0) || 0;
 
-  const totalEgresos = data
-    ?.filter((m) => m.type === "egreso")
-    .reduce((sum, m) => sum + Math.abs(m.amount), 0);
+  const totalEgresos =
+    data
+      ?.filter((m) => m.type.toLowerCase() === "egreso")
+      .reduce((sum, m) => sum + Math.abs(m.amount), 0) || 0;
 
   const totalCashflow = filteredMovements?.reduce((sum, m) => {
-    return sum + (m.type === "ingreso" ? m.amount : -Math.abs(m.amount));
+    let amount = m.amount;
+
+    if (m.payment_method === utils.getPaycheckString()) {
+      const today = DateTime.now().startOf("day");
+      const dueDate = DateTime.fromISO(m.chequeDueDate).startOf("day");
+
+      if (dueDate > today) {
+        amount = 0;
+      }
+    }
+
+    return (
+      sum + (m.type.toLowerCase() === "ingreso" ? amount : -Math.abs(amount))
+    );
   }, 0);
+
+  const getPaymentInfo = (movementId, payment) => {
+    if (payment === utils.getPaycheckString()) {
+      const paycheckData = paychecks?.find((p) => p.movement_id === movementId);
+
+      return (
+        <div
+          className="text-xs text-gray-500 cursor-pointer"
+          onClick={() => navigate(`/cheques?id=${paycheckData.id}`)}
+        >{`CHEQUE # ${paycheckData?.number} ${paycheckData?.bank}`}</div>
+      );
+    } else {
+      return <p className="text-xs text-gray-500">{payment.toUpperCase()}</p>;
+    }
+  };
+
+  const getSupplierName = (id) => {
+    const supplier = suppliers?.find((s) => {
+      if (s.id === +id) {
+        return s;
+      }
+    });
+    return supplier ? supplier.fantasy_name : "Proveedor no encontrado";
+  };
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("es-AR", {
@@ -125,7 +189,9 @@ export default function Cashflow() {
                 : "hover:shadow-md"
             }`}
             onClick={() =>
-              setSelectedType(selectedType === "egreso" ? "all" : "egreso")
+              setSelectedType(
+                selectedType.toLowerCase() === "egreso" ? "all" : "egreso"
+              )
             }
           >
             <div className="flex flex-col items-center gap-2">
@@ -176,10 +242,28 @@ export default function Cashflow() {
 
         {/* Movements List */}
         <div className="space-y-3 w-full">
+          {Array.isArray(filteredMovements) && filteredMovements.length > 0 && (
+            <Card className="!mt-10 mb-8">
+              <CardContent className="!p-2 text-center flex items-center justify-between">
+                <h3 className="font-bold text-gray-900">Total</h3>
+                <div className="text-right">
+                  <p
+                    className={`font-semibold ${
+                      totalCashflow > 0 ? "text-green-600" : "text-red-600"
+                    }`}
+                  >
+                    {totalCashflow > 0 ? "+" : "-"}
+                    {formatCurrency(totalCashflow)}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {Array.isArray(filteredMovements) &&
           filteredMovements.length === 0 ? (
             <Card>
-              <CardContent className="p-8 text-center">
+              <CardContent className="p-8 text-center pt-10">
                 <p className="text-gray-500">No se encontraron movimientos</p>
               </CardContent>
             </Card>
@@ -199,12 +283,12 @@ export default function Cashflow() {
                         </h3>
                         <Badge
                           variant={
-                            movement.type === "ingreso"
+                            movement.type.toLowerCase() === "ingreso"
                               ? "default"
                               : "destructive"
                           }
                           className={
-                            movement.type === "ingreso"
+                            movement.type.toLowerCase() === "ingreso"
                               ? "bg-green-100 text-green-800 hover:bg-green-100"
                               : "bg-red-100 text-red-800 hover:bg-red-100"
                           }
@@ -221,14 +305,16 @@ export default function Cashflow() {
                             )}
                           </span>
 
-                          <span>{movement.category}</span>
+                          <span className="text-xs">{movement.category}</span>
                         </div>
-
                         {movement.provider && (
                           <p className="text-sm text-gray-600">
-                            {movement.provider}
+                            {getSupplierName(movement.provider)}
                           </p>
                         )}
+
+                        {movement.payment_method &&
+                          getPaymentInfo(movement.id, movement.payment_method)}
 
                         {movement.reference && (
                           <p className="text-xs text-gray-500">
@@ -241,12 +327,12 @@ export default function Cashflow() {
                     <div className="text-right">
                       <p
                         className={`font-semibold ${
-                          movement.type === "ingreso"
+                          movement.type.toLowerCase() === "ingreso"
                             ? "text-green-600"
                             : "text-red-600"
                         }`}
                       >
-                        {movement.type === "ingreso" ? "+" : "-"}
+                        {movement.type.toLowerCase() === "ingreso" ? "+" : "-"}
                         {formatCurrency(movement.amount)}
                       </p>
                     </div>

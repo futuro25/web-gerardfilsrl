@@ -9,7 +9,8 @@ self.getCashflows = async (req, res) => {
     const { data, error } = await supabase
       .from("cashflow")
       .select("*")
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .order("date", { ascending: false });
 
     if (error) throw error;
 
@@ -46,6 +47,7 @@ self.createCashflow = async (req, res) => {
       description: req.body.description,
       provider: req.body.provider,
       reference: req.body.reference,
+      payment_method: req.body.payment_method || "EFECTIVO",
     };
 
     const { data: newCashflow, error } = await supabase
@@ -54,6 +56,32 @@ self.createCashflow = async (req, res) => {
       .select();
 
     if (error) throw error;
+
+    let newInvoiceTaxes = [];
+
+    if (newCashflow?.length && Array.isArray(req.body.taxes)) {
+      const taxes = req.body.taxes;
+
+      const invoiceTaxes = taxes.map((tax) => ({
+        invoice_id: newCashflow[0].id,
+        name: tax.type,
+        amount: parseFloat(tax.value),
+      }));
+
+      const { data, error: taxesError } = await supabase
+        .from("taxes")
+        .insert(invoiceTaxes);
+
+      console.log("taxes", invoiceTaxes);
+      if (taxesError) {
+        console.error("Error creando impuestos de factura:", taxesError);
+        return res
+          .status(500)
+          .json({ error: "Error al insertar los impuestos" });
+      }
+
+      newInvoiceTaxes = data;
+    }
 
     return res.json(newCashflow);
   } catch (e) {

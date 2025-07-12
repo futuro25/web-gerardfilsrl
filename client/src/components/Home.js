@@ -14,6 +14,8 @@ import {
   Package,
   UserPlus,
   LogOutIcon,
+  ShirtIcon,
+  Banknote,
 } from "lucide-react";
 import React, { useState, useEffect } from "react";
 
@@ -24,11 +26,17 @@ export default function Home() {
 
   const navItems = [
     // { label: "Pagos", icon: CreditCardIcon, path: "/pagos" },
-    { label: "Facturas", icon: FileChartColumnIncreasing, path: "/facturas" },
-    { label: "Entregas", icon: Package, path: "/entregas" },
+    // {
+    //   label: "Facturas a Pagar",
+    //   icon: FileChartColumnIncreasing,
+    //   path: "/facturas",
+    // },
+    { label: "Entregas", icon: Package, path: "/entregas-selector" },
     { label: "Proveedores", icon: TruckIcon, path: "/proveedores" },
     { label: "Clientes", icon: UsersIcon, path: "/clientes" },
+    { label: "Productos", icon: ShirtIcon, path: "/productos" },
     { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow" },
+    { label: "Cheques", icon: Banknote, path: "/cheques" },
     { label: "Logout", icon: LogOutIcon, path: "/logout" },
   ];
 

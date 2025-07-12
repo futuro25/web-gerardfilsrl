@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { EditIcon, TrashIcon, EyeIcon, CloseIcon } from "./icons";
@@ -26,6 +26,9 @@ export default function Suppliers() {
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [viewOnly, setViewOnly] = useState(false);
 
+  const params = new URLSearchParams(window.location.search);
+  const createParam = params.get("create");
+
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -42,15 +45,23 @@ export default function Suppliers() {
     queryFn: useSuppliersQuery,
   });
 
+  useEffect(() => {
+    if (createParam) {
+      setStage("CREATE");
+      setSelectedSupplier(null);
+      setViewOnly(false);
+    } else {
+      setStage("LIST");
+      setSelectedSupplier(null);
+      setViewOnly(false);
+    }
+  }, [createParam]);
+
   const dataFiltered =
     data &&
     data?.length > 0 &&
     data?.filter((d) =>
-      search
-        ? d.name.toLowerCase().includes(search.toLowerCase()) ||
-          d.last_name.toLowerCase().includes(search.toLowerCase()) ||
-          d.username.toLowerCase().includes(search.toLowerCase())
-        : d
+      search ? d.name.toLowerCase().includes(search.toLowerCase()) : d
     );
   if (error) console.log(error);
 
@@ -105,6 +116,7 @@ export default function Suppliers() {
 
       body = {
         ...data,
+        service: data.service + " - " + data.category,
       };
 
       if (selectedSupplier) {
@@ -114,6 +126,13 @@ export default function Suppliers() {
       }
       setIsLoadingSubmit(false);
       setStage("LIST");
+
+      if (createParam) {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("create");
+        window.history.pushState({}, "", url);
+      }
+      reset();
     } catch (e) {
       console.log(e);
     }
@@ -302,7 +321,7 @@ export default function Suppliers() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={4}
+                            colSpan={5}
                             className="border-b border-slate-100  p-4  text-slate-500 "
                           >
                             No data
@@ -533,6 +552,43 @@ export default function Suppliers() {
                           </td>
                         </tr>
 
+                        {/* ================ */}
+                        {/* Sub Service */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Categoría:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500">
+                                  {selectedSupplier?.service}
+                                </label>
+                              ) : (
+                                <select
+                                  defaultValue={selectedSupplier?.service || ""}
+                                  {...register("category", { required: true })}
+                                  className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
+                                >
+                                  <option value="">Seleccionar</option>
+                                  {utils
+                                    .getSupplierCategories()
+                                    .map((category) => (
+                                      <option key={category} value={category}>
+                                        {category}
+                                      </option>
+                                    ))}
+                                </select>
+                              )}
+                              {errors.service && (
+                                <span className="px-2 text-red-500">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
                         {/* Industry */}
                         <tr>
                           <td>
@@ -567,7 +623,7 @@ export default function Suppliers() {
                                   {/* Agregá tus opciones acá */}
                                 </select>
                               )}
-                              {errors.service && (
+                              {errors.industry && (
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
                                 </span>
@@ -611,7 +667,7 @@ export default function Suppliers() {
                                   </option>
                                 </select>
                               )}
-                              {errors.service && (
+                              {errors.tax_regime && (
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
                                 </span>
