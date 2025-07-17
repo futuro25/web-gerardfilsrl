@@ -454,7 +454,7 @@ export default function Cashflow() {
               </div>
             </div>
             <div className="flex gap-2 justify-center items-center">
-              <Button onClick={onCloseModal}>Close</Button>
+              <Button onClick={onCloseModal}>Cerrar</Button>
             </div>
           </DialogContent>
         </Dialog>
