@@ -2,6 +2,8 @@ import { useNavigate } from "react-router-dom";
 import { HouseIcon, PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import React, { useState, useEffect } from "react";
+import { Dialog, DialogContent } from "./common/Dialog";
+import { CloseIcon } from "./icons";
 import Button from "./common/Button";
 import * as utils from "../utils/utils";
 import { DateTime } from "luxon";
@@ -11,10 +13,12 @@ import { Card, CardContent } from "./common/Card";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useCashflowsQuery } from "../apis/api.cashflow";
 import { useSuppliersQuery } from "../apis/api.suppliers";
+import { useClientsQuery } from "../apis/api.clients";
 import {
   queryCashflowKey,
   queryPaychecksKey,
   querySuppliersKey,
+  queryClientsKey,
 } from "../apis/queryKeys";
 import Spinner from "./common/Spinner";
 import { usePaychecksQuery } from "../apis/api.paychecks";
@@ -22,6 +26,8 @@ import { usePaychecksQuery } from "../apis/api.paychecks";
 export default function Cashflow() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedType, setSelectedType] = useState("all");
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedMovement, setSelectedMovement] = useState();
 
   const [stage, setStage] = useState("LIST");
   const [viewOnly, setViewOnly] = useState(false);
@@ -39,6 +45,15 @@ export default function Cashflow() {
   } = useQuery({
     queryKey: querySuppliersKey(),
     queryFn: useSuppliersQuery,
+  });
+  
+  const {
+    data: clients,
+    isLoadingClients,
+    errorClients,
+  } = useQuery({
+    queryKey: queryClientsKey(),
+    queryFn: useClientsQuery,
   });
 
   const {
@@ -112,6 +127,15 @@ export default function Cashflow() {
     });
     return supplier ? supplier.fantasy_name : "Proveedor no encontrado";
   };
+  
+  const getClientName = (id) => {
+    const client = clients?.find((s) => {
+      if (s.id === +id) {
+        return s;
+      }
+    });
+    return client ? client.fantasy_name : "Proveedor no encontrado";
+  };
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("es-AR", {
@@ -131,6 +155,19 @@ export default function Cashflow() {
 
   const onCreate = () => {
     navigate("/cashflow-selector");
+  };
+
+  const onCloseModal = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsModalOpen(false);
+  };
+  
+  const onClick = (movementId) => {
+    const movement = filteredMovements.find(m => m.id === movementId)
+    const supplierName = movement.type === 'EGRESO' ? getSupplierName(movement.provider) : getClientName(movement.provider);
+    setSelectedMovement({...movement, supplierName: supplierName} )
+    setIsModalOpen(true);
   };
 
   return (
@@ -272,7 +309,8 @@ export default function Cashflow() {
             filteredMovements.map((movement) => (
               <Card
                 key={movement.id}
-                className="hover:shadow-md transition-shadow"
+                className="hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => onClick(movement.id)}
               >
                 <CardContent className="!p-2">
                   <div className="flex items-center justify-between">
@@ -300,16 +338,14 @@ export default function Cashflow() {
                       <div className="space-y-1">
                         <div className="flex items-center gap-4 text-sm text-gray-600">
                           <span>
-                            {DateTime.fromISO(movement.date).toFormat(
-                              "dd/MM/yyyy"
-                            )}
+                            {DateTime.fromISO(movement.date).plus({ hours: 3 }).toFormat("dd/MM/yyyy")}
                           </span>
 
                           <span className="text-xs">{movement.category}</span>
                         </div>
                         {movement.provider && (
                           <p className="text-sm text-gray-600">
-                            {getSupplierName(movement.provider)}
+                            {movement.type === 'EGRESO' ? getSupplierName(movement.provider) : getClientName(movement.provider)}
                           </p>
                         )}
 
@@ -360,6 +396,69 @@ export default function Cashflow() {
             </Card>
           )}
         </div>
+
+{selectedMovement && (
+        <Dialog open={isModalOpen}>
+          <DialogContent>
+            <div className="w-[500px] h-[400px] max-w-[500px] max-h-[400px]">
+              <div className="flex justify-end items-center text-gray-500">
+                <button onClick={onCloseModal}>
+                  <CloseIcon />
+                </button>
+              </div>
+              <div className="flex justify-center items-center w-full">
+                <div className="p-6 w-full">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-semibold text-gray-800">Detalle del Movimiento</h2>
+                    <span
+                      className={utils.cn("px-2 py-1 text-xs font-medium text-white rounded", selectedMovement.type === 'EGRESO' ? 'bg-red-500' : 'bg-green-500')}
+                    >
+                      {selectedMovement.type}
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 text-sm text-gray-700">
+                    <div className="flex justify-between">
+                      <span className="font-medium">Categoría:</span>
+                      <span className="text-right">{selectedMovement.category}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Descripción:</span>
+                      <span className="text-right">{selectedMovement.description}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Monto:</span>
+                      <span
+                        className={utils.cn("text-right font-semibold", selectedMovement.amount < 0 ? 'text-red-600' : 'text-green-600')}
+                      >
+                        {formatCurrency(selectedMovement.amount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Fecha:</span>
+                      <span className="text-right">
+                        {DateTime.fromISO(selectedMovement.date).plus({ hours: 3 }).toFormat("dd/MM/yyyy")}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Método de pago:</span>
+                      <span className="text-right">{selectedMovement.payment_method}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="font-medium">Proveedor:</span>
+                      <span className="text-right">{selectedMovement.supplierName}</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+            <div className="flex gap-2 justify-center items-center">
+              <Button onClick={onCloseModal}>Close</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        )}
       </div>
     </div>
   );

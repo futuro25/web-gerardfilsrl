@@ -413,7 +413,7 @@ export default function Suppliers() {
                           <td>
                             <div className="p-4 gap-4 flex items-center">
                               <label className="text-slate-500 w-20 font-bold">
-                                Fantasia:
+                                Razon Social:
                               </label>
                               {viewOnly ? (
                                 <label className="text-slate-500 w-20">
@@ -464,21 +464,13 @@ export default function Suppliers() {
                                   id="email"
                                   name="email"
                                   defaultValue={selectedSupplier?.email || ""}
-                                  {...register("email", {
-                                    required: true,
-                                    validate: emailValidation,
-                                  })}
+                                  {...register("email")}
                                   className="rounded border border-slate-200  p-4 text-slate-500 "
                                 />
                               )}
-                              {errors.email?.type === "required" && (
+                              {errors.email && (
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
-                                </span>
-                              )}
-                              {errors.email?.type === "validate" && (
-                                <span className="px-2 text-red-500">
-                                  * Email existente
                                 </span>
                               )}
                             </div>
@@ -499,7 +491,7 @@ export default function Suppliers() {
                                 <input
                                   type="text"
                                   defaultValue={selectedSupplier?.phone || ""}
-                                  {...register("phone", { required: true })}
+                                  {...register("phone")}
                                   className="rounded border border-slate-200  p-4  text-slate-500 "
                                 />
                               )}
@@ -513,7 +505,7 @@ export default function Suppliers() {
                         </tr>
                         {/* ================ */}
                         {/* Service */}
-                        <tr>
+                        {/* <tr>
                           <td>
                             <div className="p-4 gap-4 flex items-center">
                               <label className="text-slate-500 w-20 font-bold">
@@ -526,11 +518,10 @@ export default function Suppliers() {
                               ) : (
                                 <select
                                   defaultValue={selectedSupplier?.service || ""}
-                                  {...register("service", { required: true })}
+                                  {...register("service")}
                                   className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
                                 >
                                   <option value="">Seleccionar</option>
-                                  {/* Agregá tus opciones acá */}
                                   <option value="BIENES">BIENES</option>
                                   <option value="SERVICIOS">SERVICIOS</option>
                                   <option value="MANTENIMIENTO">
@@ -550,7 +541,7 @@ export default function Suppliers() {
                               )}
                             </div>
                           </td>
-                        </tr>
+                        </tr> */}
 
                         {/* ================ */}
                         {/* Sub Service */}
@@ -590,7 +581,7 @@ export default function Suppliers() {
                         </tr>
 
                         {/* Industry */}
-                        <tr>
+                        {/* <tr>
                           <td>
                             <div className="p-4 gap-4 flex items-center">
                               <label className="text-slate-500 w-20 font-bold">
@@ -605,7 +596,7 @@ export default function Suppliers() {
                                   defaultValue={
                                     selectedSupplier?.industry || ""
                                   }
-                                  {...register("industry", { required: true })}
+                                  {...register("industry")}
                                   className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
                                 >
                                   <option value="">Seleccionar</option>
@@ -620,7 +611,6 @@ export default function Suppliers() {
                                   </option>
                                   <option value="TEXTIL">TEXTIL</option>
                                   <option value="OTROS">OTROS</option>
-                                  {/* Agregá tus opciones acá */}
                                 </select>
                               )}
                               {errors.industry && (
@@ -630,7 +620,7 @@ export default function Suppliers() {
                               )}
                             </div>
                           </td>
-                        </tr>
+                        </tr> */}
 
                         {/* Tax Regime */}
                         <tr>

@@ -89,7 +89,8 @@ export function getTaxes() {
   return [
     { type: "IVA", value: "" },
     { type: "INGRESOS BRUTOS", value: "" },
-    { type: "PERCEPCION", value: "" },
+    { type: "PERC IVA", value: "" },
+    { type: "PERC IIBB", value: "" },
     { type: "GANANCIAS", value: "" },
   ];
 }
