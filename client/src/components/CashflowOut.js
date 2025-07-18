@@ -127,7 +127,8 @@ export default function CashflowOut({}) {
         category: data.category + " - " + data.subcategory,
         provider: data.provider.id,
         taxes: taxes.filter((t) => t.value !== ""),
-        date: new Date().toISOString().split("T")[0],
+        date: data.date,
+        // date: new Date().toISOString().split("T")[0],
       };
 
       const movement = await createMutation.mutateAsync(body);
@@ -657,7 +658,7 @@ export default function CashflowOut({}) {
                               onClick={() =>
                                 setTaxes([...taxes, { type: "IVA", value: "" }])
                               }
-                              className="text-sm text-blue-600 underline mt-2 text-left sm:ml-[110px]"
+                              className="text-sm text-blue-600 underline mt-2 text-left sm:ml-[110px] ml-2"
                             >
                               + Agregar impuesto
                             </button>
@@ -667,7 +668,7 @@ export default function CashflowOut({}) {
                       {/* ================ */}
 
                       {/* Fecha */}
-                      {/* <tr>
+                      <tr>
                         <td>
                           <div className="p-4 gap-4 flex items-center">
                             <label className="text-slate-500 w-24 font-bold">
@@ -688,7 +689,7 @@ export default function CashflowOut({}) {
                             )}
                           </div>
                         </td>
-                      </tr> */}
+                      </tr>
 
                       {/* ================ */}
                       <tr>
@@ -697,7 +698,7 @@ export default function CashflowOut({}) {
                             <label className="text-slate-500 md:w-20 font-bold">
                               Total:
                             </label>
-                            <label className="text-slate-500">
+                            <label className="text-slate-500 ml-4">
                               {utils.formatAmount(amountWithTaxes)}
                             </label>
                           </div>
