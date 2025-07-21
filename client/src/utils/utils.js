@@ -96,7 +96,7 @@ export function getTaxes() {
 }
 
 export function getPaymentMethods() {
-  return ["EFECTIVO", "TRANSFERENCIA BANCARIA", "CHEQUE"];
+  return ["EFECTIVO", "TRANSFERENCIA BANCARIA", "CHEQUE", "TARJETA CREDITO", "TARJETA DEBITO"];
 }
 
 export function getPaycheckString() {
