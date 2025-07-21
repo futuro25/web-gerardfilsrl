@@ -397,7 +397,7 @@ export default function Cashflow() {
           )}
         </div>
 
-{selectedMovement && (
+      {selectedMovement && (
         <Dialog open={isModalOpen}>
           <DialogContent>
             <div className="w-[500px] h-[400px] max-w-[500px] max-h-[400px]">
@@ -407,7 +407,7 @@ export default function Cashflow() {
                 </button>
               </div>
               <div className="flex justify-center items-center w-full">
-                <div className="p-6 w-full">
+                <div className="p-6 w-[90%]">
                   <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-semibold text-gray-800">Detalle del Movimiento</h2>
                     <span
