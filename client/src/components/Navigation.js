@@ -1,9 +1,16 @@
+import React, { useState, useEffect } from "react";
 import { Package, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { MoonLoader } from "react-spinners";
 
 export default function Navigation() {
   const navigate = useNavigate();
+
+  const navItems = [
+    { label: "Crear Remito", icon: Package, path: "/remitos" },
+    { label: "Crear Factura", icon: FileText, path: "/entregas" },
+  ];
 
   return (
     <div className="h-full overflow-auto flex flex-col items-center justify-start">
@@ -19,25 +26,38 @@ export default function Navigation() {
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
-        <div
-          className="flex items-center justify-center p-4 hover:bg-gray-100 rounded-lg cursor-pointer border h-32 shadow-lg transition-colors duration-200 w-40 bg-white"
-          onClick={() => (window.location.href = "/remitos")}
-        >
-          <div className="flex flex-col items-center gap-2">
-            <Package className="w-8 h-8 sm:w-16 sm:h-16 text-gray-600" />
-            <span className="text-gray-900 text-sm">Crear Remito</span>
-          </div>
-        </div>
+        {navItems.map((item, index) => (
+          <HomeButton key={index} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
-        <div
-          className="flex items-center justify-center p-4 hover:bg-gray-100 rounded-lg cursor-pointer border h-32 shadow-lg transition-colors duration-200 w-40 bg-white"
-          onClick={() => (window.location.href = "/entregas")}
-        >
-          <div className="flex flex-col items-center gap-2">
-            <FileText className="w-8 h-8 sm:w-16 sm:h-16 text-gray-600" />
-            <span className="text-gray-900 text-sm">Crear Factura</span>
+function HomeButton({ item }) {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const onClick = () => {
+    setIsLoading(true);
+    setTimeout(() => {
+      window.location.href = item.path;
+    }, 1000);
+  };
+
+  return (
+    <div
+      className="flex items-center justify-center p-4 hover:bg-gray-100 rounded-lg cursor-pointer border h-32 shadow-lg transition-colors duration-200 w-40 bg-white"
+      onClick={() => onClick()}
+    >
+      <div className="flex flex-col items-center gap-2">
+        {isLoading ? (
+          <div className="flex items-center justify-center">
+            <MoonLoader size={50} />
           </div>
-        </div>
+        ) : (
+          <item.icon className="w-8 h-8 sm:w-16 sm:h-16 text-gray-600" />
+        )}
+        <span className="text-gray-900 text-sm">{item.label}</span>
       </div>
     </div>
   );
