@@ -17,24 +17,38 @@ import {
 
 const LibroIVAExport = () => {
   const navigate = useNavigate();
+  const [fromDate, setFromDate] = React.useState("");
+  const [toDate, setToDate] = React.useState("");
 
-  const {
-    data: compras,
-    isLoadingCompras,
-    errorCompras,
-  } = useQuery({
-    queryKey: queryBooksComprasCbteKey(),
-    queryFn: useBooksIVAComprasComprobantesQuery,
-  });
+  const queryClient = useQueryClient();
 
-  const {
-    data: ventas,
-    isLoadingVentas,
-    errorVentas,
-  } = useQuery({
-    queryKey: queryBooksVentasCbteKey(),
-    queryFn: useBooksIVAVentasComprobantesQuery,
-  });
+  const fetchCompras = async () => {
+    return await useBooksIVAComprasComprobantesQuery(fromDate, toDate);
+  };
+
+  const fetchVentas = async () => {
+    return await useBooksIVAVentasComprobantesQuery(fromDate, toDate);
+  };
+  // console.log("fromDate:", fromDate);
+
+  // console.log("toDate:", toDate);
+  // const {
+  //   data: compras,
+  //   isLoadingCompras,
+  //   errorCompras,
+  // } = useQuery({
+  //   queryKey: queryBooksComprasCbteKey(),
+  //   queryFn: () => useBooksIVAComprasComprobantesQuery(fromDate, toDate),
+  // });
+
+  // const {
+  //   data: ventas,
+  //   isLoadingVentas,
+  //   errorVentas,
+  // } = useQuery({
+  //   queryKey: queryBooksVentasCbteKey(),
+  //   queryFn: () => useBooksIVAVentasComprobantesQuery(fromDate, toDate),
+  // });
 
   const formatNumber = (value, length = 15) => {
     const num = Math.round(Math.abs(value) * 100).toString();
@@ -72,6 +86,10 @@ const LibroIVAExport = () => {
   };
 
   const exportComprasTxt = (data) => {
+    if (fromDate === "" || toDate === "") {
+      alert("Por favor, selecciona un rango de fechas.");
+      return;
+    }
     const lines = data.map((item) => {
       const { reference, date, supplier, amount, taxes } = item;
 
@@ -141,10 +159,18 @@ const LibroIVAExport = () => {
     });
 
     saveAs(blob, "LIBRO_IVA_DIGITAL_COMPRAS_CBTE.txt");
+<<<<<<< Updated upstream
     alert("Archivo LIBRO_IVA_DIGITAL_COMPRAS_CBTE.txt descargado")
+=======
+    alert("Archivo LIBRO_IVA_DIGITAL_COMPRAS_CBTE.txt descargado");
+>>>>>>> Stashed changes
   };
 
   const exportComprasAlicuotasTxt = (data) => {
+    if (fromDate === "" || toDate === "") {
+      alert("Por favor, selecciona un rango de fechas.");
+      return;
+    }
     const lines = data.flatMap((item) => {
       const { reference, taxes, supplier } = item;
 
@@ -179,7 +205,11 @@ const LibroIVAExport = () => {
     });
 
     saveAs(blob, "LIBRO_IVA_DIGITAL_COMPRAS_ALICUOTAS.txt");
+<<<<<<< Updated upstream
     alert("Archivo LIBRO_IVA_DIGITAL_COMPRAS_ALICUOTAS.txt descargado")
+=======
+    alert("Archivo LIBRO_IVA_DIGITAL_COMPRAS_ALICUOTAS.txt descargado");
+>>>>>>> Stashed changes
   };
 
   return (
@@ -196,7 +226,47 @@ const LibroIVAExport = () => {
           </div>
         </div>
       </div>
+
       <div className="flex flex-col justify-center items-center gap-4 p-4 bg-white shadow rounded-md">
+        <div className="max-w-xl mx-auto p-6 bg-white space-y-6">
+          <h2 className="text-xl font-semibold text-gray-800 text-center">
+            Seleccionar Rango de Fechas
+          </h2>
+
+          <form className="space-y-4">
+            <div>
+              <label
+                htmlFor="fromDate"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Desde
+              </label>
+              <input
+                type="date"
+                id="fromDate"
+                name="fromDate"
+                className="mt-1 block w-full h-12 border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                onChange={(e) => setFromDate(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="toDate"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Hasta
+              </label>
+              <input
+                type="date"
+                id="toDate"
+                name="toDate"
+                className="mt-1 block w-full h-12 border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                onChange={(e) => setToDate(e.target.value)}
+              />
+            </div>
+          </form>
+        </div>
         <button
           onClick={() => alert("Proximamente")}
           className="border text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px] shadow-lg bg-white"
@@ -204,7 +274,27 @@ const LibroIVAExport = () => {
           Exportar IVA Ventas Cbte
         </button>
         <button
+<<<<<<< Updated upstream
           onClick={() => exportComprasTxt(compras)}
+=======
+          onClick={async () => {
+            if (!fromDate || !toDate) {
+              alert("Por favor, selecciona un rango de fechas.");
+              return;
+            }
+
+            try {
+              const compras = await queryClient.fetchQuery({
+                queryKey: queryBooksComprasCbteKey(),
+                queryFn: fetchCompras,
+              });
+              exportComprasTxt(compras);
+            } catch (error) {
+              alert("Error al obtener los comprobantes de compras");
+              console.error(error);
+            }
+          }}
+>>>>>>> Stashed changes
           className="border text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px] shadow-lg bg-white"
         >
           Exportar IVA Compras Cbte
@@ -216,7 +306,27 @@ const LibroIVAExport = () => {
           Exportar IVA Ventas Alícuotas
         </button>
         <button
+<<<<<<< Updated upstream
           onClick={() => exportComprasAlicuotasTxt(compras)}
+=======
+          onClick={async () => {
+            if (!fromDate || !toDate) {
+              alert("Por favor, selecciona un rango de fechas.");
+              return;
+            }
+
+            try {
+              const compras = await queryClient.fetchQuery({
+                queryKey: queryBooksComprasCbteKey(),
+                queryFn: fetchCompras,
+              });
+              exportComprasAlicuotasTxt(compras);
+            } catch (error) {
+              alert("Error al obtener las alícuotas de compras");
+              console.error(error);
+            }
+          }}
+>>>>>>> Stashed changes
           className="border text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px] shadow-lg bg-white"
         >
           Exportar IVA Compras Alícuotas

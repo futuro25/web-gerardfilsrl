@@ -8,10 +8,13 @@ const _ = require("lodash");
 
 self.getVentasComprobantes = async (req, res) => {
   try {
+    const { from, to } = req.query;
     const { data: cashflows, error: cashflowsError } = await supabase
       .from("cashflow")
       .select("*, taxes(*)")
       .like("type", "INGRESO")
+      .gte("date", from)
+      .lte("date", to)
       .order("date", { ascending: false });
 
     if (cashflowsError) throw cashflowsError;
@@ -38,10 +41,13 @@ self.getVentasComprobantes = async (req, res) => {
 
 self.getComprasComprobantes = async (req, res) => {
   try {
+    const { from, to } = req.query;
     const { data: cashflows, error: cashflowsError } = await supabase
       .from("cashflow")
       .select("*, taxes(*)")
       .like("type", "EGRESO")
+      .gte("date", from)
+      .lte("date", to)
       .order("date", { ascending: false });
 
     if (cashflowsError) throw cashflowsError;
