@@ -159,11 +159,7 @@ const LibroIVAExport = () => {
     });
 
     saveAs(blob, "LIBRO_IVA_DIGITAL_COMPRAS_CBTE.txt");
-<<<<<<< Updated upstream
-    alert("Archivo LIBRO_IVA_DIGITAL_COMPRAS_CBTE.txt descargado")
-=======
     alert("Archivo LIBRO_IVA_DIGITAL_COMPRAS_CBTE.txt descargado");
->>>>>>> Stashed changes
   };
 
   const exportComprasAlicuotasTxt = (data) => {
@@ -205,11 +201,7 @@ const LibroIVAExport = () => {
     });
 
     saveAs(blob, "LIBRO_IVA_DIGITAL_COMPRAS_ALICUOTAS.txt");
-<<<<<<< Updated upstream
-    alert("Archivo LIBRO_IVA_DIGITAL_COMPRAS_ALICUOTAS.txt descargado")
-=======
     alert("Archivo LIBRO_IVA_DIGITAL_COMPRAS_ALICUOTAS.txt descargado");
->>>>>>> Stashed changes
   };
 
   return (
@@ -274,9 +266,6 @@ const LibroIVAExport = () => {
           Exportar IVA Ventas Cbte
         </button>
         <button
-<<<<<<< Updated upstream
-          onClick={() => exportComprasTxt(compras)}
-=======
           onClick={async () => {
             if (!fromDate || !toDate) {
               alert("Por favor, selecciona un rango de fechas.");
@@ -294,7 +283,6 @@ const LibroIVAExport = () => {
               console.error(error);
             }
           }}
->>>>>>> Stashed changes
           className="border text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px] shadow-lg bg-white"
         >
           Exportar IVA Compras Cbte
@@ -306,9 +294,6 @@ const LibroIVAExport = () => {
           Exportar IVA Ventas Alícuotas
         </button>
         <button
-<<<<<<< Updated upstream
-          onClick={() => exportComprasAlicuotasTxt(compras)}
-=======
           onClick={async () => {
             if (!fromDate || !toDate) {
               alert("Por favor, selecciona un rango de fechas.");
@@ -326,7 +311,6 @@ const LibroIVAExport = () => {
               console.error(error);
             }
           }}
->>>>>>> Stashed changes
           className="border text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px] shadow-lg bg-white"
         >
           Exportar IVA Compras Alícuotas
