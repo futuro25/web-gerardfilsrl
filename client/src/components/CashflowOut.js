@@ -128,6 +128,7 @@ export default function CashflowOut({}) {
         provider: data.provider.id,
         taxes: taxes.filter((t) => t.value !== ""),
         date: data.date,
+        reference: concatenatedNumber,
         // date: new Date().toISOString().split("T")[0],
       };
 
