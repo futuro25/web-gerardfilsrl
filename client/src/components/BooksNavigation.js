@@ -141,6 +141,7 @@ const LibroIVAExport = () => {
     });
 
     saveAs(blob, "LIBRO_IVA_DIGITAL_COMPRAS_CBTE.txt");
+    alert("Archivo LIBRO_IVA_DIGITAL_COMPRAS_CBTE.txt descargado")
   };
 
   const exportComprasAlicuotasTxt = (data) => {
@@ -178,6 +179,7 @@ const LibroIVAExport = () => {
     });
 
     saveAs(blob, "LIBRO_IVA_DIGITAL_COMPRAS_ALICUOTAS.txt");
+    alert("Archivo LIBRO_IVA_DIGITAL_COMPRAS_ALICUOTAS.txt descargado")
   };
 
   return (
@@ -196,26 +198,26 @@ const LibroIVAExport = () => {
       </div>
       <div className="flex flex-col justify-center items-center gap-4 p-4 bg-white shadow rounded-md">
         <button
-          onClick={() => console.log("ventas")}
-          className="border border-gray-600 text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px]"
+          onClick={() => alert("Proximamente")}
+          className="border text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px] shadow-lg bg-white"
         >
           Exportar IVA Ventas Cbte
         </button>
         <button
           onClick={() => exportComprasTxt(compras)}
-          className="border border-gray-600 text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px]"
+          className="border text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px] shadow-lg bg-white"
         >
           Exportar IVA Compras Cbte
         </button>
         <button
-          onClick={() => console.log("ventas")}
-          className="border border-gray-600 text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px]"
+          onClick={() => alert("Proximamente")}
+          className="border text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px] shadow-lg bg-white"
         >
           Exportar IVA Ventas Alícuotas
         </button>
         <button
           onClick={() => exportComprasAlicuotasTxt(compras)}
-          className="border border-gray-600 text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px]"
+          className="border text-gray-600 px-4 py-2 rounded-md hover:bg-gray-900 hover:text-white transition min-w-[300px] shadow-lg bg-white"
         >
           Exportar IVA Compras Alícuotas
         </button>
