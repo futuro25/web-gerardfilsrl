@@ -16,6 +16,7 @@ import Home from "./components/Home";
 import Cashflow from "./components/Cashflow";
 import Deliveries from "./components/Deliveries";
 import Navigation from "./components/Navigation";
+import BooksNavigation from "./components/BooksNavigation";
 import DeliveryNotes from "./components/DeliveryNotes";
 import Clients from "./components/Clients";
 import CashflowSelector from "./components/CashflowSelector";
@@ -91,6 +92,7 @@ export default function App() {
           <Route path="entregas" element={<Deliveries />} />
           <Route path="remitos" element={<DeliveryNotes />} />
           <Route path="entregas-selector" element={<Navigation />} />
+          <Route path="libros-selector" element={<BooksNavigation />} />
           <Route path="clientes" element={<Clients />} />
           <Route path="productos" element={<Products />} />
           <Route path="logout" element={<Logout />} />

@@ -10,6 +10,7 @@ import {
   FileChartColumnIncreasing,
   IdCardLanyardIcon,
   CircleDollarSign,
+  BookOpenCheck,
   PackageOpen,
   Package,
   UserPlus,
@@ -38,6 +39,7 @@ export default function Home() {
     { label: "Productos", icon: ShirtIcon, path: "/productos" },
     { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow" },
     { label: "Cheques", icon: Banknote, path: "/cheques" },
+    { label: "Libros", icon: BookOpenCheck, path: "/libros-selector" },
     { label: "Logout", icon: LogOutIcon, path: "/logout" },
   ];
 

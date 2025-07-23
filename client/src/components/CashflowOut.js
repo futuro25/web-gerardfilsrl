@@ -118,10 +118,13 @@ export default function CashflowOut({}) {
         concatenatedNumber = concatenateInvoiceNumber();
       }
 
+      const totalAmount = getTotalAmount(taxes, data.amount);
+
       setIsLoadingSubmit(true);
       const body = {
         ...data,
-        amount: -Math.abs(Number(data.amount)), // Negative for expenses
+        amount: -Math.abs(Number(totalAmount)), // Negative for expenses
+        net_amount: -Math.abs(Number(data.amount)), // Negative for expenses
         type: "EGRESO",
         payment_method: data.paymentMethod || utils.getPaymentMethods()[0],
         category: data.category + " - " + data.subcategory,

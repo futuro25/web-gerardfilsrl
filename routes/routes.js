@@ -13,6 +13,7 @@ const CashflowController = require("../controllers/CashflowController");
 const ProductController = require("../controllers/ProductController.js");
 const DeliveryNoteController = require("../controllers/DeliveryNoteController.js");
 const PaycheckController = require("../controllers/PaycheckController.js");
+const BooksController = require("../controllers/BooksController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -278,6 +279,21 @@ router.patch("/cashflow/:cashflow_id", (req, res, next) =>
 
 router.delete("/cashflow/:cashflow_id", (req, res, next) =>
   CashflowController.deleteCashflowById(req, res, next)
+);
+
+// BOOKS
+
+router.get("/books/compras/comprobantes", (req, res, next) =>
+  BooksController.getComprasComprobantes(req, res, next)
+);
+router.get("/books/ventas/comprobantes", (req, res, next) =>
+  BooksController.getVentasComprobantes(req, res, next)
+);
+router.get("/books/compras/alicuotas", (req, res, next) =>
+  BooksController.getComprasAlicuotas(req, res, next)
+);
+router.get("/books/ventas/alicuotas", (req, res, next) =>
+  BooksController.getVentasAlicuotas(req, res, next)
 );
 
 // UTILS

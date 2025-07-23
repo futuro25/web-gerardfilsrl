@@ -112,10 +112,13 @@ export default function CashflowIn({}) {
         concatenatedNumber = concatenateInvoiceNumber();
       }
 
+      const totalAmount = getTotalAmount(taxes, data.amount);
+
       setIsLoadingSubmit(true);
       const body = {
         ...data,
-        amount: Number(data.amount),
+        amount: Number(totalAmount),
+        net_amount: Number(data.amount),
         type: "INGRESO",
         payment_method: data.paymentMethod,
         provider: data.client.id,

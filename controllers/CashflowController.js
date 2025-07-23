@@ -42,6 +42,7 @@ self.createCashflow = async (req, res) => {
     const cashflow = {
       type: req.body.type,
       category: req.body.category,
+      net_amount: req.body.net_amount,
       amount: req.body.amount,
       date: req.body.date,
       description: req.body.description,
