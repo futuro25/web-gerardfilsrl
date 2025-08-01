@@ -108,7 +108,7 @@ export function getBanks() {
 }
 
 export function getCashflowInCategories() {
-  return ["APORTES", "VENTAS", "COMISIONES", "OTROS"];
+  return ["APORTES", "VENTAS", "COMISIONES", "NOTA DE CREDITO" , "OTROS"];
 }
 
 export function getCashflowOutCategories() {
