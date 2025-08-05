@@ -69,6 +69,7 @@ export default function Cashflow() {
     const matchesSearch =
       movement.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
       movement.provider?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      movement.provider_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       movement.category.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesType =
