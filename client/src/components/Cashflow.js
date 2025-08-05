@@ -134,7 +134,7 @@ export default function Cashflow() {
         return s;
       }
     });
-    return client ? client.fantasy_name : "Proveedor no encontrado";
+    return client ? client.fantasy_name : "Cliente no encontrado";
   };
 
   const formatCurrency = (amount) => {
@@ -317,7 +317,11 @@ export default function Cashflow() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-medium text-gray-900">
-                          {movement.description}
+                        {movement.provider && (
+                          <p className="text-sm text-gray-900">
+                            {movement.provider_name}
+                          </p>
+                        )}
                         </h3>
                         <Badge
                           variant={
@@ -343,12 +347,9 @@ export default function Cashflow() {
 
                           <span className="text-xs">{movement.category}</span>
                         </div>
-                        {movement.provider && (
-                          <p className="text-sm text-gray-600">
-                            {movement.type === 'EGRESO' ? getSupplierName(movement.provider) : getClientName(movement.provider)}
-                          </p>
-                        )}
-
+                        <p className="text-sm text-gray-600">
+                        {movement.description}
+                        </p>
                         {movement.payment_method &&
                           getPaymentInfo(movement.id, movement.payment_method)}
 

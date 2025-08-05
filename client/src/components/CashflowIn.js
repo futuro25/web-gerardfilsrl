@@ -23,6 +23,7 @@ export default function CashflowIn({}) {
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [stage, setStage] = useState("LIST");
   const [client, setClient] = useState();
+  const [taxes, setTaxes] = useState([{ type: "IVA", value: "" }]);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -89,6 +90,15 @@ export default function CashflowIn({}) {
 
   const concatenateInvoiceNumber = () => {
     return `${invoiceLetter}${invoiceFirst4}${invoiceLast8}`;
+  };
+
+  const getTotalAmount = (taxes, amount) => {
+    const totalTaxes = taxes?.reduce((acc, tax) => {
+      const taxValue = parseFloat(tax.value) || 0;
+      return acc + taxValue;
+    }, 0);
+
+    return (parseFloat(amount) || 0) + (totalTaxes || 0);
   };
 
   const handleFormSubmit = async (data) => {

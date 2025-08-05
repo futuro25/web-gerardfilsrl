@@ -12,11 +12,31 @@ self.getCashflows = async (req, res) => {
       .is("deleted_at", null)
       .order("date", { ascending: false });
 
-    if (error) throw error;
+    const { data: suppliers, error: supplierError } = await supabase
+      .from("suppliers")
+      .select("*")
+      .is("deleted_at", null);
+    
+    const { data: clients, error: clientError } = await supabase
+      .from("clients")
+      .select("*")
+      .is("deleted_at", null);
 
-    res.json(data);
+    let movements = [];
+    
+    data.map(movement => {
+      movements.push({
+        ...movement,
+        provider_name: movement.type === 'EGRESO' ? getSupplierName(movement.provider, suppliers) : getClientName(movement.provider, clients),
+      })
+    })
+
+    if (error || supplierError || clientError) throw error;
+
+    res.json(movements);
   } catch (e) {
-    res.json({ error: e.message });
+    console.log(e)
+    res.json({ error: e?.message || 'Error' });
   }
 };
 
@@ -131,6 +151,25 @@ self.deleteCashflowById = async (req, res) => {
     console.error("delete cashflow by id", e.message);
     res.json({ error: e.message });
   }
+};
+
+
+function getSupplierName (id, suppliers) {
+  const supplier = suppliers?.find((s) => {
+    if (s.id === +id) {
+      return s;
+    }
+  });
+  return supplier ? supplier.fantasy_name : "Proveedor no encontrado";
+};
+
+function getClientName (id, clients) {
+  const client = clients?.find((s) => {
+    if (s.id === +id) {
+      return s;
+    }
+  });
+  return client ? client.fantasy_name : "Cliente no encontrado";
 };
 
 module.exports = self;

@@ -444,13 +444,14 @@ export default function Products() {
                                   className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
                                 >
                                   <option value="">Seleccionar Talle</option>
-                                  <option value="XS">XS</option>
-                                  <option value="S">S</option>
-                                  <option value="L">L</option>
-                                  <option value="M">M</option>
-                                  <option value="XL">XL</option>
-                                  <option value="2XL">2XL</option>
-                                  <option value="3XL">3XL</option>
+                                  {[...Array(60 - 35 + 1)].map((_, i) => {
+                                    const size = 35 + i;
+                                    return (
+                                      <option key={size} value={size}>
+                                        {size}
+                                      </option>
+                                    );
+                                  })}
                                   <option value="OTROS">OTROS</option>
                                   {/* Agregá tus opciones acá */}
                                 </select>
