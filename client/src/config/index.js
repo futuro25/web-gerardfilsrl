@@ -9,6 +9,10 @@ if (window.location.hostname === "www.gerardfilsrl.com.ar") {
   config = require(`./${brand}/dev.config.js`);
 }
 
+if (window.location.hostname.includes("gerardfilsrl.com.ar")) {
+  config = require(`./${brand}/dev.config.js`);
+}
+
 // if (window.location.hostname === "www.gerardfilsrl.com.ar") {
 //   console.log("env prod", brand);
 //   config = require(`./${brand}/prod.config.js`);
