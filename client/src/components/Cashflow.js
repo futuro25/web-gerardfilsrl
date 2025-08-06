@@ -23,10 +23,12 @@ import {
 import Spinner from "./common/Spinner";
 import { usePaychecksQuery } from "../apis/api.paychecks";
 
+
 export default function Cashflow() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isModalPaychecksOpen, setIsModalPaychecksOpen] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState();
 
   const [stage, setStage] = useState("LIST");
@@ -64,6 +66,18 @@ export default function Cashflow() {
     queryKey: queryPaychecksKey(),
     queryFn: usePaychecksQuery,
   });
+
+  // console.log('paychecks', paychecks)
+
+
+  const hoy = DateTime.now().startOf("day");
+  const limite = hoy.plus({ days: 7 });
+
+  const proximos7dias = paychecks?.filter(item => {
+    const dueDate = DateTime.fromISO(item.due_date);
+    return dueDate >= hoy && dueDate <= limite;
+  }) || [];
+
 
   const filteredMovements = data?.filter((movement) => {
     const matchesSearch =
@@ -262,6 +276,27 @@ export default function Cashflow() {
             </div>
           )}
 
+          {
+            !!proximos7dias.length && (
+              <div className="flex items-center justify-between">
+                <div class="flex items-start gap-3 p-4 w-full bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 rounded-md">
+                  <svg class="w-5 h-5 mt-1 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.054 0 1.658-1.14 1.105-2.01L13.105 4.99c-.527-.88-1.684-.88-2.21 0L3.977 16.99c-.553.87.051 2.01 1.105 2.01z" />
+                  </svg>
+                  <div>
+                    <p class="font-semibold">Atención</p>
+                    <div className="flex gap-2">
+                      <p class="text-sm">Existen cheques próximos a vencer</p>
+                      <p class="text-sm cursor-pointer font-bold" onClick={() => setIsModalPaychecksOpen(true)}>Ver cheques</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
           <div className="flex items-center justify-between">
             <p className="text-sm text-gray-600">
               Total de movimientos: {filteredMovements?.length}
@@ -319,9 +354,14 @@ export default function Cashflow() {
                       <div className="flex items-center gap-2 mb-1">
                         <h3 className="font-medium text-gray-900">
                         {movement.provider && (
-                          <p className="text-sm text-gray-900">
-                            {movement.provider_name}
-                          </p>
+                          <div className="flex gap-2 items-end justify-end">
+                            <p className="text-xs text-gray-400">
+                              {movement.id}
+                            </p>
+                            <p className="text-sm text-gray-900">
+                              {movement.provider_name}
+                            </p>
+                          </div>
                         )}
                         </h3>
                         <Badge
@@ -461,6 +501,79 @@ export default function Cashflow() {
           </DialogContent>
         </Dialog>
         )}
+
+
+        {
+          proximos7dias && (
+            <Dialog open={isModalPaychecksOpen}>
+              <DialogContent>
+                <div className="w-[600px] max-h-[80vh] overflow-y-auto rounded-md">
+                  <div className="flex justify-end text-gray-500">
+                    <button onClick={() => setIsModalPaychecksOpen(false)}>
+                      <CloseIcon />
+                    </button>
+                  </div>
+
+                  <h2 className="text-xl font-semibold text-gray-800 mb-4 text-center">
+                    Cheques proximos a vencer
+                  </h2>
+
+                  {proximos7dias.length === 0 && (
+                    <div className="text-center text-gray-500">No hay cheques para mostrar.</div>
+                  )}
+
+                  <div className="space-y-4">
+                    {proximos7dias.map((cheque, index) => (
+                      <div
+                        key={cheque.id || index}
+                        className="border rounded-md p-4 shadow-sm bg-white"
+                      >
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm text-gray-500">#{cheque.number}</span>
+                          <span
+                            className={utils.cn(
+                              "px-2 py-1 text-xs font-medium text-white rounded",
+                              cheque.type === "OUT" ? "bg-red-500" : "bg-green-500"
+                            )}
+                          >
+                            {cheque.type === "OUT" ? "Emitido" : "Recibido"}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-sm text-gray-700">
+                          <div>
+                            <p className="font-medium">Banco</p>
+                            <p>{cheque.bank}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium">Monto</p>
+                            <p className="font-semibold text-green-700">
+                              {formatCurrency(cheque.amount)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="font-medium">Vencimiento</p>
+                            <p>
+                              {DateTime.fromISO(cheque.due_date).toFormat("dd/MM/yyyy")}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="font-medium">Movimiento ID</p>
+                            <p>{cheque.movement_id}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 flex justify-center">
+                    <Button onClick={() => setIsModalPaychecksOpen(false)}>Cerrar</Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )
+        }
       </div>
     </div>
   );

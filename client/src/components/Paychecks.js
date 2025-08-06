@@ -269,6 +269,9 @@ export default function Paychecks() {
                         <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
                           Fecha de Pago
                         </th>
+                        <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          Estado
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white ">
@@ -304,6 +307,18 @@ export default function Paychecks() {
                               {DateTime.fromISO(paycheck.due_date).toFormat(
                                 "dd/MM/yyyy"
                               )}
+                            </td>
+                            <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
+                              <span
+                                className={utils.cn(
+                                  "px-2 py-1 text-xs font-medium text-white rounded",
+                                  DateTime.fromISO(paycheck.due_date) > DateTime.now().startOf("day") ? "bg-red-500" : "bg-green-500"
+                                )}
+                              >
+                              {
+                                DateTime.fromISO(paycheck.due_date) > DateTime.now().startOf("day") ? "Pendiente" : "Pagado"
+                              }
+                              </span>
                             </td>
                           </tr>
                         ))
