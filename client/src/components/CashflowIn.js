@@ -104,7 +104,7 @@ export default function CashflowIn({}) {
   const handleFormSubmit = async (data) => {
     try {
 
-      if (chequeData.number.length !== 8) {
+      if (data.paymentMethod === "CHEQUE" && chequeData.number.length !== 8) {
         alert("El Nro de Cheque debe tener 8 caracteres");
         return;
       }

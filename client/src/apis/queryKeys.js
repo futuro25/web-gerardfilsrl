@@ -6,6 +6,7 @@ export const queryCashflowKey = () => ["cashflow"];
 export const querySuppliersKey = () => ["suppliers"];
 export const queryProductsKey = () => ["products"];
 export const queryDeliveryNotesKey = () => ["deliverynotes"];
+export const queryDeliveryNotesByIdKey = (id) => ["deliverynote", id];
 export const queryClientsKey = () => ["clients"];
 export const queryPaychecksKey = () => ["paychecks"];
 export const queryBooksVentasCbteKey = () => ["BooksVentasCbte"];

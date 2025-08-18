@@ -18,6 +18,7 @@ import Deliveries from "./components/Deliveries";
 import Navigation from "./components/Navigation";
 import BooksNavigation from "./components/BooksNavigation";
 import DeliveryNotes from "./components/DeliveryNotes";
+import {DeliveryNoteView} from "./components/DeliveryNoteView";
 import Clients from "./components/Clients";
 import CashflowSelector from "./components/CashflowSelector";
 import CashflowIn from "./components/CashflowIn";
@@ -91,6 +92,7 @@ export default function App() {
           <Route path="home" element={<Home />} />
           <Route path="entregas" element={<Deliveries />} />
           <Route path="remitos" element={<DeliveryNotes />} />
+          <Route path="remito/:id" element={<DeliveryNoteView />} />
           <Route path="entregas-selector" element={<Navigation />} />
           <Route path="libros-selector" element={<BooksNavigation />} />
           <Route path="clientes" element={<Clients />} />
@@ -130,11 +132,17 @@ export default function App() {
 }
 
 function RootLayout() {
-  return (
-    <Layout>
-      <Outlet />
-    </Layout>
-  );
+  const location = useLocation();
+
+  console.log('location', location.pathname)
+
+  return (<>
+    {
+      location.pathname.includes("/remito/") ? (<Outlet />) : (<Layout>
+        <Outlet />
+      </Layout>)
+    }
+  </>)
 }
 
 function getTheme() {
