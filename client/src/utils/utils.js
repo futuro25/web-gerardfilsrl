@@ -92,6 +92,7 @@ export function getTaxes() {
     { type: "PERC IVA", value: "" },
     { type: "PERC IIBB", value: "" },
     { type: "GANANCIAS", value: "" },
+    { type: "OTROS TRIBUTOS", value: "" },
   ];
 }
 
