@@ -312,12 +312,28 @@ export default function Paychecks() {
                               <span
                                 className={utils.cn(
                                   "px-2 py-1 text-xs font-medium text-white rounded",
-                                  DateTime.fromISO(paycheck.due_date) > DateTime.now().startOf("day") ? "bg-red-500" : "bg-green-500"
+                                  DateTime.fromISO(paycheck.due_date) >
+                                    DateTime.now().startOf("day")
+                                    ? "bg-red-500"
+                                    : "bg-green-500"
                                 )}
                               >
-                              {
-                                DateTime.fromISO(paycheck.due_date) > DateTime.now().startOf("day") ? "Pendiente" : "Pagado"
-                              }
+                                {paycheck.type === "IN" && (
+                                  <>
+                                    {DateTime.fromISO(paycheck.due_date) >
+                                    DateTime.now().startOf("day")
+                                      ? "Pendiente"
+                                      : "Acreditado"}
+                                  </>
+                                )}
+                                {paycheck.type === "OUT" && (
+                                  <>
+                                    {DateTime.fromISO(paycheck.due_date) >
+                                    DateTime.now().startOf("day")
+                                      ? "Pendiente"
+                                      : "Pagado"}
+                                  </>
+                                )}
                               </span>
                             </td>
                           </tr>
