@@ -372,7 +372,7 @@ export default function DeliveryNotes() {
 
   const redirectNavigation = () => {
     if (stage === "LIST") {
-      navigate("/entregas-selector");
+      navigate("/home");
     } else {
       setStage("LIST");
     }

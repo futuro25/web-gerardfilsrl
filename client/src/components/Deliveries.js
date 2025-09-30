@@ -327,7 +327,7 @@ export default function Deliveries() {
 
   const redirectNavigation = () => {
     if (stage === "LIST") {
-      navigate("/entregas-selector");
+      navigate("/home");
     } else {
       setStage("LIST");
     }

@@ -1,24 +1,16 @@
 import {
-  HouseIcon,
   UsersIcon,
-  Calendar1Icon,
-  CreditCardIcon,
-  ReceiptTextIcon,
-  FileInvoiceIcon,
-  SettingsIcon,
   TruckIcon,
-  FileChartColumnIncreasing,
-  IdCardLanyardIcon,
   CircleDollarSign,
   BookOpenCheck,
-  PackageOpen,
-  Package,
   UserPlus,
   LogOutIcon,
+  Package,
+  FileText,
   ShirtIcon,
   Banknote,
 } from "lucide-react";
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { MoonLoader } from "react-spinners";
 
 export default function Home() {
@@ -27,20 +19,15 @@ export default function Home() {
   }, []);
 
   const navItems = [
-    // { label: "Pagos", icon: CreditCardIcon, path: "/pagos" },
-    // {
-    //   label: "Facturas a Pagar",
-    //   icon: FileChartColumnIncreasing,
-    //   path: "/facturas",
-    // },
-    { label: "Entregas", icon: Package, path: "/entregas-selector" },
+    { label: "Pedidos", icon: BookOpenCheck, path: "/pedidos" },
+    { label: "Remitos", icon: Package, path: "/remitos" },
+    { label: "Facturas", icon: FileText, path: "/entregas" },
+    { label: "Productos", icon: ShirtIcon, path: "/productos" },
     { label: "Proveedores", icon: TruckIcon, path: "/proveedores" },
     { label: "Clientes", icon: UsersIcon, path: "/clientes" },
-    { label: "Productos", icon: ShirtIcon, path: "/productos" },
     { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow" },
     { label: "Cheques", icon: Banknote, path: "/cheques" },
     { label: "Libros", icon: BookOpenCheck, path: "/libros-selector" },
-    { label: "Pedidos", icon: BookOpenCheck, path: "/pedidos" },
     { label: "Logout", icon: LogOutIcon, path: "/logout" },
   ];
 
@@ -59,7 +46,7 @@ export default function Home() {
         <p className="text-gray-900 italic">selecciona la opcion deseada</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {navItems.map((item, index) => (
           <HomeButton key={index} item={item} />
         ))}
@@ -80,18 +67,18 @@ function HomeButton({ item }) {
 
   return (
     <div
-      className="flex items-center justify-center p-4 hover:bg-gray-100 rounded-lg cursor-pointer border h-32 shadow-lg transition-colors duration-200 w-40 bg-white"
+      className="flex items-center justify-center p-3 hover:bg-gray-100 rounded-lg cursor-pointer border h-24 shadow-lg transition-colors duration-200 w-28 bg-white"
       onClick={() => onClick()}
     >
       <div className="flex flex-col items-center gap-2">
         {isLoading ? (
           <div className="flex items-center justify-center">
-            <MoonLoader size={50} />
+            <MoonLoader size={40} />
           </div>
         ) : (
-          <item.icon className="w-8 h-8 sm:w-16 sm:h-16 text-gray-600" />
+          <item.icon className="w-6 h-6 sm:w-10 sm:h-10 text-gray-600" />
         )}
-        <span className="text-gray-900 text-sm">{item.label}</span>
+        <span className="text-gray-900 text-xs">{item.label}</span>
       </div>
     </div>
   );
