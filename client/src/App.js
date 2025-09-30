@@ -1,3 +1,5 @@
+"use client";
+
 import {
   NavLink,
   Route,
@@ -18,7 +20,7 @@ import Deliveries from "./components/Deliveries";
 import Navigation from "./components/Navigation";
 import BooksNavigation from "./components/BooksNavigation";
 import DeliveryNotes from "./components/DeliveryNotes";
-import {DeliveryNoteView} from "./components/DeliveryNoteView";
+import { DeliveryNoteView } from "./components/DeliveryNoteView";
 import Clients from "./components/Clients";
 import CashflowSelector from "./components/CashflowSelector";
 import CashflowIn from "./components/CashflowIn";
@@ -28,10 +30,11 @@ import Invoices from "./components/Invoices";
 import Paychecks from "./components/Paychecks";
 import Suppliers from "./components/Suppliers";
 import Products from "./components/Products";
+import Orders from "./components/Orders";
 import Web from "./components/Web";
 import Logout from "./components/Logout";
 import _, { capitalize } from "lodash";
-import React, { useState } from "react";
+import { useState } from "react";
 import { cn } from "./utils/utils";
 import "./App.css";
 import config from "./config";
@@ -50,6 +53,7 @@ export default function App() {
   const userType = sessionStorage.type || null;
   const inviteId = searchParams.get("inviteId") || null;
   const location = useLocation();
+  const [open, setOpen] = useState(false); // Moved useState hook to top level
 
   if (user === undefined || user === null) {
     return (
@@ -97,6 +101,7 @@ export default function App() {
           <Route path="libros-selector" element={<BooksNavigation />} />
           <Route path="clientes" element={<Clients />} />
           <Route path="productos" element={<Products />} />
+          <Route path="pedidos" element={<Orders />} />
           <Route path="logout" element={<Logout />} />
         </Route>
         <Route
@@ -134,15 +139,19 @@ export default function App() {
 function RootLayout() {
   const location = useLocation();
 
-  console.log('location', location.pathname)
+  console.log("location", location.pathname);
 
-  return (<>
-    {
-      location.pathname.includes("/remito/") ? (<Outlet />) : (<Layout>
+  return (
+    <>
+      {location.pathname.includes("/remito/") ? (
         <Outlet />
-      </Layout>)
-    }
-  </>)
+      ) : (
+        <Layout>
+          <Outlet />
+        </Layout>
+      )}
+    </>
+  );
 }
 
 function getTheme() {
@@ -157,6 +166,7 @@ function getTheme() {
 
 function Layout({ children }) {
   const theme = getTheme();
+  const [open, setOpen] = useState(false); // Declare setOpen here
 
   return (
     <div className="flex-col w-full h-screen text-gray-700">
@@ -171,7 +181,7 @@ function Layout({ children }) {
         >
           <div className="flex items-center">
             <img
-              src={config.theme.logo}
+              src={config.theme.logo || "/placeholder.svg"}
               alt="logo"
               className="ml-4 w-12 h-12 object-cover"
             />
@@ -182,7 +192,7 @@ function Layout({ children }) {
             </h1>
           </div>
         </div>
-        {isMobile ? <MobileMenu /> : <Profile />}
+        {isMobile ? <MobileMenu open={open} setOpen={setOpen} /> : <Profile />}
       </nav>
 
       <div
@@ -191,29 +201,6 @@ function Layout({ children }) {
           height: isMobile ? "calc(100vh - 4rem)" : "calc(100vh - 4rem)",
         }}
       >
-        {/* <div className="fixed top-16 flex overflow-auto w-full"> */}
-        {/* {!isMobile && (
-          <div
-            className={cn(
-              `flex flex-col ${theme.textMenuColor} justify-start items-center w-24 print:hidden ${theme.primaryColor}`
-            )}
-          >
-            {getMenu().map((el, i) => {
-              return (
-                <NavLink
-                  key={i}
-                  className={cn(
-                    `h-14 w-full flex items-center hover:${theme.textMenuHoverColor} cursor-pointer px-2 hover:${theme.secondaryColor}`
-                  )}
-                  to={el}
-                >
-                  {capitalize(el.replaceAll("-", " "))}
-                </NavLink>
-              );
-            })}
-          </div>
-        )} */}
-
         {/* Main content */}
         {isMobile ? (
           <main className="flex-1 bg-white w-[calc(10vh)]">{children}</main>
@@ -249,9 +236,7 @@ function Profile() {
   );
 }
 
-function MobileMenu() {
-  return <></>;
-  const [open, setOpen] = useState(false);
+function MobileMenu({ open, setOpen }) {
   const theme = getTheme();
   return (
     <div>

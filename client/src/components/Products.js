@@ -235,17 +235,11 @@ export default function Products() {
                         <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                           Producto
                         </th>
-                        <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
-                          Talle
-                        </th>
                         <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
                           Color
                         </th>
                         <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
                           Stock
-                        </th>
-                        <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Precio
                         </th>
                         <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                           Acciones
@@ -268,17 +262,11 @@ export default function Products() {
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
                               {product.name}
                             </td>
-                            <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
-                              {product.size}
-                            </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
                               {product.color}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
                               {product.stock}
-                            </td>
-                            <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
-                              {product.price}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  text-slate-500 w-10">
                               <div className="flex gap-2">
@@ -310,7 +298,7 @@ export default function Products() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={5}
                             className="border-b border-slate-100  p-4  text-slate-500 "
                           >
                             No data
@@ -373,33 +361,6 @@ export default function Products() {
                           <td>
                             <div className="p-4 gap-4 flex items-center">
                               <label className="text-slate-500 w-20 font-bold">
-                                Precio:
-                              </label>
-                              {viewOnly ? (
-                                <label className="text-slate-500 w-20">
-                                  {selectedProduct?.price}
-                                </label>
-                              ) : (
-                                <input
-                                  type="text"
-                                  defaultValue={selectedProduct?.price || ""}
-                                  {...register("price", { required: true })}
-                                  className="rounded border border-slate-200  p-4  text-slate-500 "
-                                />
-                              )}
-                              {errors.price && (
-                                <span className="px-2 text-red-500">
-                                  * Obligatorio
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {/* ================ */}
-                        <tr>
-                          <td>
-                            <div className="p-4 gap-4 flex items-center">
-                              <label className="text-slate-500 w-20 font-bold">
                                 Stock:
                               </label>
                               {viewOnly ? (
@@ -427,44 +388,6 @@ export default function Products() {
                           </td>
                         </tr>
                         {/* ================ */}
-                        <tr>
-                          <td>
-                            <div className="p-4 gap-4 flex items-center">
-                              <label className="text-slate-500 w-20 font-bold">
-                                Talle:
-                              </label>
-                              {viewOnly ? (
-                                <label className="text-slate-500">
-                                  {selectedProduct?.size}
-                                </label>
-                              ) : (
-                                <select
-                                  defaultValue={selectedProduct?.size || ""}
-                                  {...register("size", { required: true })}
-                                  className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
-                                >
-                                  <option value="">Seleccionar Talle</option>
-                                  {[...Array(60 - 35 + 1)].map((_, i) => {
-                                    const size = 35 + i;
-                                    return (
-                                      <option key={size} value={size}>
-                                        {size}
-                                      </option>
-                                    );
-                                  })}
-                                  <option value="OTROS">OTROS</option>
-                                  {/* Agregá tus opciones acá */}
-                                </select>
-                              )}
-                              {errors.size && (
-                                <span className="px-2 text-red-500">
-                                  * Obligatorio
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-
                         <tr>
                           <td>
                             <div className="p-4 gap-4 flex items-center">

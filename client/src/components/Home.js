@@ -40,6 +40,7 @@ export default function Home() {
     { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow" },
     { label: "Cheques", icon: Banknote, path: "/cheques" },
     { label: "Libros", icon: BookOpenCheck, path: "/libros-selector" },
+    { label: "Pedidos", icon: BookOpenCheck, path: "/pedidos" },
     { label: "Logout", icon: LogOutIcon, path: "/logout" },
   ];
 

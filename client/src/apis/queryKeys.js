@@ -22,3 +22,4 @@ export const queryUsersEmailValidationKey = (param) => [
   "usersEmailValidation",
   param,
 ];
+export const queryOrdersKey = () => ["orders"];

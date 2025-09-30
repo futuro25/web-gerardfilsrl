@@ -1,5 +1,3 @@
-"use strict";
-
 const express = require("express");
 const router = express.Router();
 const UserController = require("../controllers/UserController.js");
@@ -14,6 +12,7 @@ const ProductController = require("../controllers/ProductController.js");
 const DeliveryNoteController = require("../controllers/DeliveryNoteController.js");
 const PaycheckController = require("../controllers/PaycheckController.js");
 const BooksController = require("../controllers/BooksController.js");
+const OrderController = require("../controllers/OrderController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -135,6 +134,32 @@ router.patch("/deliverynotes/:deliverynote_id", (req, res, next) =>
 
 router.delete("/deliverynotes/:deliverynote_id", (req, res, next) =>
   DeliveryNoteController.deleteDeliveryNoteById(req, res, next)
+);
+
+// ORDERS
+
+router.get("/orders", (req, res, next) =>
+  OrderController.getOrders(req, res, next)
+);
+
+router.get("/orders/active", (req, res, next) =>
+  OrderController.getActiveOrders(req, res, next)
+);
+
+router.get("/orders/:order_id", (req, res, next) =>
+  OrderController.getOrderById(req, res, next)
+);
+
+router.post("/orders", (req, res, next) =>
+  OrderController.createOrder(req, res, next)
+);
+
+router.patch("/orders/:order_id", (req, res, next) =>
+  OrderController.getOrderByIdAndUpdate(req, res, next)
+);
+
+router.delete("/orders/:order_id", (req, res, next) =>
+  OrderController.deleteOrderById(req, res, next)
 );
 
 // PRODUCTS

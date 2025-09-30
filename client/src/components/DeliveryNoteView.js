@@ -5,28 +5,25 @@ import Button from "./common/Button";
 import { Card, CardContent } from "./common/Card";
 import { PrinterIcon, PlusIcon, TrashIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
-import {useDeliveryNoteByIdQuery} from '../apis/api.deliverynotes';
-import {queryDeliveryNotesByIdKey} from '../apis/queryKeys';
+import { useDeliveryNoteByIdQuery } from "../apis/api.deliverynotes";
+import { queryDeliveryNotesByIdKey } from "../apis/queryKeys";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 
 const PRODUCTS_PER_PAGE = 10;
 
 export function DeliveryNoteView() {
+  const { id } = useParams();
 
-  const {id} = useParams()
-
-  const [deliveryNote, setDeliveryNote] =
-    useState(
-    {
-      id: "REM-2024-001",
-      client_id: "",
-      created_at: new Date().toISOString().split("T")[0],
-      updated_at: new Date().toISOString().split("T")[0],
-      deleted_at: null,
-      amount: 0,
-      description: "",
-      invoice_id: "",
-    });
+  const [deliveryNote, setDeliveryNote] = useState({
+    id: "REM-2024-001",
+    client_id: "",
+    created_at: new Date().toISOString().split("T")[0],
+    updated_at: new Date().toISOString().split("T")[0],
+    deleted_at: null,
+    amount: 0,
+    description: "",
+    invoice_id: "",
+  });
 
   const [products, setProducts] = useState([
     {
@@ -283,8 +280,8 @@ export function DeliveryNoteView() {
     queryFn: () => useDeliveryNoteByIdQuery(),
   });
 
-  console.log(data)
-  
+  console.log(data);
+
   const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
@@ -520,16 +517,24 @@ export function DeliveryNoteView() {
                         {pageProducts.map((product) => (
                           <tr key={product.id}>
                             <td className="border border-gray-300 p-2">
-                            <div className="text-xs text-gray-400">{product.product_id}</div>
+                              <div className="text-xs text-gray-400">
+                                {product.product_id}
+                              </div>
                             </td>
                             <td className="border border-gray-300 p-2">
-                            <div className="text-xs text-gray-400">{product.product_id}</div>
+                              <div className="text-xs text-gray-400">
+                                {product.product_id}
+                              </div>
                             </td>
                             <td className="border border-gray-300 p-2">
-                            <div className="text-xs text-gray-400">{product.description}</div>
+                              <div className="text-xs text-gray-400">
+                                {product.description}
+                              </div>
                             </td>
                             <td className="border border-gray-300 p-2 text-center">
-                            <div className="text-xs text-gray-400">{product.quantity}</div>
+                              <div className="text-xs text-gray-400">
+                                {product.quantity}
+                              </div>
                             </td>
                             {/* <td className="border border-gray-300 p-2 text-right">
                             <div>{product.price}</div>
