@@ -233,6 +233,9 @@ export default function Products() {
                           #
                         </th>
                         <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
+                          Codigo
+                        </th>
+                        <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                           Producto
                         </th>
                         <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
@@ -258,6 +261,9 @@ export default function Products() {
                           >
                             <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
                               {product.id}
+                            </td>
+                            <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
+                              {product.code}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
                               {product.name}
@@ -329,6 +335,33 @@ export default function Products() {
                   >
                     <table className="border-collapse table-fixed w-full text-sm bg-white">
                       <tbody>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Codigo:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedProduct?.code}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={selectedProduct?.code || ""}
+                                  {...register("code", { required: true })}
+                                  className="rounded border border-slate-200  p-4  text-slate-500 "
+                                />
+                              )}
+                              {errors.code && (
+                                <span className="px-2 text-red-500">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
                         {/* ================ */}
                         <tr>
                           <td>
