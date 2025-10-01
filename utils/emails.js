@@ -4,15 +4,15 @@ const SUBJECT = "Invitacion a la plataforma de gerardfil";
 
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-async function sendEmail(to, html) {
+async function sendEmail(to, html, subject = SUBJECT) {
   console.log("SENDGRID_API_KEY exists?", !!process.env.SENDGRID_API_KEY);
   console.log("SENDGRID_API_KEY:", process.env.SENDGRID_API_KEY?.slice?.(0, 5));
 
   const msg = {
     to: to,
     from: EMAIL_USER,
-    subject: SUBJECT,
-    text: SUBJECT,
+    subject: subject,
+    text: subject,
     html: html,
   };
 

@@ -2,6 +2,7 @@
 
 const self = {};
 const supabase = require("./db");
+const sendEmail = require("../utils/emails");
 const { DateTime } = require("luxon");
 
 const _ = require("lodash");
@@ -103,6 +104,26 @@ self.deletePaycheckById = async (req, res) => {
     res.json(updatedPaycheck);
   } catch (e) {
     console.error("delete paycheck by id", e.message);
+    res.json({ error: e.message });
+  }
+};
+
+self.getPaychecksForNextWeek = async (req, res) => {
+  try {
+    const yesterday = DateTime.now().minus({ days: 1 }).toISO();
+    const in15Days = DateTime.now().plus({ days: 15 }).toISO();
+
+    const { data, error } = await supabase
+      .from("paychecks")
+      .select("*")
+      .gt("due_date", yesterday)
+      .lt("due_date", in15Days)
+      .is("deleted_at", null);
+
+    if (error) throw error;
+
+    res.json(data);
+  } catch (e) {
     res.json({ error: e.message });
   }
 };

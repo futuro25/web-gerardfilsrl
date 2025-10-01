@@ -24,6 +24,7 @@ export default function Paychecks() {
   const [search, setSearch] = useState("");
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [viewOnly, setViewOnly] = useState(false);
+  const [viewAllPaychecks, setViewAllPaychecks] = useState(false);
 
   const params = new URLSearchParams(window.location.search);
   const createParam = params.get("create");
@@ -57,12 +58,21 @@ export default function Paychecks() {
     }
   }, [createParam]);
 
-  const dataFiltered =
+  const dataFilteredSearch =
     data &&
     data?.length > 0 &&
     data?.filter((d) =>
       search ? d.name.toLowerCase().includes(search.toLowerCase()) : d
     );
+
+  const dataToShow = data?.filter(
+    (paycheck) =>
+      paycheck.due_date &&
+      DateTime.fromISO(paycheck.due_date) > DateTime.now().startOf("day")
+  );
+
+  const dataFiltered = viewAllPaychecks ? dataFilteredSearch : dataToShow;
+
   if (error) console.log(error);
 
   const createMutation = useMutation({
@@ -238,9 +248,24 @@ export default function Paychecks() {
         {error && <div className="text-red-500">{/* ERROR... */}</div>}
         {stage === "LIST" && data && (
           <div className="my-4 mb-28">
-            <p className="pl-1 pb-1 text-slate-500">
-              Total de cheques {data.length}
-            </p>
+            <div className="pl-1 pb-1 text-slate-500 flex justify-between items-center">
+              <div>
+                Total de cheques{" "}
+                {viewAllPaychecks ? data.length : dataToShow.length}
+              </div>
+              <div>
+                <Button
+                  variant="alternative"
+                  className="ml-auto"
+                  size={"sm"}
+                  onClick={() => setViewAllPaychecks(!viewAllPaychecks)}
+                >
+                  {viewAllPaychecks
+                    ? "Ver próximos cheques"
+                    : "Ver todos los cheques"}
+                </Button>
+              </div>
+            </div>
             <div className="not-prose relative bg-slate-50 rounded-xl overflow-hidden ">
               <div
                 className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,#fff,rgba(255,255,255,0.6))] "

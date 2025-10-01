@@ -268,6 +268,10 @@ router.get("/paychecks", (req, res, next) =>
   PaycheckController.getPaychecks(req, res, next)
 );
 
+router.get("/paychecks-7days", (req, res, next) =>
+  PaycheckController.getPaychecksForNextWeek(req, res, next)
+);
+
 router.get("/paychecks/:paycheck_id", (req, res, next) =>
   PaycheckController.getPaycheckById(req, res, next)
 );
