@@ -552,9 +552,7 @@ export default function Orders() {
                                                 <th className="text-center p-3 text-slate-600 font-medium">
                                                   Cantidad Pendiente
                                                 </th>
-                                                <th className="text-right p-3 text-slate-600 font-medium">
-                                                  Subtotal
-                                                </th>
+                                                <th className="text-right p-3 text-slate-600 font-medium"></th>
                                               </tr>
                                             </thead>
                                             <tbody>
@@ -595,12 +593,7 @@ export default function Orders() {
                                                       <td className="p-3 text-center text-orange-600 font-medium">
                                                         {quantityPending}
                                                       </td>
-                                                      <td className="p-3 text-right text-slate-700 font-medium">
-                                                        {utils.formatAmount(
-                                                          orderProduct.price *
-                                                            quantityOrdered
-                                                        )}
-                                                      </td>
+                                                      <td className="p-3 text-right text-slate-700 font-medium"></td>
                                                     </tr>
                                                   );
                                                 }
@@ -611,14 +604,8 @@ export default function Orders() {
                                                 <td
                                                   colSpan={5}
                                                   className="p-3 text-right font-bold text-slate-700"
-                                                >
-                                                  Total:
-                                                </td>
-                                                <td className="p-3 text-right font-bold text-slate-700">
-                                                  {utils.formatAmount(
-                                                    order.amount
-                                                  )}
-                                                </td>
+                                                ></td>
+                                                <td className="p-3 text-right font-bold text-slate-700"></td>
                                               </tr>
                                             </tfoot>
                                           </table>

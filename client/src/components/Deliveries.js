@@ -25,8 +25,6 @@ import {
   queryDeliveryNotesKey,
 } from "../apis/queryKeys";
 
-const SELL_TYPES = ["VENTA DIRECTA", "CONSIGNACION"];
-
 export default function Deliveries() {
   const [stage, setStage] = useState("LIST");
   const [search, setSearch] = useState("");
@@ -36,7 +34,6 @@ export default function Deliveries() {
   const [taxes, setTaxes] = useState([{ type: "IVA", value: "" }]);
   const [amountWithTaxes, setAmountWithTaxes] = useState(0);
   const [client, setClient] = useState(null);
-  const [type, setType] = useState(null);
   const [deliveryNote, setDeliveryNote] = useState(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -119,22 +116,6 @@ export default function Deliveries() {
     }
   };
 
-  const getTypeDefaultValue = (type) => {
-    if (type) {
-      return {
-        id: type,
-        name: type,
-        label: type,
-      };
-    } else {
-      return {
-        id: SELL_TYPES[0],
-        name: SELL_TYPES[0],
-        label: SELL_TYPES[0],
-      };
-    }
-  };
-
   const createMutation = useMutation({
     mutationFn: useCreateDeliveryMutation,
     onSuccess: (data) => {
@@ -203,7 +184,7 @@ export default function Deliveries() {
         description: data.description,
         invoice_number: concatenatedDeliveryNumber,
         delivery_note: deliveryNote.id || null,
-        type: type,
+        type: deliveryNote?.type || null,
         total: getTotalAmount(taxes, data.amount),
       };
 
@@ -600,59 +581,6 @@ export default function Deliveries() {
                                   />
                                 )}
                                 {errors.deliverynote && (
-                                  <span className="text-red-500 text-sm">
-                                    * Obligatorio
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                        {/* ================ */}
-                        {/* ================ */}
-                        <tr>
-                          <td>
-                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
-                              <label className="text-slate-500 md:w-20 font-bold">
-                                Tipo:
-                              </label>
-                              <div className="flex flex-col gap-2">
-                                {viewOnly ? (
-                                  <>{selectedDelivery?.type}</>
-                                ) : (
-                                  <Controller
-                                    name="type"
-                                    control={control}
-                                    rules={{ required: true }}
-                                    defaultValue={getTypeDefaultValue(
-                                      selectedDelivery?.type
-                                    )}
-                                    render={({ field }) => {
-                                      return (
-                                        <SelectComboBox
-                                          options={SELL_TYPES.map((type) => ({
-                                            id: type,
-                                            name: type,
-                                            label: type,
-                                          }))}
-                                          value={field.value}
-                                          onChange={(option) => {
-                                            field.onChange(option);
-                                            setValue("type", option);
-                                            setType(option);
-                                            trigger("type");
-                                          }}
-                                          onKeyDown={(e) => {
-                                            if (e.key === "Enter") {
-                                              e.preventDefault();
-                                            }
-                                          }}
-                                        />
-                                      );
-                                    }}
-                                  />
-                                )}
-                                {errors.type && (
                                   <span className="text-red-500 text-sm">
                                     * Obligatorio
                                   </span>
