@@ -18,10 +18,12 @@ import {
   useDeleteDeliveryMutation,
 } from "../apis/api.deliveries";
 import { useDeliveryNotesQuery } from "../apis/api.deliverynotes";
+import { useOrdersQuery } from "../apis/api.orders";
 import { useClientsQuery } from "../apis/api.clients";
 import {
   queryDeliveryKey,
   queryClientsKey,
+  queryOrdersKey,
   queryDeliveryNotesKey,
 } from "../apis/queryKeys";
 
@@ -38,7 +40,7 @@ export default function Deliveries() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const [deliveryLetter, setDeliveryLetter] = useState("");
+  const [deliveryLetter, setDeliveryLetter] = useState("A");
   const [deliveryFirst4, setDeliveryFirst4] = useState("");
   const [deliveryLast8, setDeliveryLast8] = useState("");
   const [formSubmitted, setFormSubmitted] = useState(false);
@@ -75,6 +77,15 @@ export default function Deliveries() {
   } = useQuery({
     queryKey: queryDeliveryNotesKey(),
     queryFn: useDeliveryNotesQuery,
+  });
+
+  const {
+    data: orders,
+    isLoading: isLoadingOrders,
+    error: errorOrders,
+  } = useQuery({
+    queryKey: queryOrdersKey(),
+    queryFn: useOrdersQuery,
   });
 
   const dataFiltered =
@@ -177,6 +188,9 @@ export default function Deliveries() {
       setIsLoadingSubmit(true);
 
       const concatenatedDeliveryNumber = concatenateDeliveryNumber();
+      const orderType =
+        orders?.find((o) => o.order_number === deliveryNote?.orderNumber)
+          ?.order_type || null;
 
       const body = {
         client_id: data.client.id,
@@ -184,7 +198,7 @@ export default function Deliveries() {
         description: data.description,
         invoice_number: concatenatedDeliveryNumber,
         delivery_note: deliveryNote.id || null,
-        type: deliveryNote?.type || null,
+        type: orderType,
         total: getTotalAmount(taxes, data.amount),
       };
 
@@ -252,7 +266,7 @@ export default function Deliveries() {
       setDeliveryFirst4(first4);
       setDeliveryLast8(last8);
     } else {
-      setDeliveryLetter("");
+      setDeliveryLetter("A");
       setDeliveryFirst4("");
       setDeliveryLast8("");
     }
@@ -284,7 +298,7 @@ export default function Deliveries() {
 
   const onCreate = () => {
     setSelectedDelivery(null);
-    setDeliveryLetter("");
+    setDeliveryLetter("A");
     setDeliveryFirst4("");
     setDeliveryLast8("");
     setFormSubmitted(false);
@@ -296,7 +310,7 @@ export default function Deliveries() {
     setSelectedDelivery(null);
     setViewOnly(false);
     setIsLoadingSubmit(false);
-    setDeliveryLetter("");
+    setDeliveryLetter("A");
     setDeliveryFirst4("");
     setDeliveryLast8("");
     setFormSubmitted(false);
@@ -323,7 +337,7 @@ export default function Deliveries() {
             onClick={redirectNavigation}
           >
             <ArrowLeftIcon className="h-5 w-5 cursor-pointer" />
-            <div>Entregas</div>
+            <div>Facturas</div>
           </div>
           {stage === "LIST" && !viewOnly && (
             <Button
@@ -559,6 +573,8 @@ export default function Deliveries() {
                                             name: getLabelDeliveryNote(
                                               deliveryNote
                                             ),
+                                            orderNumber:
+                                              deliveryNote.order_number,
                                             label:
                                               getLabelDeliveryNote(
                                                 deliveryNote
