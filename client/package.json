@@ -45,11 +45,12 @@
   "resolutions": {
     "chokidar": "^3.3.1",
     "minimatch": "^9.0.3",
-    "**/minimatch": "^9.0.3"
+    "**/minimatch": "^9.0.3",
+    "fsevents": "npm:noop"
   },
   "overrides": {
     "chokidar": "^3.6.0",
-    "fsevents": "^2.3.3",
+    "fsevents": "npm:noop",
     "minimatch": "^9.0.3",
     "**/minimatch": "^9.0.3"
   },
@@ -57,7 +58,8 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test --env=jsdom",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "postinstall": "node -e \"if(process.platform !== 'darwin') { process.exit(0) }\""
   },
   "homepage": ".",
   "proxy": "http://localhost:4000",
