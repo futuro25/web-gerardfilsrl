@@ -456,9 +456,9 @@ export default function Cashflow() {
 
           {!!proximos7dias.length && !!proximos7diasTypeIn.length && (
             <div className="flex items-center justify-between">
-              <div class="flex items-start gap-3 p-4 w-full bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 rounded-md">
+              <div className="flex items-start gap-3 p-4 w-full bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 rounded-md">
                 <svg
-                  class="w-5 h-5 mt-1 text-yellow-600"
+                  className="w-5 h-5 mt-1 text-yellow-600"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -472,13 +472,13 @@ export default function Cashflow() {
                   />
                 </svg>
                 <div>
-                  <p class="font-semibold">Atención</p>
+                  <p className="font-semibold">Atención</p>
                   <div className="flex gap-2">
-                    <p class="text-sm">
+                    <p className="text-sm">
                       Existen cheques próximos a acreditarse
                     </p>
                     <p
-                      class="text-sm cursor-pointer font-bold"
+                      className="text-sm cursor-pointer font-bold"
                       onClick={() => setIsModalPaychecksOpen(true)}
                     >
                       Ver cheques
@@ -491,9 +491,9 @@ export default function Cashflow() {
 
           {!!proximos7dias.length && !!proximos7diasTypeOut.length && (
             <div className="flex items-center justify-between">
-              <div class="flex items-start gap-3 p-4 w-full bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 rounded-md">
+              <div className="flex items-start gap-3 p-4 w-full bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 rounded-md">
                 <svg
-                  class="w-5 h-5 mt-1 text-yellow-600"
+                  className="w-5 h-5 mt-1 text-yellow-600"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -507,11 +507,11 @@ export default function Cashflow() {
                   />
                 </svg>
                 <div>
-                  <p class="font-semibold">Atención</p>
+                  <p className="font-semibold">Atención</p>
                   <div className="flex gap-2">
-                    <p class="text-sm">Existen cheques próximos a vencer</p>
+                    <p className="text-sm">Existen cheques próximos a vencer</p>
                     <p
-                      class="text-sm cursor-pointer font-bold"
+                      className="text-sm cursor-pointer font-bold"
                       onClick={() => setIsModalPaychecksOpen(true)}
                     >
                       Ver cheques
