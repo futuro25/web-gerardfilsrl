@@ -22,11 +22,11 @@
   },
   "engines": {
     "npm": ">=8.0.0 <9.0.0",
-    "node": ">=18.0.0 <20.0.0"
+    "node": ">=20.0.0 <21.0.0"
   },
   "scripts": {
     "start-dev": "nodemon server.js",
     "start": "node server.js",
-    "heroku-postbuild": "cd client && yarn --ignore-platform && yarn run build"
+    "heroku-postbuild": "cd client && yarn install --ignore-engines && yarn run build"
   }
 }
