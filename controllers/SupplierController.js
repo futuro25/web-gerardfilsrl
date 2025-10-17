@@ -80,6 +80,8 @@ self.createSupplier = async (req, res) => {
       phone: req.body.phone,
       service: req.body.service,
       industry: req.body.industry,
+      category: req.body.category,
+      cuit: req.body.cuit,
       tax_regime: req.body.tax_regime,
     };
 

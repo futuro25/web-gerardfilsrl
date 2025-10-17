@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { HouseIcon, PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent } from "./common/Dialog";
 import { CloseIcon } from "./icons";
 import Button from "./common/Button";
@@ -13,9 +13,10 @@ import { Badge } from "./common/Badge";
 import { X } from "lucide-react";
 import { Card, CardContent } from "./common/Card";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
-import { useCashflowsQuery } from "../apis/api.cashflow";
+import { useCashflowsQuery, useUpdateCashflowMutation, useDeleteCashflowMutation } from "../apis/api.cashflow";
 import { useSuppliersQuery } from "../apis/api.suppliers";
 import { useClientsQuery } from "../apis/api.clients";
+import SelectComboBox from "./common/SelectComboBox";
 import {
   queryCashflowKey,
   queryPaychecksKey,
@@ -24,6 +25,44 @@ import {
 } from "../apis/queryKeys";
 import Spinner from "./common/Spinner";
 import { usePaychecksQuery } from "../apis/api.paychecks";
+// Custom pagination component to avoid Material Tailwind context issues
+const CustomPagination = ({ totalPages, currentPage, onChange }) => {
+  const handlePrev = () => {
+    if (currentPage > 1) {
+      onChange(currentPage - 1);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentPage < totalPages) {
+      onChange(currentPage + 1);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-4">
+      <button
+        onClick={handlePrev}
+        disabled={currentPage === 1}
+        className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        ← Anterior
+      </button>
+      
+      <span className="text-sm text-gray-600">
+        Página {currentPage} de {totalPages}
+      </span>
+      
+      <button
+        onClick={handleNext}
+        disabled={currentPage >= totalPages}
+        className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Siguiente →
+      </button>
+    </div>
+  );
+};
 
 export default function Cashflow() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -31,10 +70,51 @@ export default function Cashflow() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isModalPaychecksOpen, setIsModalPaychecksOpen] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState();
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingMovement, setEditingMovement] = useState(null);
+  const [selectedProvider, setSelectedProvider] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 30;
 
   const [stage, setStage] = useState("LIST");
   const [viewOnly, setViewOnly] = useState(false);
   const navigate = useNavigate();
+
+  // Handle ResizeObserver errors
+  useEffect(() => {
+    const handleResizeObserverError = (e) => {
+      if (e.message === 'ResizeObserver loop completed with undelivered notifications.') {
+        e.stopImmediatePropagation();
+        return false;
+      }
+    };
+
+    const handleUnhandledRejection = (e) => {
+      if (e.reason && e.reason.message === 'ResizeObserver loop completed with undelivered notifications.') {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    window.addEventListener('error', handleResizeObserverError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    
+    return () => {
+      window.removeEventListener('error', handleResizeObserverError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
+  // Debounce search term to prevent excessive re-renders
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: queryCashflowKey(),
@@ -68,6 +148,24 @@ export default function Cashflow() {
     queryFn: usePaychecksQuery,
   });
 
+  const queryClient = useQueryClient();
+
+  const updateCashflowMutation = useMutation({
+    mutationFn: useUpdateCashflowMutation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryCashflowKey() });
+      setIsEditModalOpen(false);
+      setEditingMovement(null);
+    },
+  });
+
+  const deleteCashflowMutation = useMutation({
+    mutationFn: useDeleteCashflowMutation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryCashflowKey() });
+    },
+  });
+
   const hoy = DateTime.now().startOf("day");
   const limite = hoy.plus({ days: 7 });
 
@@ -86,18 +184,24 @@ export default function Cashflow() {
 
   const filteredMovements = data?.filter((movement) => {
     const matchesSearch =
-      movement.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      movement.provider?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      movement.description.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+      movement.provider?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
       movement.provider_name
         ?.toLowerCase()
-        .includes(searchTerm.toLowerCase()) ||
-      movement.category.toLowerCase().includes(searchTerm.toLowerCase());
+        .includes(debouncedSearchTerm.toLowerCase()) ||
+      movement.category.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
 
     const matchesType =
       selectedType === "all" || movement.type.toLowerCase() === selectedType;
 
     return matchesSearch && matchesType;
   });
+
+  // Pagination logic
+  const totalPages = Math.ceil((filteredMovements?.length || 0) / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedMovements = filteredMovements?.slice(startIndex, endIndex) || [];
 
   const totalIngresos =
     data
@@ -179,11 +283,11 @@ export default function Cashflow() {
     navigate("/cashflow-selector");
   };
 
-  const onCloseModal = (e) => {
+  const onCloseModal = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
     setIsModalOpen(false);
-  };
+  }, []);
 
   const onClick = (movementId) => {
     const movement = filteredMovements.find((m) => m.id === movementId);
@@ -194,6 +298,70 @@ export default function Cashflow() {
     setSelectedMovement({ ...movement, supplierName: supplierName });
     setIsModalOpen(true);
   };
+
+  const getProviderOptions = useCallback((movementType) => {
+    if (movementType === "EGRESO") {
+      return suppliers?.map((supplier) => ({
+        id: supplier.id,
+        name: supplier.fantasy_name,
+        label: supplier.fantasy_name,
+      })) || [];
+    } else {
+      return clients?.map((client) => ({
+        id: client.id,
+        name: client.fantasy_name,
+        label: client.fantasy_name,
+      })) || [];
+    }
+  }, [suppliers, clients]);
+
+  const getCurrentProvider = useCallback((movement) => {
+    if (!movement) return null;
+    
+    if (movement.type === "EGRESO") {
+      const supplier = suppliers?.find((s) => s.id === +movement.provider);
+      return supplier ? {
+        id: supplier.id,
+        name: supplier.fantasy_name,
+        label: supplier.fantasy_name,
+      } : null;
+    } else {
+      const client = clients?.find((c) => c.id === +movement.provider);
+      return client ? {
+        id: client.id,
+        name: client.fantasy_name,
+        label: client.fantasy_name,
+      } : null;
+    }
+  }, [suppliers, clients]);
+
+  const handleEdit = useCallback((movementId, e) => {
+    e.stopPropagation();
+    const movement = filteredMovements.find((m) => m.id === movementId);
+    setEditingMovement(movement);
+    const currentProvider = getCurrentProvider(movement);
+    setSelectedProvider(currentProvider);
+    setIsEditModalOpen(true);
+  }, [filteredMovements, getCurrentProvider]);
+
+  const handleDelete = useCallback((movementId, e) => {
+    e.stopPropagation();
+    if (window.confirm("¿Estás seguro de que quieres eliminar este movimiento?")) {
+      deleteCashflowMutation.mutate(movementId);
+    }
+  }, [deleteCashflowMutation]);
+
+  const handlePageChange = useCallback((page) => {
+    setCurrentPage(page);
+  }, []);
+
+  const handleEditSubmit = useCallback((formData) => {
+    updateCashflowMutation.mutate({
+      id: editingMovement.id,
+      ...formData,
+      provider: selectedProvider?.id || editingMovement.provider,
+    });
+  }, [updateCashflowMutation, editingMovement, selectedProvider]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -398,8 +566,8 @@ export default function Cashflow() {
               </CardContent>
             </Card>
           ) : (
-            Array.isArray(filteredMovements) &&
-            filteredMovements.map((movement) => (
+            Array.isArray(paginatedMovements) &&
+            paginatedMovements.map((movement) => (
               <Card
                 key={movement.id}
                 className="hover:shadow-md transition-shadow cursor-pointer"
@@ -461,7 +629,7 @@ export default function Cashflow() {
                       </div>
                     </div>
 
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end gap-2">
                       <p
                         className={`font-semibold ${
                           movement.type.toLowerCase() === "ingreso"
@@ -472,6 +640,24 @@ export default function Cashflow() {
                         {movement.type.toLowerCase() === "ingreso" ? "+" : "-"}
                         {formatCurrency(movement.amount)}
                       </p>
+                      <div className="flex gap-1 mt-8">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => handleEdit(movement.id, e)}
+                          className="h-8 w-8 p-0"
+                        >
+                          ✏️
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => handleDelete(movement.id, e)}
+                          className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
+                        >
+                          🗑️
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -495,6 +681,17 @@ export default function Cashflow() {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex justify-center mt-6">
+              <CustomPagination
+                totalPages={totalPages}
+                currentPage={currentPage}
+                onChange={handlePageChange}
+              />
+            </div>
           )}
         </div>
 
@@ -712,6 +909,175 @@ export default function Cashflow() {
                   </Button>
                 </div>
               </div>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Edit Modal */}
+        {editingMovement && (
+          <Dialog open={isEditModalOpen}>
+            <DialogContent className="w-[95vw] max-w-md mx-auto max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-start mb-4 sticky top-0 bg-white pb-2">
+                <h2 className="text-lg sm:text-xl font-semibold text-gray-800 pr-4">
+                  Editar Movimiento
+                </h2>
+                <button
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    setEditingMovement(null);
+                    setSelectedProvider(null);
+                  }}
+                  className="text-gray-500 hover:text-gray-700 transition-colors p-1"
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const formData = new FormData(e.target);
+                  const data = {
+                    type: formData.get("type"),
+                    category: formData.get("category"),
+                    amount: parseFloat(formData.get("amount")),
+                    date: formData.get("date"),
+                    description: formData.get("description"),
+                    provider: formData.get("provider"),
+                    reference: formData.get("reference"),
+                    payment_method: formData.get("payment_method"),
+                  };
+                  handleEditSubmit(data);
+                }}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tipo
+                  </label>
+                  <select
+                    name="type"
+                    defaultValue={editingMovement.type}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  >
+                    <option value="INGRESO">Ingreso</option>
+                    <option value="EGRESO">Egreso</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Categoría
+                  </label>
+                  <input
+                    type="text"
+                    name="category"
+                    defaultValue={editingMovement.category}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Monto
+                  </label>
+                  <input
+                    type="number"
+                    name="amount"
+                    step="0.01"
+                    defaultValue={editingMovement.amount}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Fecha
+                  </label>
+                  <input
+                    type="date"
+                    name="date"
+                    defaultValue={DateTime.fromISO(editingMovement.date).toISODate()}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Descripción
+                  </label>
+                  <textarea
+                    name="description"
+                    defaultValue={editingMovement.description}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    rows="3"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {editingMovement.type === "EGRESO" ? "Proveedor" : "Cliente"}
+                  </label>
+                  <SelectComboBox
+                    options={getProviderOptions(editingMovement.type)}
+                    value={selectedProvider}
+                    onChange={setSelectedProvider}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Referencia
+                  </label>
+                  <input
+                    type="text"
+                    name="reference"
+                    defaultValue={editingMovement.reference || ""}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Método de Pago
+                  </label>
+                  <select
+                    name="payment_method"
+                    defaultValue={editingMovement.payment_method}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="EFECTIVO">Efectivo</option>
+                    <option value="TRANSFERENCIA">Transferencia</option>
+                    <option value="CHEQUE">Cheque</option>
+                    <option value="TARJETA">Tarjeta</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditModalOpen(false);
+                      setEditingMovement(null);
+                      setSelectedProvider(null);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={updateCashflowMutation.isPending}
+                  >
+                    {updateCashflowMutation.isPending ? "Guardando..." : "Guardar"}
+                  </Button>
+                </div>
+              </form>
             </DialogContent>
           </Dialog>
         )}

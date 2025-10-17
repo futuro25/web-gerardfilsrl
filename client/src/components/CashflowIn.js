@@ -1,6 +1,6 @@
 import { ExternalLinkIcon, LinkIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import * as utils from "../utils/utils";
 import { useForm } from "react-hook-form";
 import { DateTime } from "luxon";
@@ -26,6 +26,31 @@ export default function CashflowIn({}) {
   const [taxes, setTaxes] = useState([{ type: "IVA", value: "" }]);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Handle ResizeObserver errors
+  useEffect(() => {
+    const handleResizeObserverError = (e) => {
+      if (e.message === 'ResizeObserver loop completed with undelivered notifications.') {
+        e.stopImmediatePropagation();
+        return false;
+      }
+    };
+
+    const handleUnhandledRejection = (e) => {
+      if (e.reason && e.reason.message === 'ResizeObserver loop completed with undelivered notifications.') {
+        e.preventDefault();
+        return false;
+      }
+    };
+
+    window.addEventListener('error', handleResizeObserverError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    
+    return () => {
+      window.removeEventListener('error', handleResizeObserverError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
 
   const [invoiceLetter, setInvoiceLetter] = useState("A");
   const [invoiceFirst4, setInvoiceFirst4] = useState("");
@@ -73,9 +98,9 @@ export default function CashflowIn({}) {
     formState: { errors },
   } = useForm();
 
-  const onCancel = () => {
+  const onCancel = useCallback(() => {
     navigate("/cashflow");
-  };
+  }, [navigate]);
 
   const createPaycheckMutation = useMutation({
     mutationFn: useCreatePaycheckMutation,
@@ -88,18 +113,18 @@ export default function CashflowIn({}) {
     },
   });
 
-  const concatenateInvoiceNumber = () => {
+  const concatenateInvoiceNumber = useCallback(() => {
     return `${invoiceLetter}${invoiceFirst4}${invoiceLast8}`;
-  };
+  }, [invoiceLetter, invoiceFirst4, invoiceLast8]);
 
-  const getTotalAmount = (taxes, amount) => {
+  const getTotalAmount = useCallback((taxes, amount) => {
     const totalTaxes = taxes?.reduce((acc, tax) => {
       const taxValue = parseFloat(tax.value) || 0;
       return acc + taxValue;
     }, 0);
 
     return (parseFloat(amount) || 0) + (totalTaxes || 0);
-  };
+  }, []);
 
   const handleFormSubmit = async (data) => {
     try {
@@ -167,20 +192,20 @@ export default function CashflowIn({}) {
     }
   };
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     reset();
     setIsLoadingSubmit(false);
     setFormSubmitted(false);
     onCancel();
-  };
+  }, [reset, onCancel]);
 
-  const redirectNavigation = () => {
+  const redirectNavigation = useCallback(() => {
     if (stage === "LIST") {
       navigate("/cashflow-selector");
     } else {
       setStage("LIST");
     }
-  };
+  }, [stage, navigate]);
 
   return (
     <>
@@ -274,12 +299,11 @@ export default function CashflowIn({}) {
                                   type="text"
                                   className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
                                   value={chequeData.number}
-                                  onChange={(e) =>
-                                    setChequeData({
-                                      ...chequeData,
+                                  onChange={useCallback((e) =>
+                                    setChequeData(prev => ({
+                                      ...prev,
                                       number: e.target.value,
-                                    })
-                                  }
+                                    })), [])}
                                 />
                               </div>
                             </td>
@@ -295,12 +319,11 @@ export default function CashflowIn({}) {
                                 <select
                                   className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
                                   value={chequeData.bank}
-                                  onChange={(e) =>
-                                    setChequeData({
-                                      ...chequeData,
+                                  onChange={useCallback((e) =>
+                                    setChequeData(prev => ({
+                                      ...prev,
                                       bank: e.target.value,
-                                    })
-                                  }
+                                    })), [])}
                                 >
                                   <option value="">Seleccionar banco</option>
                                   {utils.getBanks().map((bank) => (
@@ -324,12 +347,11 @@ export default function CashflowIn({}) {
                                   type="date"
                                   className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
                                   value={chequeData.paymentDate}
-                                  onChange={(e) =>
-                                    setChequeData({
-                                      ...chequeData,
+                                  onChange={useCallback((e) =>
+                                    setChequeData(prev => ({
+                                      ...prev,
                                       paymentDate: e.target.value,
-                                    })
-                                  }
+                                    })), [])}
                                 />
                               </div>
                             </td>
@@ -470,9 +492,8 @@ export default function CashflowIn({}) {
                                 <select
                                   disabled={withoutInvoice}
                                   value={invoiceLetter}
-                                  onChange={(e) =>
-                                    setInvoiceLetter(e.target.value)
-                                  }
+                                  onChange={useCallback((e) =>
+                                    setInvoiceLetter(e.target.value), [])}
                                   className="rounded border border-slate-300 p-4 text-slate-500 w-16 text-center disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-slate-500"
                                 >
                                   <option value="A">A</option>
@@ -486,12 +507,12 @@ export default function CashflowIn({}) {
                                   type="text"
                                   value={invoiceFirst4}
                                   disabled={withoutInvoice}
-                                  onChange={(e) => {
+                                  onChange={useCallback((e) => {
                                     const value = e.target.value
                                       .replace(/\D/g, "")
                                       .slice(0, 4);
                                     setInvoiceFirst4(value);
-                                  }}
+                                  }, [])}
                                   placeholder="0001"
                                   maxLength={4}
                                   className="rounded border border-slate-200 p-4 text-slate-500 w-20 text-center disabled:cursor-not-allowed h-[52px]"
@@ -503,12 +524,12 @@ export default function CashflowIn({}) {
                                   disabled={withoutInvoice}
                                   type="text"
                                   value={invoiceLast8}
-                                  onChange={(e) => {
+                                  onChange={useCallback((e) => {
                                     const value = e.target.value
                                       .replace(/\D/g, "")
                                       .slice(0, 8);
                                     setInvoiceLast8(value);
-                                  }}
+                                  }, [])}
                                   placeholder="00000001"
                                   maxLength={8}
                                   className="rounded border border-slate-200 p-4 text-slate-500 w-28 text-center disabled:cursor-not-allowed h-[52px]"
@@ -521,7 +542,7 @@ export default function CashflowIn({}) {
                                       !invoiceFirst4 &&
                                       !invoiceLast8
                                     }
-                                    onChange={(e) => {
+                                    onChange={useCallback((e) => {
                                       if (e.target.checked) {
                                         setInvoiceLetter("");
                                         setInvoiceFirst4("");
@@ -533,7 +554,7 @@ export default function CashflowIn({}) {
                                         setInvoiceLast8("");
                                         setWithoutInvoice(false);
                                       }
-                                    }}
+                                    }, [])}
                                     className="rounded border border-slate-200 p-2 text-slate-500"
                                   />
                                   Sin Factura

@@ -116,7 +116,7 @@ export default function Suppliers() {
 
       body = {
         ...data,
-        service: data.service + " - " + data.category,
+        service: data.category,
       };
 
       if (selectedSupplier) {
@@ -496,6 +496,34 @@ export default function Suppliers() {
                                 />
                               )}
                               {errors.phone && (
+                                <span className="px-2 text-red-500">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                CUIT:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedSupplier?.cuit}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={selectedSupplier?.cuit || ""}
+                                  {...register("cuit")}
+                                  placeholder="20-12345678-9"
+                                  className="rounded border border-slate-200 p-4 text-slate-500"
+                                />
+                              )}
+                              {errors.cuit && (
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
                                 </span>
