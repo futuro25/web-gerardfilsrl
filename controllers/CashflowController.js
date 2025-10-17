@@ -120,6 +120,10 @@ self.updateCashflowById = async (req, res) => {
       delete update.id;
     }
 
+    // Extract taxes from the update object
+    const taxes = update.taxes;
+    delete update.taxes; // Remove taxes from the main update
+
     const { data: updatedCashflow, error } = await supabase
       .from("cashflow")
       .update(update)
@@ -127,6 +131,37 @@ self.updateCashflowById = async (req, res) => {
       .is("deleted_at", null);
 
     if (error) throw error;
+
+    // Handle taxes update if provided
+    if (taxes && Array.isArray(taxes)) {
+      // First, delete existing taxes (hard delete)
+      const { error: deleteTaxesError } = await supabase
+        .from("taxes")
+        .delete()
+        .eq("invoice_id", cashflow_id);
+
+      if (deleteTaxesError) {
+        console.error("Error eliminando impuestos existentes:", deleteTaxesError);
+      }
+
+      // Then, insert new taxes
+      const invoiceTaxes = taxes.map((tax) => ({
+        invoice_id: cashflow_id,
+        name: tax.type,
+        amount: parseFloat(tax.value),
+      }));
+
+      const { data: newTaxes, error: taxesError } = await supabase
+        .from("taxes")
+        .insert(invoiceTaxes);
+
+      if (taxesError) {
+        console.error("Error actualizando impuestos:", taxesError);
+        return res.status(500).json({ error: "Error al actualizar los impuestos" });
+      }
+
+      console.log(`Actualizados ${newTaxes?.length || 0} impuestos para el movimiento ${cashflow_id}`);
+    }
 
     res.json(updatedCashflow);
   } catch (e) {
@@ -139,12 +174,27 @@ self.deleteCashflowById = async (req, res) => {
   try {
     const cashflow_id = req.params.cashflow_id;
     const update = { deleted_at: new Date() };
+    
+    // Soft delete the cashflow movement
     const { data: deletedCashflow, error } = await supabase
       .from("cashflow")
       .update(update)
       .eq("id", cashflow_id);
 
     if (error) throw error;
+
+    // Also delete related taxes (hard delete)
+    const { data: deletedTaxes, error: taxesError } = await supabase
+      .from("taxes")
+      .delete()
+      .eq("invoice_id", cashflow_id);
+
+    if (taxesError) {
+      console.error("Error eliminando impuestos relacionados:", taxesError);
+      // Don't fail the entire operation if taxes deletion fails
+    } else {
+      console.log(`Eliminados ${deletedTaxes?.length || 0} impuestos relacionados al movimiento ${cashflow_id}`);
+    }
 
     res.json(deletedCashflow);
   } catch (e) {
