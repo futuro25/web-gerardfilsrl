@@ -24,6 +24,7 @@ export default function CashflowIn({}) {
   const [stage, setStage] = useState("LIST");
   const [client, setClient] = useState();
   const [taxes, setTaxes] = useState([{ type: "IVA", value: "" }]);
+  const [amountWithTaxes, setAmountWithTaxes] = useState(0);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -95,6 +96,7 @@ export default function CashflowIn({}) {
     trigger,
     control,
     setValue,
+    watch,
     formState: { errors },
   } = useForm();
 
@@ -125,6 +127,12 @@ export default function CashflowIn({}) {
 
     return (parseFloat(amount) || 0) + (totalTaxes || 0);
   }, []);
+
+  const watchedAmount = watch("amount");
+
+  useEffect(() => {
+    setAmountWithTaxes(getTotalAmount(taxes, watchedAmount));
+  }, [watchedAmount, taxes, getTotalAmount]);
 
   const handleFormSubmit = async (data) => {
     try {
@@ -163,6 +171,7 @@ export default function CashflowIn({}) {
         type: "INGRESO",
         payment_method: data.paymentMethod,
         provider: data.client.id,
+        taxes: taxes.filter((t) => t.value !== ""),
         reference: concatenatedNumber,
       };
 
@@ -573,6 +582,76 @@ export default function CashflowIn({}) {
                           </div>
                         </td>
                       </tr>
+                      {/* Impuestos */}
+                      <tr>
+                        <td>
+                          <div className="p-4 flex flex-col gap-2">
+                            <label className="text-slate-500 font-bold">
+                              Impuestos:
+                            </label>
+                            {taxes?.map((tax, index) => (
+                              <div
+                                key={index}
+                                className="flex items-center gap-2 sm:ml-[110px]"
+                              >
+                                <select
+                                  value={tax.type}
+                                  onChange={(e) => {
+                                    const updated = [...taxes];
+                                    updated[index].type = e.target.value;
+                                    setTaxes(updated);
+                                  }}
+                                  className="rounded border border-slate-200 p-2 text-slate-500 w-32"
+                                >
+                                  {utils.getTaxes().map((t) => (
+                                    <option key={t.type} value={t.type}>
+                                      {t.type}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  placeholder="Valor"
+                                  value={tax.value}
+                                  onChange={(e) => {
+                                    const updated = [...taxes];
+                                    updated[index].value = e.target.value;
+                                    setTaxes(updated);
+                                  }}
+                                  className="rounded border border-slate-200 p-2 text-slate-500 w-32"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = taxes.filter(
+                                      (_, i) => i !== index
+                                    );
+                                    setTaxes(updated);
+                                  }}
+                                  className="text-red-500 font-bold text-lg"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTaxes([...taxes, { type: "IVA", value: "" }]);
+                              }}
+                              className="text-blue-500 font-bold text-sm sm:ml-[110px] w-fit"
+                            >
+                              + Agregar Impuesto
+                            </button>
+                            {amountWithTaxes > 0 && (
+                              <div className="text-sm text-gray-600 sm:ml-[110px]">
+                                Total con impuestos: ${amountWithTaxes.toFixed(2)}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
                       {/* Fecha */}
                       <tr>
                         <td>
