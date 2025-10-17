@@ -194,6 +194,7 @@ export default function DeliveryNotes() {
       const body = {
         client_id: data.client.id,
         order_id: data.order?.id || null,
+        number: data.number || null,
         description: data.description,
         products: fields.map((field) => ({
           product_id: field.productId,
@@ -566,6 +567,41 @@ export default function DeliveryNotes() {
                   >
                     <table className="border-collapse table-fixed w-full text-sm bg-white">
                       <tbody>
+
+                      <tr>
+                          <td>
+                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
+                              <label className="text-slate-500 md:w-20 font-bold">
+                                Número:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500">
+                                  {selectedDeliveryNote?.number || "Sin número"}
+                                </label>
+                              ) : (
+                                <div className="flex flex-col gap-2 w-full">
+                                  <input
+                                    type="text"
+                                    defaultValue={
+                                      selectedDeliveryNote?.number || ""
+                                    }
+                                    {...register("number")}
+                                    id="number"
+                                    name="number"
+                                    className="rounded border border-slate-200 p-4 text-slate-500 w-full md:w-[200px]"
+                                    placeholder="Número de remito"
+                                  />
+                                  {errors.number && (
+                                    <span className="text-red-500 text-sm">
+                                      * Obligatorio
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
                         <tr>
                           <td>
                             <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">

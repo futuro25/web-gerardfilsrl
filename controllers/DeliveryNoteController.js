@@ -123,6 +123,7 @@ self.createDeliveryNote = async (req, res) => {
       order_id: req.body.order_id || null, // Added order_id to link delivery note to order
       description: req.body.description,
       amount: req.body.amount,
+      number: req.body.number,
     };
 
     const { data: newDeliveryNote, error } = await supabase
@@ -189,6 +190,7 @@ self.getDeliveryNoteByIdAndUpdate = async (req, res) => {
       order_id: update.order_id || null,
       description: update.description,
       amount: update.amount,
+      number: update.number,
     };
 
     const { data: updatedDeliveryNote, error } = await supabase
