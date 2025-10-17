@@ -667,10 +667,15 @@ export default function CashflowOut({}) {
                               onClick={() =>
                                 setTaxes([...taxes, { type: "IVA", value: "" }])
                               }
-                              className="text-sm text-blue-600 underline mt-2 text-left sm:ml-[110px] ml-2"
+                              className="text-blue-500 font-bold text-sm sm:ml-[110px] w-fit"
                             >
                               + Agregar impuesto
                             </button>
+                            {amountWithTaxes > 0 && (
+                              <div className="text-sm text-gray-600 sm:ml-[110px]">
+                                Total con impuestos: ${amountWithTaxes.toFixed(2)}
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
