@@ -581,11 +581,11 @@ export default function Suppliers() {
                               </label>
                               {viewOnly ? (
                                 <label className="text-slate-500">
-                                  {selectedSupplier?.service}
+                                  {selectedSupplier?.category}
                                 </label>
                               ) : (
                                 <select
-                                  defaultValue={selectedSupplier?.service || ""}
+                                  defaultValue={selectedSupplier?.category || ""}
                                   {...register("category", { required: true })}
                                   className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
                                 >
@@ -599,7 +599,7 @@ export default function Suppliers() {
                                     ))}
                                 </select>
                               )}
-                              {errors.service && (
+                              {errors.category && (
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
                                 </span>
