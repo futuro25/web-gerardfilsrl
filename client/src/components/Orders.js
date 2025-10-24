@@ -96,6 +96,26 @@ export default function Orders() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: queryOrdersKey() });
       console.log("Pedido creado:", data);
+      if (data.error) {
+
+        let error = data.error;
+
+        if (error.includes("duplicate key value violates unique constraint")) {
+          error = "El número de pedido ya existe";
+        }
+        if (error.includes("violates foreign key constraint")) {
+          error = "El cliente no existe";
+        }
+        if (error.includes("violates check constraint")) {
+          error = "El tipo de pedido no es válido";
+        }
+
+        if (error.includes("violates not null constraint")) {
+          error = "El número de pedido es requerido";
+        }
+
+        alert(error);
+      }
     },
     onError: (error) => {
       console.error("Error creando pedido:", error);
@@ -225,7 +245,7 @@ export default function Orders() {
   };
 
   const getOrderTypeName = (type) => {
-    return type === "VENTA_DIRECTA" ? "Venta Directa" : "Consignación";
+    return type;
   };
 
   const toggleRowExpansion = (orderId) => {
@@ -718,10 +738,10 @@ export default function Orders() {
                                       <option value="">
                                         Seleccione tipo de pedido...
                                       </option>
-                                      <option value="VENTA_DIRECTA">
-                                        Venta Directa
+                                      <option value="Egreso">
+                                        Egreso
                                       </option>
-                                      <option value="CONSIGNACION">
+                                      <option value="Consignacion">
                                         Consignación
                                       </option>
                                     </select>

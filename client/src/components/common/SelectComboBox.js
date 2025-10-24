@@ -127,7 +127,7 @@ export default function SelectComboBox({ options, value, onChange }) {
           <ComboboxOptions
             static
             className={clsx(
-              "absolute z-10 w-full rounded border border-slate-200 bg-white p-1 shadow-lg max-h-60 overflow-auto",
+              "absolute z-10 rounded border border-slate-200 bg-white p-1 shadow-lg max-h-60 overflow-auto",
               "transition duration-100 ease-in"
             )}
           >
