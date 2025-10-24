@@ -81,6 +81,10 @@ self.createClient = async (req, res) => {
       phone: req.body.phone,
       document_number: req.body.document_number,
       document_type: req.body.document_type,
+      street: req.body.street,
+      street_number: req.body.street_number,
+      city: req.body.city,
+      zip_code: req.body.zip_code,
     };
 
     const { data: newClient, error } = await supabase
