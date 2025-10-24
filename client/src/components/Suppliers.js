@@ -532,6 +532,94 @@ export default function Suppliers() {
                           </td>
                         </tr>
                         {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Calle:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedSupplier?.street}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={selectedSupplier?.street || ""}
+                                  {...register("street")}
+                                  className="rounded border border-slate-200 p-4 text-slate-500"
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Número:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedSupplier?.street_number}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={selectedSupplier?.street_number || ""}
+                                  {...register("street_number")}
+                                  className="rounded border border-slate-200 p-4 text-slate-500"
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Ciudad:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedSupplier?.city}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={selectedSupplier?.city || ""}
+                                  {...register("city")}
+                                  className="rounded border border-slate-200 p-4 text-slate-500"
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Código Postal:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedSupplier?.zip_code}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={selectedSupplier?.zip_code || ""}
+                                  {...register("zip_code")}
+                                  className="rounded border border-slate-200 p-4 text-slate-500"
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
                         {/* Service */}
                         {/* <tr>
                           <td>
