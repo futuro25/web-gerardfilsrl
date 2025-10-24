@@ -137,8 +137,6 @@ export default function App() {
 function RootLayout() {
   const location = useLocation();
 
-  console.log("location", location.pathname);
-
   return (
     <>
       {location.pathname.includes("/remito/") ? (
