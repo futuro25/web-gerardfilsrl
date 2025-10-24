@@ -18,7 +18,7 @@ export default function Home() {
     window.scrollTo(0, 0);
   }, []);
 
-  const navItems = [
+  let navItems = [
     { label: "Pedidos", icon: BookOpenCheck, path: "/pedidos" },
     { label: "Remitos", icon: Package, path: "/remitos" },
     { label: "Facturas", icon: FileText, path: "/entregas" },
@@ -35,6 +35,12 @@ export default function Home() {
     navItems.pop();
     navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios" });
     navItems.push({ label: "Logout", icon: LogOutIcon, path: "/logout" });
+  }
+
+  if (sessionStorage.username === "lcozza") {
+    navItems = navItems.filter((item) => item.label !== "Cashflow");
+    navItems = navItems.filter((item) => item.label !== "Cheques");
+    navItems = navItems.filter((item) => item.label !== "Libros");
   }
 
   return (
