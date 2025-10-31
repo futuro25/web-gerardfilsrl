@@ -294,6 +294,10 @@ router.get("/cashflow", (req, res, next) =>
   CashflowController.getCashflows(req, res, next)
 );
 
+router.get("/cashflow/export/excel", (req, res, next) =>
+  CashflowController.exportCashflowToExcel(req, res, next)
+);
+
 router.get("/cashflow/:cashflow_id", (req, res, next) =>
   CashflowController.getCashflowById(req, res, next)
 );

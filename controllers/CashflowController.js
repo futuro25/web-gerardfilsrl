@@ -3,6 +3,7 @@
 const self = {};
 const supabase = require("./db");
 const _ = require("lodash");
+const XLSX = require("xlsx");
 
 self.getCashflows = async (req, res) => {
   try {
@@ -220,6 +221,73 @@ function getClientName (id, clients) {
     }
   });
   return client ? client.fantasy_name : "Cliente no encontrado";
+};
+
+self.exportCashflowToExcel = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("cashflow")
+      .select("*")
+      .is("deleted_at", null)
+      .order("date", { ascending: false });
+
+    const { data: suppliers, error: supplierError } = await supabase
+      .from("suppliers")
+      .select("*")
+      .is("deleted_at", null);
+    
+    const { data: clients, error: clientError } = await supabase
+      .from("clients")
+      .select("*")
+      .is("deleted_at", null);
+
+    if (error || supplierError || clientError) throw error;
+
+    // Format data for Excel
+    const excelData = data.map((movement) => {
+      const providerName = movement.type === 'EGRESO' 
+        ? getSupplierName(movement.provider, suppliers) 
+        : getClientName(movement.provider, clients);
+      
+      const date = new Date(movement.date);
+      const formattedDate = date.toLocaleDateString('es-AR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+
+      return {
+        'ID': movement.id,
+        'Fecha': formattedDate,
+        'Tipo': movement.type,
+        'Categoría': movement.category,
+        'Descripción': movement.description || '',
+        'Proveedor/Cliente': providerName || '',
+        'Monto': movement.amount,
+        'Método de Pago': movement.payment_method || '',
+        'Referencia': movement.reference || '',
+      };
+    });
+
+    // Create workbook and worksheet
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Movimientos");
+
+    // Generate Excel file buffer
+    const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    // Set headers for file download
+    const fileName = `cashflow_${new Date().toISOString().split('T')[0]}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    
+    // Send the file
+    res.send(excelBuffer);
+  } catch (e) {
+    console.error("Error exporting cashflow to Excel:", e);
+    res.status(500).json({ error: e?.message || 'Error al exportar a Excel' });
+  }
 };
 
 module.exports = self;

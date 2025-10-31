@@ -82,3 +82,40 @@ export const useDeleteCashflowMutation = async (id) => {
   }
   return res.json();
 };
+
+export const downloadCashflowExcel = async () => {
+  try {
+    const res = await fetch(`${BASE_URL}/export/excel`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error("Error en la petición");
+    }
+
+    // Get the blob from the response
+    const blob = await res.blob();
+    
+    // Create a temporary URL for the blob
+    const url = window.URL.createObjectURL(blob);
+    
+    // Create a temporary anchor element and trigger download
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cashflow_${new Date().toISOString().split('T')[0]}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    
+    // Clean up
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    return true;
+  } catch (error) {
+    console.error("Error al descargar Excel:", error.message);
+    throw error;
+  }
+};

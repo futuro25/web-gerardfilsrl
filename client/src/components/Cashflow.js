@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { HouseIcon, PlusIcon, SearchIcon, UsersIcon } from "lucide-react";
+import { HouseIcon, PlusIcon, SearchIcon, UsersIcon, Download } from "lucide-react";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import React, { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent } from "./common/Dialog";
@@ -13,7 +13,7 @@ import { Badge } from "./common/Badge";
 import { X } from "lucide-react";
 import { Card, CardContent } from "./common/Card";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
-import { useCashflowsQuery, useUpdateCashflowMutation, useDeleteCashflowMutation } from "../apis/api.cashflow";
+import { useCashflowsQuery, useUpdateCashflowMutation, useDeleteCashflowMutation, downloadCashflowExcel } from "../apis/api.cashflow";
 import { useSuppliersQuery } from "../apis/api.suppliers";
 import { useClientsQuery } from "../apis/api.clients";
 import SelectComboBox from "./common/SelectComboBox";
@@ -75,6 +75,7 @@ export default function Cashflow() {
   const [selectedProvider, setSelectedProvider] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 30;
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const [stage, setStage] = useState("LIST");
   const [viewOnly, setViewOnly] = useState(false);
@@ -363,6 +364,18 @@ export default function Cashflow() {
     });
   }, [updateCashflowMutation, editingMovement, selectedProvider]);
 
+  const handleDownloadExcel = useCallback(async () => {
+    setIsDownloading(true);
+    try {
+      await downloadCashflowExcel();
+    } catch (error) {
+      console.error("Error al descargar Excel:", error);
+      alert("Error al descargar el archivo Excel. Por favor, intenta nuevamente.");
+    } finally {
+      setIsDownloading(false);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -376,14 +389,26 @@ export default function Cashflow() {
             <div>Cashflow</div>
           </div>
           {stage === "LIST" && !viewOnly && (
-            <Button
-              variant="alternative"
-              className="ml-auto"
-              size={"sm"}
-              onClick={() => onCreate()}
-            >
-              Crear
-            </Button>
+            <div className="flex gap-2 ml-auto">
+              <Button
+                variant="outline"
+                className=""
+                size={"sm"}
+                onClick={handleDownloadExcel}
+                disabled={isDownloading}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {isDownloading ? "Descargando..." : "Excel"}
+              </Button>
+              <Button
+                variant="alternative"
+                className=""
+                size={"sm"}
+                onClick={() => onCreate()}
+              >
+                Crear
+              </Button>
+            </div>
           )}
         </div>
       </div>
