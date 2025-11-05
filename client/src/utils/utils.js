@@ -100,6 +100,22 @@ export function getPaymentMethods() {
   return ["EFECTIVO", "TRANSFERENCIA BANCARIA", "CHEQUE", "TARJETA CREDITO", "TARJETA DEBITO", "CUENTA CORRIENTE"];
 }
 
+export function getProductColors() {
+  return ["BLANCO", "NEGRO", "ARENA", "CELESTE", "OTROS"];
+}
+
+export function getProductGenres() {
+  return ["Masculino", "Femenino"];
+}
+
+export function getProductSleeves() {
+  return ["Corta", "Larga"];
+}
+
+export function getProductNecks() {
+  return ["Solapa", "Corbata", "Mao"];
+}
+
 export function getPaycheckString() {
   return getPaymentMethods()[2] || "CHEQUE";
 }

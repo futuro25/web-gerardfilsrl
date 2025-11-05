@@ -405,9 +405,14 @@ export default function Products() {
                                   type="number"
                                   id="stock"
                                   name="stock"
+                                  min="0"
                                   defaultValue={selectedProduct?.stock || ""}
                                   {...register("stock", {
                                     required: true,
+                                    min: {
+                                      value: 0,
+                                      message: "El stock no puede ser negativo",
+                                    },
                                   })}
                                   className="rounded border border-slate-200  p-4 text-slate-500 "
                                 />
@@ -415,6 +420,11 @@ export default function Products() {
                               {errors.stock?.type === "required" && (
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
+                                </span>
+                              )}
+                              {errors.stock?.type === "min" && (
+                                <span className="px-2 text-red-500">
+                                  {errors.stock.message}
                                 </span>
                               )}
                             </div>
@@ -440,15 +450,119 @@ export default function Products() {
                                   className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
                                 >
                                   <option value="">Seleccionar Color</option>
-                                  {/* Agregá tus opciones acá */}
-                                  <option value="MARRON">MARRON</option>
-                                  <option value="BEIGE">BEIGE</option>
-                                  <option value="VERDE">VERDE</option>
-                                  <option value="CELESTE">CELESTE</option>
-                                  <option value="BLANCO">BLANCO</option>
+                                  {utils.getProductColors().map((color) => (
+                                    <option key={color} value={color}>
+                                      {color}
+                                    </option>
+                                  ))}
                                 </select>
                               )}
                               {errors.service && (
+                                <span className="px-2 text-red-500">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Género:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500">
+                                  {selectedProduct?.genre}
+                                </label>
+                              ) : (
+                                <select
+                                  defaultValue={selectedProduct?.genre || ""}
+                                  {...register("genre", {
+                                    required: true,
+                                  })}
+                                  className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
+                                >
+                                  <option value="">Seleccionar Género</option>
+                                  {utils.getProductGenres().map((genre) => (
+                                    <option key={genre} value={genre}>
+                                      {genre}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                              {errors.genre && (
+                                <span className="px-2 text-red-500">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Manga:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500">
+                                  {selectedProduct?.sleeve}
+                                </label>
+                              ) : (
+                                <select
+                                  defaultValue={selectedProduct?.sleeve || ""}
+                                  {...register("sleeve", {
+                                    required: true,
+                                  })}
+                                  className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
+                                >
+                                  <option value="">Seleccionar Manga</option>
+                                  {utils.getProductSleeves().map((sleeve) => (
+                                    <option key={sleeve} value={sleeve}>
+                                      {sleeve}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                              {errors.sleeve && (
+                                <span className="px-2 text-red-500">
+                                  * Obligatorio
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Cuello:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500">
+                                  {selectedProduct?.neck}
+                                </label>
+                              ) : (
+                                <select
+                                  defaultValue={selectedProduct?.neck || ""}
+                                  {...register("neck", {
+                                    required: true,
+                                  })}
+                                  className="rounded border text-xs border-slate-200 p-4 text-slate-500 w-[180px]"
+                                >
+                                  <option value="">Seleccionar Cuello</option>
+                                  {utils.getProductNecks().map((neck) => (
+                                    <option key={neck} value={neck}>
+                                      {neck}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                              {errors.neck && (
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
                                 </span>

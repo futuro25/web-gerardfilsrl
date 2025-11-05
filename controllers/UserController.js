@@ -77,17 +77,18 @@ self.getUserByEmail = async (req, res) => {
 };
 
 self.login = async (req, res) => {
-  const username = req.body.username;
+  const usernameOrEmail = req.body.username;
   const password = req.body.password;
   try {
+    // Buscar usuario por username O email
     const { data: user, error } = await supabase
       .from("users")
       .select("*")
-      .eq("username", username)
+      .or(`username.eq.${usernameOrEmail},email.eq.${usernameOrEmail}`)
       .eq("password", password)
       .is("deleted_at", null);
 
-    if (!user) {
+    if (!user || user.length === 0) {
       throw new Error("User not found");
     }
 

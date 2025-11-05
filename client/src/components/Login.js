@@ -95,7 +95,7 @@ export default function Login() {
                   className="w-full flex flex-col"
                 >
                   <div className="text-xs-special mb-2 font-sans text-gray-900 block">
-                    Email
+                    Email / Usuario
                   </div>
                   <input
                     type="text"

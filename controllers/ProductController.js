@@ -55,12 +55,16 @@ self.createProduct = async (req, res) => {
   try {
     const product = {
       name: req.body.name,
+      code: req.body.code,
       size: req.body.size,
       color: req.body.color,
       price: req.body.price,
       stock: req.body.stock,
       description: req.body.description,
       image: req.body.image,
+      genre: req.body.genre,
+      sleeve: req.body.sleeve,
+      neck: req.body.neck,
     };
 
     const { data: newProduct, error } = await supabase
