@@ -13,6 +13,7 @@ const DeliveryNoteController = require("../controllers/DeliveryNoteController.js
 const PaycheckController = require("../controllers/PaycheckController.js");
 const BooksController = require("../controllers/BooksController.js");
 const OrderController = require("../controllers/OrderController.js");
+const StockController = require("../controllers/StockController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -327,6 +328,28 @@ router.get("/books/compras/alicuotas", (req, res, next) =>
 );
 router.get("/books/ventas/alicuotas", (req, res, next) =>
   BooksController.getVentasAlicuotas(req, res, next)
+);
+
+// STOCK ENTRIES
+
+router.get("/stock-entries", (req, res, next) =>
+  StockController.getStockEntries(req, res, next)
+);
+
+router.get("/stock-entries/:stock_entry_id", (req, res, next) =>
+  StockController.getStockEntryById(req, res, next)
+);
+
+router.post("/stock-entries", (req, res, next) =>
+  StockController.createStockEntry(req, res, next)
+);
+
+router.patch("/stock-entries/:stock_entry_id", (req, res, next) =>
+  StockController.getStockEntryByIdAndUpdate(req, res, next)
+);
+
+router.delete("/stock-entries/:stock_entry_id", (req, res, next) =>
+  StockController.deleteStockEntryById(req, res, next)
 );
 
 // UTILS

@@ -5,6 +5,7 @@ import {
   BookOpenCheck,
   UserPlus,
   LogOutIcon,
+  Layers,
   Package,
   FileText,
   ShirtIcon,
@@ -28,6 +29,7 @@ export default function Home() {
     { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow" },
     { label: "Cheques", icon: Banknote, path: "/cheques" },
     { label: "Libros", icon: BookOpenCheck, path: "/libros-selector" },
+    { label: "Stock", icon: Layers, path: "/stock" },
     { label: "Logout", icon: LogOutIcon, path: "/logout" },
   ];
 

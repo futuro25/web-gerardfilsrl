@@ -23,3 +23,4 @@ export const queryUsersEmailValidationKey = (param) => [
   param,
 ];
 export const queryOrdersKey = () => ["orders"];
+export const queryStockEntriesKey = () => ["stock-entries"];

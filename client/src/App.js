@@ -29,6 +29,7 @@ import Invoices from "./components/Invoices";
 import Paychecks from "./components/Paychecks";
 import Suppliers from "./components/Suppliers";
 import Products from "./components/Products";
+import Stock from "./components/Stock";
 import Orders from "./components/Orders";
 import Web from "./components/Web";
 import Logout from "./components/Logout";
@@ -100,6 +101,7 @@ export default function App() {
           <Route path="clientes" element={<Clients />} />
           <Route path="productos" element={<Products />} />
           <Route path="pedidos" element={<Orders />} />
+          <Route path="stock" element={<Stock />} />
           <Route path="logout" element={<Logout />} />
         </Route>
         <Route

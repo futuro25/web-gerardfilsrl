@@ -4,14 +4,79 @@ const _ = require("lodash");
 
 self.getProducts = async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { data: products, error } = await supabase
       .from("products")
       .select("*")
       .is("deleted_at", null);
 
     if (error) throw error;
 
-    res.json(data);
+    // Get stock variants for each product
+    const productsWithVariants = await Promise.all(
+      products.map(async (product) => {
+        // Get all stock entries for this product
+        const { data: stockVariants, error: variantsError } = await supabase
+          .from("stock_entries_products")
+          .select(
+            `
+            id,
+            quantity,
+            color,
+            genre,
+            sleeve,
+            neck,
+            stock_entry_id,
+            stock_entries!inner(id, entry_date, remito_number, deleted_at)
+          `
+          )
+          .eq("product_id", product.id)
+          .is("stock_entries.deleted_at", null);
+
+        if (variantsError) {
+          console.error(
+            `Error getting variants for product ${product.id}:`,
+            variantsError
+          );
+          return { ...product, stock_variants: [] };
+        }
+
+        // Group variants by color, genre, sleeve, neck and sum quantities
+        const groupedVariants = {};
+        if (stockVariants) {
+          stockVariants.forEach((variant) => {
+            const key = `${variant.color || ""}-${variant.genre || ""}-${variant.sleeve || ""}-${variant.neck || ""}`;
+            if (!groupedVariants[key]) {
+              groupedVariants[key] = {
+                color: variant.color || "",
+                genre: variant.genre || "",
+                sleeve: variant.sleeve || "",
+                neck: variant.neck || "",
+                total_quantity: 0,
+                entries: [],
+              };
+            }
+            groupedVariants[key].total_quantity += variant.quantity || 0;
+            groupedVariants[key].entries.push({
+              id: variant.id,
+              quantity: variant.quantity,
+              entry_date: variant.stock_entries?.entry_date,
+              remito_number: variant.stock_entries?.remito_number,
+            });
+          });
+        }
+
+        return {
+          ...product,
+          stock_variants: Object.values(groupedVariants),
+          total_stock_variants: Object.values(groupedVariants).reduce(
+            (sum, variant) => sum + variant.total_quantity,
+            0
+          ),
+        };
+      })
+    );
+
+    res.json(productsWithVariants);
   } catch (e) {
     res.json({ error: e.message });
   }
@@ -20,7 +85,7 @@ self.getProducts = async (req, res) => {
 self.getProductById = async (req, res) => {
   const product_id = req.params.product_id;
   try {
-    const { data, error } = await supabase
+    const { data: productData, error } = await supabase
       .from("products")
       .select("*")
       .eq("id", product_id)
@@ -28,7 +93,70 @@ self.getProductById = async (req, res) => {
 
     if (error) throw error;
 
-    res.json(_.first(data));
+    const product = _.first(productData);
+    if (!product) {
+      return res.json({ error: "Product not found" });
+    }
+
+    // Get stock variants for this product
+    const { data: stockVariants, error: variantsError } = await supabase
+      .from("stock_entries_products")
+      .select(
+        `
+        id,
+        quantity,
+        color,
+        genre,
+        sleeve,
+        neck,
+        stock_entry_id,
+        stock_entries!inner(id, entry_date, remito_number, deleted_at)
+      `
+      )
+      .eq("product_id", product_id)
+      .is("stock_entries.deleted_at", null);
+
+    if (variantsError) {
+      console.error(
+        `Error getting variants for product ${product_id}:`,
+        variantsError
+      );
+      return res.json({ ...product, stock_variants: [] });
+    }
+
+    // Group variants by color, genre, sleeve, neck and sum quantities
+    const groupedVariants = {};
+    if (stockVariants) {
+      stockVariants.forEach((variant) => {
+        const key = `${variant.color || ""}-${variant.genre || ""}-${variant.sleeve || ""}-${variant.neck || ""}`;
+        if (!groupedVariants[key]) {
+          groupedVariants[key] = {
+            color: variant.color || "",
+            genre: variant.genre || "",
+            sleeve: variant.sleeve || "",
+            neck: variant.neck || "",
+            total_quantity: 0,
+            entries: [],
+          };
+        }
+        groupedVariants[key].total_quantity += variant.quantity || 0;
+        groupedVariants[key].entries.push({
+          id: variant.id,
+          quantity: variant.quantity,
+          entry_date: variant.stock_entries?.entry_date,
+          remito_number: variant.stock_entries?.remito_number,
+        });
+      });
+    }
+
+    res.json({
+      ...product,
+      stock_variants: Object.values(groupedVariants),
+      total_stock_variants: Object.values(groupedVariants).reduce(
+        (sum, variant) => sum + variant.total_quantity,
+        0
+      ),
+    });
   } catch (e) {
     res.json({ error: e.message });
   }
