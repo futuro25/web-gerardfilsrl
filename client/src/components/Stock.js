@@ -357,25 +357,25 @@ export default function Stock({}) {
                       <table className="border-collapse table-auto w-full text-sm">
                         <thead>
                           <tr>
-                            <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left w-4">
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left w-4">
                               #
                             </th>
-                            <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left">
                               Fecha
                             </th>
-                            <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left">
                               Proveedor
                             </th>
-                            <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left">
                               Nro. Remito
                             </th>
-                            <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left">
                               Productos
                             </th>
-                            <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left">
                               Cantidad Total
                             </th>
-                            <th className="border-b font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
+                            <th className="border-b font-medium text-sm p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                               Acciones
                             </th>
                           </tr>
@@ -462,7 +462,7 @@ export default function Stock({}) {
                     <div className="bg-white p-4">
                       {/* Proveedor */}
                       <div className="p-4 gap-4 flex items-center">
-                        <label className="text-slate-500 w-32 font-bold">
+                        <label className="text-slate-500 w-20 font-bold text-sm">
                           Proveedor:
                         </label>
                         <div className="flex-1">
@@ -499,13 +499,13 @@ export default function Stock({}) {
 
                       {/* Fecha de ingreso */}
                       <div className="p-4 gap-4 flex items-center">
-                        <label className="text-slate-500 w-32 font-bold">
+                        <label className="text-slate-500 w-20 font-bold text-sm">
                           Fecha de ingreso:
                         </label>
                         <input
                           type="date"
                           {...register("entry_date", { required: true })}
-                          className="flex-1 rounded border border-slate-200 p-4 text-slate-500 max-w-xs"
+                          className="rounded border border-slate-200 p-2 text-slate-500 text-sm max-w-xs"
                         />
                         {errors.entry_date && (
                           <span className="px-2 text-red-500 text-sm">
@@ -516,13 +516,13 @@ export default function Stock({}) {
 
                       {/* Número de remito */}
                       <div className="p-4 gap-4 flex items-center">
-                        <label className="text-slate-500 w-32 font-bold">
+                        <label className="text-slate-500 w-20 font-bold text-sm">
                           Nro. de remito:
                         </label>
                         <input
                           type="text"
                           {...register("remito_number", { required: true })}
-                          className="flex-1 rounded border border-slate-200 p-4 text-slate-500 max-w-xs"
+                          className="rounded border border-slate-200 p-2 text-slate-500 text-sm max-w-xs"
                           placeholder="Ej: 0001-00000001"
                         />
                         {errors.remito_number && (
@@ -534,7 +534,7 @@ export default function Stock({}) {
 
                       {/* Descripción */}
                       <div className="p-4 gap-4 flex items-start">
-                        <label className="text-slate-500 w-32 font-bold pt-4">
+                        <label className="text-slate-500 w-20 font-bold text-sm pt-4">
                           Descripción:
                         </label>
                         <textarea
@@ -546,7 +546,7 @@ export default function Stock({}) {
                           spellCheck="false"
                           autoCapitalize="off"
                           {...register("description")}
-                          className="flex-1 rounded border border-slate-200 p-4 text-slate-500"
+                          className="rounded border border-slate-200 p-2 text-slate-500 text-sm"
                         />
                       </div>
 
