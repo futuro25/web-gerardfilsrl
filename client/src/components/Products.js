@@ -2,7 +2,6 @@ import { useNavigate } from "react-router-dom";
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
 import { EditIcon, TrashIcon, CloseIcon } from "./icons";
 import * as utils from "../utils/utils";
 import { Input } from "./common/Input";
@@ -22,7 +21,14 @@ export default function Products() {
   const [stage, setStage] = useState("LIST");
   const [search, setSearch] = useState("");
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
-  const [expandedProducts, setExpandedProducts] = useState({});
+  const [filters, setFilters] = useState({
+    color: "",
+    genre: "",
+    sleeve: "",
+    neck: "",
+    fuerza: "",
+    talle: "",
+  });
 
   const [selectedProduct, setSelectedProduct] = useState(null);
   const queryClient = useQueryClient();
@@ -40,16 +46,126 @@ export default function Products() {
     queryFn: useProductsQuery,
   });
 
+  // Check if any filters are active
+  const hasActiveFilters = Object.values(filters).some((value) => value !== "");
+
+  // Helper function to normalize strings for comparison
+  const normalizeString = (str) => {
+    if (!str) return "";
+    return String(str).trim().toLowerCase();
+  };
+
+  // Helper function to check if a variant matches the filters
+  const variantMatchesFilters = (variant) => {
+    const matchesColor = !filters.color || normalizeString(variant.color) === normalizeString(filters.color);
+    const matchesGenre = !filters.genre || normalizeString(variant.genre) === normalizeString(filters.genre);
+    const matchesSleeve = !filters.sleeve || normalizeString(variant.sleeve) === normalizeString(filters.sleeve);
+    const matchesNeck = !filters.neck || normalizeString(variant.neck) === normalizeString(filters.neck);
+    const matchesFuerza = !filters.fuerza || normalizeString(variant.fuerza) === normalizeString(filters.fuerza);
+    const matchesTalle = !filters.talle || normalizeString(variant.talle) === normalizeString(filters.talle);
+
+    return (
+      matchesColor &&
+      matchesGenre &&
+      matchesSleeve &&
+      matchesNeck &&
+      matchesFuerza &&
+      matchesTalle
+    );
+  };
+
+  // Helper function to check if a variant matches the search
+  const variantMatchesSearch = (variant, searchLower) => {
+    if (!searchLower) return true;
+    return (
+      variant.color?.toLowerCase().includes(searchLower) ||
+      variant.genre?.toLowerCase().includes(searchLower) ||
+      variant.sleeve?.toLowerCase().includes(searchLower) ||
+      variant.neck?.toLowerCase().includes(searchLower) ||
+      variant.fuerza?.toLowerCase().includes(searchLower) ||
+      variant.talle?.toLowerCase().includes(searchLower)
+    );
+  };
+
   const dataFiltered =
     data &&
     data?.length > 0 &&
-    data?.filter((d) =>
-      search
-        ? d.name?.toLowerCase().includes(search.toLowerCase()) ||
-          d.code?.toLowerCase().includes(search.toLowerCase())
-        : d
-    );
+    data?.map((d) => {
+      // Filter by search - includes name, code, and all variant fields
+      const searchLower = search ? search.toLowerCase().trim() : "";
+      const matchesSearch = !search
+        ? true
+        : d.name?.toLowerCase().includes(searchLower) ||
+          d.code?.toLowerCase().includes(searchLower) ||
+          (d.stock_variants &&
+            d.stock_variants.some((variant) => variantMatchesSearch(variant, searchLower)));
+
+      // Filter by variants
+      const hasVariants =
+        d.stock_variants && d.stock_variants.length > 0;
+
+      if (hasVariants) {
+        // Filter variants that match both search and filters
+        const filteredVariants = d.stock_variants.filter((variant) => {
+          const matchesFilters = variantMatchesFilters(variant);
+          const matchesSearchInVariant = variantMatchesSearch(variant, searchLower);
+          return matchesFilters && matchesSearchInVariant;
+        });
+
+        // Only include product if it has matching variants
+        if (filteredVariants.length > 0) {
+          return {
+            ...d,
+            stock_variants: filteredVariants,
+          };
+        }
+        return null;
+      } else {
+        // Products without variants
+        // If filters are active, don't show products without variants
+        if (hasActiveFilters) {
+          return null;
+        }
+        // Only filter by search if no filters are active
+        if (matchesSearch) {
+          return d;
+        }
+        return null;
+      }
+    }).filter(Boolean); // Remove null entries
   if (error) console.log(error);
+
+  const handleFilterChange = (filterName, value) => {
+    setFilters((prev) => ({
+      ...prev,
+      [filterName]: value,
+    }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      color: "",
+      genre: "",
+      sleeve: "",
+      neck: "",
+      fuerza: "",
+      talle: "",
+    });
+  };
+
+  // Calculate total variants count for filtered data
+  const getFilteredVariantsCount = () => {
+    if (!dataFiltered || dataFiltered.length === 0) return 0;
+    let count = 0;
+    dataFiltered.forEach((product) => {
+      if (product.stock_variants && product.stock_variants.length > 0) {
+        count += product.stock_variants.length;
+      } else {
+        count += 1;
+      }
+    });
+    return count;
+  };
 
   const createMutation = useMutation({
     mutationFn: useCreateProductMutation,
@@ -95,13 +211,6 @@ export default function Products() {
         console.log(e);
       }
     }
-  };
-
-  const toggleExpand = (productId) => {
-    setExpandedProducts((prev) => ({
-      ...prev,
-      [productId]: !prev[productId],
-    }));
   };
 
   const onSubmit = async (data) => {
@@ -196,21 +305,149 @@ export default function Products() {
 
       <div className="px-4 h-full overflow-auto">
         {stage === "LIST" && (
-          <div className="w-full flex shadow rounded mb-4">
-            <Input
-              rightElement={
-                <div className="cursor-pointer" onClick={() => setSearch("")}>
-                  {search && <CloseIcon />}
+          <>
+            <div className="w-full flex shadow rounded mb-4">
+              <Input
+                rightElement={
+                  <div className="cursor-pointer" onClick={() => setSearch("")}>
+                    {search && <CloseIcon />}
+                  </div>
+                }
+                type="text"
+                value={search}
+                name="search"
+                id="search"
+                placeholder="Buscador..."
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            {/* Filtros de variantes */}
+            <div className="w-full mb-4 bg-white rounded-lg shadow-sm border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-slate-700">
+                  Filtros por Variantes
+                </h3>
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Limpiar filtros
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {/* Filtro Color */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Color
+                  </label>
+                  <select
+                    value={filters.color}
+                    onChange={(e) => handleFilterChange("color", e.target.value)}
+                    className="w-full rounded border border-slate-200 p-2 text-xs text-slate-700 bg-white hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Todos</option>
+                    {utils.getProductColors().map((color) => (
+                      <option key={color} value={color}>
+                        {color}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              }
-              type="text"
-              value={search}
-              name="search"
-              id="search"
-              placeholder="Buscador..."
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+                {/* Filtro Género */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Género
+                  </label>
+                  <select
+                    value={filters.genre}
+                    onChange={(e) => handleFilterChange("genre", e.target.value)}
+                    className="w-full rounded border border-slate-200 p-2 text-xs text-slate-700 bg-white hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Todos</option>
+                    {utils.getProductGenres().map((genre) => (
+                      <option key={genre} value={genre}>
+                        {genre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Filtro Manga */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Manga
+                  </label>
+                  <select
+                    value={filters.sleeve}
+                    onChange={(e) => handleFilterChange("sleeve", e.target.value)}
+                    className="w-full rounded border border-slate-200 p-2 text-xs text-slate-700 bg-white hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Todos</option>
+                    {utils.getProductSleeves().map((sleeve) => (
+                      <option key={sleeve} value={sleeve}>
+                        {sleeve}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Filtro Cuello */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Cuello
+                  </label>
+                  <select
+                    value={filters.neck}
+                    onChange={(e) => handleFilterChange("neck", e.target.value)}
+                    className="w-full rounded border border-slate-200 p-2 text-xs text-slate-700 bg-white hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Todos</option>
+                    {utils.getProductNecks().map((neck) => (
+                      <option key={neck} value={neck}>
+                        {neck}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Filtro Fuerza */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Fuerza
+                  </label>
+                  <select
+                    value={filters.fuerza}
+                    onChange={(e) => handleFilterChange("fuerza", e.target.value)}
+                    className="w-full rounded border border-slate-200 p-2 text-xs text-slate-700 bg-white hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Todos</option>
+                    {utils.getProductFuerzas().map((fuerza) => (
+                      <option key={fuerza} value={fuerza}>
+                        {fuerza}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Filtro Talle */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Talle
+                  </label>
+                  <select
+                    value={filters.talle}
+                    onChange={(e) => handleFilterChange("talle", e.target.value)}
+                    className="w-full rounded border border-slate-200 p-2 text-xs text-slate-700 bg-white hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Todos</option>
+                    {utils.getProductTalles().map((talle) => (
+                      <option key={talle} value={talle}>
+                        {talle}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          </>
         )}
         {isLoading && (
           <div>
@@ -221,7 +458,11 @@ export default function Products() {
         {stage === "LIST" && data && (
           <div className="my-4 mb-28">
             <p className="pl-1 pb-1 text-slate-500">
-              Total de productos {data.length}
+              {hasActiveFilters || search
+                ? `Mostrando ${getFilteredVariantsCount()} variante${
+                    getFilteredVariantsCount() !== 1 ? "s" : ""
+                  } de ${data.length} producto${data.length !== 1 ? "s" : ""}`
+                : `Total de productos ${data.length}`}
             </p>
             <div className="not-prose relative bg-slate-50 rounded-xl overflow-hidden ">
               <div
@@ -236,9 +477,6 @@ export default function Products() {
                         <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left w-4">
                           #
                         </th>
-                        <th className="border-b font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left w-8">
-                          
-                        </th>
                         <th className="border-b font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                           Codigo
                         </th>
@@ -246,10 +484,25 @@ export default function Products() {
                           Producto
                         </th>
                         <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Stock Total
+                          Color
                         </th>
                         <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Variantes
+                          Género
+                        </th>
+                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          Manga
+                        </th>
+                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          Cuello
+                        </th>
+                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          Fuerza
+                        </th>
+                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          Talle
+                        </th>
+                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          Cantidad Total
                         </th>
                         <th className="border-b font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                           Acciones
@@ -258,198 +511,147 @@ export default function Products() {
                     </thead>
                     <tbody className="bg-white ">
                       {dataFiltered.length ? (
-                        dataFiltered.map((product, index) => {
-                          const isExpanded = expandedProducts[product.id];
-                          const hasVariants =
-                            product.stock_variants &&
-                            product.stock_variants.length > 0;
-                          return (
-                            <React.Fragment key={product.id}>
-                              <tr
-                                className={utils.cn(
-                                  "border-b last:border-b-0 hover:bg-gray-100",
-                                  index % 2 === 0 && "bg-gray-50"
-                                )}
-                              >
-                                <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
-                                  {product.id}
-                                </td>
-                                <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
-                                  {hasVariants && (
-                                    <button
-                                      onClick={() => toggleExpand(product.id)}
-                                      className="flex items-center justify-center w-6 h-6 hover:bg-gray-200 rounded"
-                                    >
-                                      {isExpanded ? (
-                                        <ChevronDownIcon className="h-4 w-4" />
-                                      ) : (
-                                        <ChevronRightIcon className="h-4 w-4" />
+                        (() => {
+                          let rowIndex = 0;
+                          return dataFiltered.flatMap((product) => {
+                            const hasVariants =
+                              product.stock_variants &&
+                              product.stock_variants.length > 0;
+
+                            if (hasVariants) {
+                              // stock_variants are already filtered at this point
+                              return product.stock_variants.map(
+                                (variant, vIndex) => {
+                                  const currentIndex = rowIndex++;
+                                  return (
+                                    <tr
+                                      key={`${product.id}-${vIndex}`}
+                                      className={utils.cn(
+                                        "border-b last:border-b-0 hover:bg-gray-100",
+                                        currentIndex % 2 === 0 && "bg-gray-50"
                                       )}
-                                    </button>
+                                    >
+                                      <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                        {product.id}
+                                      </td>
+                                      <td className="!text-xs text-left border-b border-slate-100 p-4 pr-8 text-slate-500">
+                                        {product.code}
+                                      </td>
+                                      <td className="!text-xs text-left border-b border-slate-100 p-4 pr-8 text-slate-500">
+                                        {product.name}
+                                      </td>
+                                      <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                        {variant.color || "-"}
+                                      </td>
+                                      <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                        {variant.genre || "-"}
+                                      </td>
+                                      <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                        {variant.sleeve || "-"}
+                                      </td>
+                                      <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                        {variant.neck || "-"}
+                                      </td>
+                                      <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                        {variant.fuerza || "-"}
+                                      </td>
+                                      <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                        {variant.talle || "-"}
+                                      </td>
+                                      <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500 font-bold">
+                                        {variant.total_quantity || 0}
+                                      </td>
+                                      <td className="!text-xs text-left border-b border-slate-100 text-slate-500 w-10">
+                                        <div className="flex gap-2">
+                                          <button
+                                            className="flex items-center justify-center w-8 h-8"
+                                            title="Editar"
+                                            onClick={() => onEdit(product.id)}
+                                          >
+                                            <EditIcon />
+                                          </button>
+                                          <button
+                                            className="flex items-center justify-center w-8 h-8"
+                                            title="Eliminar"
+                                            onClick={() =>
+                                              removeUser(product.id)
+                                            }
+                                          >
+                                            <TrashIcon />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                }
+                              );
+                            } else {
+                              const currentIndex = rowIndex++;
+                              return (
+                                <tr
+                                  key={product.id}
+                                  className={utils.cn(
+                                    "border-b last:border-b-0 hover:bg-gray-100",
+                                    currentIndex % 2 === 0 && "bg-gray-50"
                                   )}
-                                </td>
-                                <td className="!text-xs text-left border-b border-slate-100 p-4 pr-8 text-slate-500">
-                                  {product.code}
-                                </td>
-                                <td className="!text-xs text-left border-b border-slate-100 p-4 pr-8 text-slate-500">
-                                  {product.name}
-                                </td>
-                                <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500 font-bold">
-                                  {product.total_stock_variants || product.stock || 0}
-                                </td>
-                                <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
-                                  {hasVariants ? (
-                                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
-                                      {product.stock_variants.length} variante
-                                      {product.stock_variants.length !== 1
-                                        ? "s"
-                                        : ""}
-                                    </span>
-                                  ) : (
+                                >
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    {product.id}
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 pr-8 text-slate-500">
+                                    {product.code}
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 pr-8 text-slate-500">
+                                    {product.name}
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
                                     <span className="text-slate-400">-</span>
-                                  )}
-                                </td>
-                                <td className="!text-xs text-left border-b border-slate-100 text-slate-500 w-10">
-                                  <div className="flex gap-2">
-                                    <button
-                                      className="flex items-center justify-center w-8 h-8"
-                                      title="Editar"
-                                      onClick={() => onEdit(product.id)}
-                                    >
-                                      <EditIcon />
-                                    </button>
-                                    <button
-                                      className="flex items-center justify-center w-8 h-8"
-                                      title="Eliminar"
-                                      onClick={() => removeUser(product.id)}
-                                    >
-                                      <TrashIcon />
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                              {isExpanded && hasVariants && (
-                                <tr>
-                                  <td colSpan={7} className="p-0">
-                                    <div className="bg-gray-50 border-t border-gray-200 p-4">
-                                      <div className="mb-3">
-                                        <h4 className="font-bold text-slate-700 text-sm mb-2">
-                                          Posiciones de Stock - {product.name}
-                                        </h4>
-                                        <p className="text-xs text-slate-500">
-                                          Total de stock:{" "}
-                                          <span className="font-bold">
-                                            {product.total_stock_variants || 0}
-                                          </span>{" "}
-                                          unidades en{" "}
-                                          <span className="font-bold">
-                                            {product.stock_variants.length}
-                                          </span>{" "}
-                                          variante
-                                          {product.stock_variants.length !== 1
-                                            ? "s"
-                                            : ""}
-                                        </p>
-                                      </div>
-                                      <table className="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
-                                        <thead>
-                                          <tr className="bg-gray-100">
-                                            <th className="p-3 text-left text-slate-600 font-medium border-b border-gray-200">
-                                              Color
-                                            </th>
-                                            <th className="p-3 text-left text-slate-600 font-medium border-b border-gray-200">
-                                              Género
-                                            </th>
-                                            <th className="p-3 text-left text-slate-600 font-medium border-b border-gray-200">
-                                              Manga
-                                            </th>
-                                            <th className="p-3 text-left text-slate-600 font-medium border-b border-gray-200">
-                                              Cuello
-                                            </th>
-                                            <th className="p-3 text-left text-slate-600 font-medium border-b border-gray-200">
-                                              Cantidad Total
-                                            </th>
-                                            <th className="p-3 text-left text-slate-600 font-medium border-b border-gray-200">
-                                              Entradas de Stock
-                                            </th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {product.stock_variants.map(
-                                            (variant, vIndex) => (
-                                              <tr
-                                                key={vIndex}
-                                                className="border-b border-gray-200 hover:bg-gray-100 bg-white"
-                                              >
-                                                <td className="p-3 text-slate-600">
-                                                  {variant.color || "-"}
-                                                </td>
-                                                <td className="p-3 text-slate-600">
-                                                  {variant.genre || "-"}
-                                                </td>
-                                                <td className="p-3 text-slate-600">
-                                                  {variant.sleeve || "-"}
-                                                </td>
-                                                <td className="p-3 text-slate-600">
-                                                  {variant.neck || "-"}
-                                                </td>
-                                                <td className="p-3 text-slate-600 font-bold text-base">
-                                                  {variant.total_quantity}
-                                                </td>
-                                                <td className="p-3 text-slate-600">
-                                                  <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
-                                                    {variant.entries?.length > 0 ? (
-                                                      variant.entries.map(
-                                                        (entry, eIndex) => (
-                                                          <div
-                                                            key={eIndex}
-                                                            className="text-xs bg-white p-2 rounded border border-gray-200"
-                                                          >
-                                                            <div className="font-medium">
-                                                              Remito:{" "}
-                                                              {entry.remito_number ||
-                                                                "-"}
-                                                            </div>
-                                                            <div className="text-slate-500">
-                                                              Fecha:{" "}
-                                                              {entry.entry_date
-                                                                ? new Date(
-                                                                    entry.entry_date
-                                                                  ).toLocaleDateString(
-                                                                    "es-AR"
-                                                                  )
-                                                                : "-"}
-                                                            </div>
-                                                            <div className="font-bold text-blue-600">
-                                                              Cantidad:{" "}
-                                                              {entry.quantity}
-                                                            </div>
-                                                          </div>
-                                                        )
-                                                      )
-                                                    ) : (
-                                                      <span className="text-slate-400 text-xs">
-                                                        Sin entradas
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                </td>
-                                              </tr>
-                                            )
-                                          )}
-                                        </tbody>
-                                      </table>
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    <span className="text-slate-400">-</span>
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    <span className="text-slate-400">-</span>
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    <span className="text-slate-400">-</span>
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    <span className="text-slate-400">-</span>
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    <span className="text-slate-400">-</span>
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500 font-bold">
+                                    {product.stock || 0}
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 text-slate-500 w-10">
+                                    <div className="flex gap-2">
+                                      <button
+                                        className="flex items-center justify-center w-8 h-8"
+                                        title="Editar"
+                                        onClick={() => onEdit(product.id)}
+                                      >
+                                        <EditIcon />
+                                      </button>
+                                      <button
+                                        className="flex items-center justify-center w-8 h-8"
+                                        title="Eliminar"
+                                        onClick={() => removeUser(product.id)}
+                                      >
+                                        <TrashIcon />
+                                      </button>
                                     </div>
                                   </td>
                                 </tr>
-                              )}
-                            </React.Fragment>
-                          );
-                        })
+                              );
+                            }
+                          });
+                        })()
                       ) : (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={11}
                             className="border-b border-slate-100 p-4 text-slate-500"
                           >
                             No data

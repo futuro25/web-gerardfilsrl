@@ -25,6 +25,8 @@ self.getProducts = async (req, res) => {
             genre,
             sleeve,
             neck,
+            fuerza,
+            talle,
             stock_entry_id,
             stock_entries!inner(id, entry_date, remito_number, deleted_at)
           `
@@ -40,17 +42,19 @@ self.getProducts = async (req, res) => {
           return { ...product, stock_variants: [] };
         }
 
-        // Group variants by color, genre, sleeve, neck and sum quantities
+        // Group variants by color, genre, sleeve, neck, fuerza, talle and sum quantities
         const groupedVariants = {};
         if (stockVariants) {
           stockVariants.forEach((variant) => {
-            const key = `${variant.color || ""}-${variant.genre || ""}-${variant.sleeve || ""}-${variant.neck || ""}`;
+            const key = `${variant.color || ""}-${variant.genre || ""}-${variant.sleeve || ""}-${variant.neck || ""}-${variant.fuerza || ""}-${variant.talle || ""}`;
             if (!groupedVariants[key]) {
               groupedVariants[key] = {
                 color: variant.color || "",
                 genre: variant.genre || "",
                 sleeve: variant.sleeve || "",
                 neck: variant.neck || "",
+                fuerza: variant.fuerza || "",
+                talle: variant.talle || "",
                 total_quantity: 0,
                 entries: [],
               };
@@ -109,6 +113,8 @@ self.getProductById = async (req, res) => {
         genre,
         sleeve,
         neck,
+        fuerza,
+        talle,
         stock_entry_id,
         stock_entries!inner(id, entry_date, remito_number, deleted_at)
       `
@@ -124,17 +130,19 @@ self.getProductById = async (req, res) => {
       return res.json({ ...product, stock_variants: [] });
     }
 
-    // Group variants by color, genre, sleeve, neck and sum quantities
+    // Group variants by color, genre, sleeve, neck, fuerza, talle and sum quantities
     const groupedVariants = {};
     if (stockVariants) {
       stockVariants.forEach((variant) => {
-        const key = `${variant.color || ""}-${variant.genre || ""}-${variant.sleeve || ""}-${variant.neck || ""}`;
+        const key = `${variant.color || ""}-${variant.genre || ""}-${variant.sleeve || ""}-${variant.neck || ""}-${variant.fuerza || ""}-${variant.talle || ""}`;
         if (!groupedVariants[key]) {
           groupedVariants[key] = {
             color: variant.color || "",
             genre: variant.genre || "",
             sleeve: variant.sleeve || "",
             neck: variant.neck || "",
+            fuerza: variant.fuerza || "",
+            talle: variant.talle || "",
             total_quantity: 0,
             entries: [],
           };

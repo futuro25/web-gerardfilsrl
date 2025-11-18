@@ -57,12 +57,34 @@ export default function Suppliers() {
     }
   }, [createParam]);
 
+  // Sort by fantasy_name (razón social) alphabetically
+  const dataSorted =
+    data && data?.length > 0
+      ? [...data].sort((a, b) => {
+          const nameA = (a.fantasy_name || "").toLowerCase();
+          const nameB = (b.fantasy_name || "").toLowerCase();
+          return nameA.localeCompare(nameB);
+        })
+      : [];
+
+  // Filter by name, last_name, fantasy_name, or clasificacion
   const dataFiltered =
-    data &&
-    data?.length > 0 &&
-    data?.filter((d) =>
-      search ? d.name.toLowerCase().includes(search.toLowerCase()) : d
-    );
+    dataSorted &&
+    dataSorted?.length > 0 &&
+    dataSorted?.filter((d) => {
+      if (!search) return true;
+      const searchLower = search.toLowerCase();
+      const name = (d.name || "").toLowerCase();
+      const lastName = (d.last_name || "").toLowerCase();
+      const fantasyName = (d.fantasy_name || "").toLowerCase();
+      const clasificacion = (d.clasificacion || "").toLowerCase();
+      return (
+        name.includes(searchLower) ||
+        lastName.includes(searchLower) ||
+        fantasyName.includes(searchLower) ||
+        clasificacion.includes(searchLower)
+      );
+    });
   if (error) console.log(error);
 
   const createMutation = useMutation({
@@ -252,17 +274,17 @@ export default function Suppliers() {
                   <table className="border-collapse table-auto w-full text-sm">
                     <thead>
                       <tr>
-                        <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left w-4">
-                          #
-                        </th>
                         <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
-                          Proveedor
+                          Razón Social
                         </th>
                         <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
-                          Nombre
+                          Nombre y Apellido
                         </th>
-                        <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Apellido
+                        <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
+                          Categoría
+                        </th>
+                        <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
+                          Clasificación
                         </th>
                         <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                           Acciones
@@ -279,17 +301,19 @@ export default function Suppliers() {
                               index % 2 === 0 && "bg-gray-50"
                             )}
                           >
-                            <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
-                              {supplier.id}
-                            </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
                               {supplier.fantasy_name}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
-                              {supplier.name}
+                              {[supplier.name, supplier.last_name]
+                                .filter(Boolean)
+                                .join(" ")}
                             </td>
-                            <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
-                              {supplier.last_name}
+                            <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
+                              {supplier.category}
+                            </td>
+                            <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
+                              {supplier.clasificacion}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  text-slate-500 w-10">
                               <div className="flex gap-2">
@@ -321,7 +345,7 @@ export default function Suppliers() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={5}
+                            colSpan={6}
                             className="border-b border-slate-100  p-4  text-slate-500 "
                           >
                             No data
@@ -777,6 +801,77 @@ export default function Suppliers() {
                                 <span className="px-2 text-red-500">
                                   * Obligatorio
                                 </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        {/* Clasificacion */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Clasificación:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedSupplier?.clasificacion}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={
+                                    selectedSupplier?.clasificacion || ""
+                                  }
+                                  {...register("clasificacion")}
+                                  className="rounded border border-slate-200 p-4 text-slate-500"
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        {/* Alias */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Alias:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedSupplier?.alias}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={selectedSupplier?.alias || ""}
+                                  {...register("alias")}
+                                  className="rounded border border-slate-200 p-4 text-slate-500"
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        {/* CBU */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                CBU:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedSupplier?.cbu}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={selectedSupplier?.cbu || ""}
+                                  {...register("cbu")}
+                                  className="rounded border border-slate-200 p-4 text-slate-500"
+                                />
                               )}
                             </div>
                           </td>

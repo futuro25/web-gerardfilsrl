@@ -116,6 +116,23 @@ export function getProductNecks() {
   return ["Solapa", "Corbata", "Mao"];
 }
 
+export function getProductFuerzas() {
+  return [
+    "Sastreria Militar",
+    "Gendarmeria",
+    "Fuerza Aerea",
+    "Policia Federal",
+    "Intendencia",
+    "Policia de Neuquen",
+    "Penitenciaria de Neuquen",
+    "Privados",
+  ];
+}
+
+export function getProductTalles() {
+  return Array.from({ length: 35 }, (_, i) => String(30 + i));
+}
+
 export function getPaycheckString() {
   return getPaymentMethods()[2] || "CHEQUE";
 }

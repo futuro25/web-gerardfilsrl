@@ -70,6 +70,8 @@ self.createStockEntry = async (req, res) => {
       genre: product.genre,
       sleeve: product.sleeve,
       neck: product.neck,
+      fuerza: product.fuerza,
+      talle: product.talle,
     }));
 
     const { data: newStockEntryProducts, errorProducts } = await supabase

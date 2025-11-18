@@ -54,6 +54,8 @@ export default function Stock({}) {
         genre: "",
         sleeve: "",
         neck: "",
+        fuerza: "",
+        talle: "",
       })),
     },
   });
@@ -112,6 +114,8 @@ export default function Stock({}) {
           genre: "",
           sleeve: "",
           neck: "",
+          fuerza: "",
+          talle: "",
         })),
       });
       setStage("LIST");
@@ -163,7 +167,9 @@ export default function Stock({}) {
           product.color &&
           product.genre &&
           product.sleeve &&
-          product.neck
+          product.neck &&
+          product.fuerza &&
+          product.talle
       );
 
       if (validProducts.length === 0) {
@@ -202,6 +208,8 @@ export default function Stock({}) {
           genre: product.genre,
           sleeve: product.sleeve,
           neck: product.neck,
+          fuerza: product.fuerza,
+          talle: product.talle,
         })),
       };
 
@@ -227,6 +235,8 @@ export default function Stock({}) {
         genre: "",
         sleeve: "",
         neck: "",
+        fuerza: "",
+        talle: "",
       })),
     });
     setStage("CREATE");
@@ -246,6 +256,8 @@ export default function Stock({}) {
         genre: "",
         sleeve: "",
         neck: "",
+        fuerza: "",
+        talle: "",
       })),
     });
     setStage("LIST");
@@ -259,6 +271,8 @@ export default function Stock({}) {
       genre: "",
       sleeve: "",
       neck: "",
+      fuerza: "",
+      talle: "",
     });
   };
 
@@ -586,6 +600,12 @@ export default function Stock({}) {
                                   Cuello
                                 </th>
                                 <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">
+                                  Fuerza
+                                </th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">
+                                  Talle
+                                </th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">
                                   Cantidad
                                 </th>
                                 <th className="border border-slate-200 p-2 text-left text-xs text-slate-600 w-20">
@@ -674,6 +694,36 @@ export default function Stock({}) {
                                       {utils.getProductNecks().map((neck) => (
                                         <option key={neck} value={neck}>
                                           {neck}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="border border-slate-200 p-2">
+                                    <select
+                                      {...register(`products.${index}.fuerza`, {
+                                        required: false,
+                                      })}
+                                      className="w-full rounded border border-slate-200 p-2 text-xs text-slate-500"
+                                    >
+                                      <option value="">Seleccionar</option>
+                                      {utils.getProductFuerzas().map((fuerza) => (
+                                        <option key={fuerza} value={fuerza}>
+                                          {fuerza}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="border border-slate-200 p-2">
+                                    <select
+                                      {...register(`products.${index}.talle`, {
+                                        required: false,
+                                      })}
+                                      className="w-full rounded border border-slate-200 p-2 text-xs text-slate-500"
+                                    >
+                                      <option value="">Seleccionar</option>
+                                      {utils.getProductTalles().map((talle) => (
+                                        <option key={talle} value={talle}>
+                                          {talle}
                                         </option>
                                       ))}
                                     </select>

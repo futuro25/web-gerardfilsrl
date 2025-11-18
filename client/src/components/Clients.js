@@ -55,16 +55,34 @@ export default function Clients() {
     }
   }, [createParam]);
 
+  // Sort by fantasy_name (razón social) alphabetically
+  const dataSorted =
+    data && data?.length > 0
+      ? [...data].sort((a, b) => {
+          const nameA = (a.fantasy_name || "").toLowerCase();
+          const nameB = (b.fantasy_name || "").toLowerCase();
+          return nameA.localeCompare(nameB);
+        })
+      : [];
+
+  // Filter by name, last_name, fantasy_name, or document_number (CUIT)
   const dataFiltered =
-    data &&
-    data?.length > 0 &&
-    data?.filter((d) =>
-      search
-        ? d.name.toLowerCase().includes(search.toLowerCase()) ||
-          d.last_name.toLowerCase().includes(search.toLowerCase()) ||
-          d.fantasy_name.toLowerCase().includes(search.toLowerCase())
-        : d
-    );
+    dataSorted &&
+    dataSorted?.length > 0 &&
+    dataSorted?.filter((d) => {
+      if (!search) return true;
+      const searchLower = search.toLowerCase();
+      const name = (d.name || "").toLowerCase();
+      const lastName = (d.last_name || "").toLowerCase();
+      const fantasyName = (d.fantasy_name || "").toLowerCase();
+      const documentNumber = (d.document_number || "").toLowerCase();
+      return (
+        name.includes(searchLower) ||
+        lastName.includes(searchLower) ||
+        fantasyName.includes(searchLower) ||
+        documentNumber.includes(searchLower)
+      );
+    });
   if (error) console.log(error);
 
   const createMutation = useMutation({
@@ -252,17 +270,11 @@ export default function Clients() {
                   <table className="border-collapse table-auto w-full text-sm">
                     <thead>
                       <tr>
-                        <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left w-4">
-                          #
-                        </th>
                         <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                           Cliente
                         </th>
                         <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
-                          Nombre
-                        </th>
-                        <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Apellido
+                          Nombre y Apellido
                         </th>
                         <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
                           Documento
@@ -282,17 +294,11 @@ export default function Clients() {
                               index % 2 === 0 && "bg-gray-50"
                             )}
                           >
-                            <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
-                              {client.id}
-                            </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
                               {client.fantasy_name}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
-                              {client.name}
-                            </td>
-                            <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
-                              {client.last_name}
+                              {[client.name, client.last_name].filter(Boolean).join(" ") || "-"}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
                               {client.document_type +
@@ -329,7 +335,7 @@ export default function Clients() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={6}
+                            colSpan={5}
                             className="border-b border-slate-100  p-4  text-slate-500 "
                           >
                             No data

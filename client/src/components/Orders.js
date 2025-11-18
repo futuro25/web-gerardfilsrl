@@ -1,5 +1,6 @@
 "use client";
 
+import React from 'react';
 import { ExternalLinkIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
@@ -37,6 +38,7 @@ export default function Orders() {
   const [viewOnly, setViewOnly] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [productQuantity, setProductQuantity] = useState(1);
+  const [selectedTalle, setSelectedTalle] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [client, setClient] = useState(null);
   const [expandedRows, setExpandedRows] = useState({});
@@ -155,10 +157,69 @@ export default function Orders() {
     }
   };
 
+  // Create a flat list of all product variants (including fuerza but excluding talle)
+  const getAllProductVariants = () => {
+    if (!availableProducts) return [];
+    
+    const variants = [];
+    availableProducts.forEach((product) => {
+      if (product.stock_variants && product.stock_variants.length > 0) {
+        // Product has variants - create one entry per variant (without talle)
+        product.stock_variants.forEach((variant) => {
+          const variantLabel = [
+            product.code,
+            product.name,
+            variant.color && `Color: ${variant.color}`,
+            variant.genre && `Género: ${variant.genre}`,
+            variant.sleeve && `Manga: ${variant.sleeve}`,
+            variant.neck && `Cuello: ${variant.neck}`,
+            variant.fuerza && `Fuerza: ${variant.fuerza}`,
+          ]
+            .filter(Boolean)
+            .join(" - ");
+
+          variants.push({
+            id: `${product.id}-${variant.color || ""}-${variant.genre || ""}-${variant.sleeve || ""}-${variant.neck || ""}-${variant.fuerza || ""}`,
+            productId: product.id,
+            productName: product.name,
+            productCode: product.code,
+            productPrice: product.price,
+            variant: {
+              color: variant.color || "",
+              genre: variant.genre || "",
+              sleeve: variant.sleeve || "",
+              neck: variant.neck || "",
+              fuerza: variant.fuerza || "",
+              total_quantity: variant.total_quantity || 0,
+            },
+            label: variantLabel,
+          });
+        });
+      } else {
+        // Product without variants
+        variants.push({
+          id: `${product.id}-no-variant`,
+          productId: product.id,
+          productName: product.name,
+          productCode: product.code,
+          productPrice: product.price,
+          variant: null,
+          label: `${product.code} - ${product.name}${product.color ? ` - ${product.color}` : ""}`,
+        });
+      }
+    });
+    return variants;
+  };
+
   const addProduct = () => {
     if (selectedProduct && productQuantity > 0) {
+      // Create variant key based on selected product variant + talle
+      const variantKey = selectedProduct.variant
+        ? `${selectedProduct.id}-${selectedProduct.variant.color || ""}-${selectedProduct.variant.genre || ""}-${selectedProduct.variant.sleeve || ""}-${selectedProduct.variant.neck || ""}-${selectedProduct.variant.fuerza || ""}-${selectedTalle || ""}`
+        : `${selectedProduct.productId}-no-variant-${selectedTalle || ""}`;
+
       const existingIndex = fields?.findIndex(
-        (field) => field.productId === selectedProduct.id
+        (field) => field.variantKey === variantKey
       );
 
       if (existingIndex >= 0) {
@@ -167,17 +228,35 @@ export default function Orders() {
           quantity: fields[existingIndex].quantity + productQuantity,
         });
       } else {
+        const variantInfo = selectedProduct.variant
+          ? [
+              selectedProduct.variant.color,
+              selectedProduct.variant.genre,
+              selectedProduct.variant.sleeve,
+              selectedProduct.variant.neck,
+              selectedProduct.variant.fuerza,
+              selectedTalle,
+            ]
+              .filter(Boolean)
+              .join(" - ")
+          : selectedTalle || "";
+
         append({
-          productId: selectedProduct.id,
-          productName: selectedProduct.name + " - " + selectedProduct.color,
-          productCode: selectedProduct.code,
-          productPrice: selectedProduct.price,
+          productId: selectedProduct.productId || selectedProduct.id,
+          productName: selectedProduct.productName + (variantInfo ? ` - ${variantInfo}` : ""),
+          productCode: selectedProduct.productCode,
+          productPrice: selectedProduct.productPrice,
           quantity: productQuantity,
+          variantKey: variantKey,
+          variant: selectedProduct.variant,
+          fuerza: selectedProduct.variant?.fuerza || "",
+          talle: selectedTalle || "",
         });
       }
 
       setSelectedProduct(null);
       setProductQuantity(1);
+      setSelectedTalle("");
     }
   };
 
@@ -188,6 +267,41 @@ export default function Orders() {
         quantity: newQuantity,
       });
     }
+  };
+
+  const getProductNameWithVariants = (field) => {
+    let productName = field.productName || "";
+    
+    // Si el nombre ya contiene variantes concatenadas, extraer solo el nombre base
+    // Esto es para evitar duplicados cuando se recarga una orden
+    const parts = productName.split(" - ");
+    if (parts.length > 1) {
+      productName = parts[0]; // Tomar solo el nombre base
+    }
+    
+    // Construir array de variantes a concatenar
+    const variantParts = [];
+    
+    // Agregar variantes del objeto variant si existe
+    if (field.variant) {
+      if (field.variant.color) variantParts.push(`Color: ${field.variant.color}`);
+      if (field.variant.genre) variantParts.push(`Género: ${field.variant.genre}`);
+      if (field.variant.sleeve) variantParts.push(`Manga: ${field.variant.sleeve}`);
+      if (field.variant.neck) variantParts.push(`Cuello: ${field.variant.neck}`);
+      if (field.variant.fuerza) variantParts.push(`Fuerza: ${field.variant.fuerza}`);
+    }
+    
+    // Agregar talle si existe
+    if (field.talle) {
+      variantParts.push(`Talle: ${field.talle}`);
+    }
+    
+    // Concatenar nombre con variantes
+    if (variantParts.length > 0) {
+      return `${productName} - ${variantParts.join(" - ")}`;
+    }
+    
+    return productName;
   };
 
   const onSubmit = async (data) => {
@@ -284,12 +398,19 @@ export default function Orders() {
     if (order?.orders_products && availableProducts) {
       formData.products = order.orders_products.map((op) => {
         const product = availableProducts.find((p) => p.id === op.product_id);
+        // Try to extract fuerza and talle from product name or use empty strings
+        // Since we don't store variant info in orders, we'll use empty strings
+        const variantKey = `${op.product_id}--`;
+        
         return {
           productId: op.product_id,
-          productName: product?.name + " - " + product.color || "",
+          productName: product?.name || "",
           productCode: product?.code || "",
           productPrice: op.price || product?.price || 0,
           quantity: op.quantity,
+          variantKey: variantKey,
+          fuerza: "",
+          talle: "",
         };
       });
       console.log("[v0] Loading products for edit:", formData.products);
@@ -327,12 +448,19 @@ export default function Orders() {
     if (order?.orders_products && availableProducts) {
       formData.products = order.orders_products.map((op) => {
         const product = availableProducts.find((p) => p.id === op.product_id);
+        // Try to extract fuerza and talle from product name or use empty strings
+        // Since we don't store variant info in orders, we'll use empty strings
+        const variantKey = `${op.product_id}--`;
+        
         return {
           productId: op.product_id,
-          productName: product?.name + " - " + product?.color || "",
+          productName: product?.name || "",
           productCode: product?.code || "",
           productPrice: op.price || product?.price || 0,
           quantity: op.quantity,
+          variantKey: variantKey,
+          fuerza: "",
+          talle: "",
         };
       });
       console.log("[v0] Loading products for view:", formData.products);
@@ -346,6 +474,9 @@ export default function Orders() {
     setSelectedOrder(null);
     setFormSubmitted(false);
     setClient(null);
+    setSelectedProduct(null);
+    setSelectedTalle("");
+    setProductQuantity(1);
     reset({ products: [] });
     setStage("CREATE");
   };
@@ -356,6 +487,9 @@ export default function Orders() {
     setIsLoadingSubmit(false);
     setFormSubmitted(false);
     setClient(null);
+    setSelectedProduct(null);
+    setSelectedTalle("");
+    setProductQuantity(1);
     reset({ products: [] });
     setStage("LIST");
   };
@@ -744,6 +878,12 @@ export default function Orders() {
                                       <option value="Consignacion">
                                         Consignación
                                       </option>
+                                      <option value="Licitacion">
+                                        Licitacion
+                                      </option>
+                                      <option value="Compra Directa">
+                                        Compra Directa
+                                      </option>
                                     </select>
                                     {errors.order_type && (
                                       <span className="text-red-500 text-sm">
@@ -833,33 +973,50 @@ export default function Orders() {
                                   <div className="flex flex-col md:flex-row gap-4 items-end">
                                     <div className="flex-1">
                                       <label className="text-slate-600 text-sm font-medium mb-2 block">
-                                        Seleccionar Producto
+                                        Seleccionar Producto/Variante
                                       </label>
                                       <select
                                         value={selectedProduct?.id || ""}
                                         onChange={(e) => {
-                                          const product =
-                                            availableProducts.find(
-                                              (p) =>
-                                                p.id ===
-                                                Number.parseInt(e.target.value)
-                                            );
-                                          setSelectedProduct(product || null);
+                                          const allVariants = getAllProductVariants();
+                                          const variant = allVariants.find(
+                                            (v) => v.id === e.target.value
+                                          );
+                                          setSelectedProduct(variant || null);
                                         }}
                                         className="w-full rounded border border-slate-200 p-3 text-slate-700"
                                       >
                                         <option value="">
-                                          Seleccione un producto...
+                                          Seleccione un producto/variante...
                                         </option>
-                                        {availableProducts.map((product) => (
+                                        {getAllProductVariants().map((variant) => (
                                           <option
-                                            key={product.id}
-                                            value={product.id}
+                                            key={variant.id}
+                                            value={variant.id}
                                           >
-                                            {product.code} - {product.name}{" "}
-                                            {product.color
-                                              ? `- ${product.color}`
+                                            {variant.label}
+                                            {variant.variant && variant.variant.total_quantity > 0
+                                              ? ` (Stock: ${variant.variant.total_quantity})`
                                               : ""}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                    <div className="w-full md:w-32">
+                                      <label className="text-slate-600 text-sm font-medium mb-2 block">
+                                        Talle
+                                      </label>
+                                      <select
+                                        value={selectedTalle}
+                                        onChange={(e) =>
+                                          setSelectedTalle(e.target.value)
+                                        }
+                                        className="w-full rounded border border-slate-200 p-3 text-slate-700"
+                                      >
+                                        <option value="">Seleccionar</option>
+                                        {utils.getProductTalles().map((talle) => (
+                                          <option key={talle} value={talle}>
+                                            {talle}
                                           </option>
                                         ))}
                                       </select>
@@ -920,52 +1077,74 @@ export default function Orders() {
                                       </thead>
                                       <tbody>
                                         {fields?.map((field, index) => (
-                                          <tr
-                                            key={field.id}
-                                            className="border-t border-slate-200"
-                                          >
-                                            <td className="p-3 text-slate-700 text-sm ml-2">
-                                              {field.productId}
-                                            </td>
-                                            <td className="p-3 text-slate-700">
-                                              {field.productName}
-                                            </td>
-                                            <td className="p-3 text-center">
-                                              {viewOnly ? (
-                                                <span className="text-slate-700">
-                                                  {field.quantity}
-                                                </span>
-                                              ) : (
-                                                <input
-                                                  type="number"
-                                                  min="1"
-                                                  value={field.quantity}
-                                                  onChange={(e) =>
-                                                    updateProductQuantity(
-                                                      index,
-                                                      Number.parseInt(
-                                                        e.target.value
-                                                      ) || 1
-                                                    )
-                                                  }
-                                                  className="w-20 rounded border border-slate-200 p-2 text-center text-slate-700"
-                                                />
-                                              )}
-                                            </td>
-                                            {!viewOnly && (
-                                              <td className="p-3 text-center">
-                                                <Button
-                                                  type="button"
-                                                  variant="outline"
-                                                  size="sm"
-                                                  onClick={() => remove(index)}
-                                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                >
-                                                  <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                          <React.Fragment key={field.id}>
+                                            <tr className="border-t border-slate-200">
+                                              <td className="p-3 text-slate-700 text-sm ml-2">
+                                                {field.productCode}
                                               </td>
+                                              <td className="p-3 text-slate-700">
+                                                {getProductNameWithVariants(field)}
+                                              </td>
+                                              <td className="p-3 text-center">
+                                                {viewOnly ? (
+                                                  <span className="text-slate-700">
+                                                    {field.quantity}
+                                                  </span>
+                                                ) : (
+                                                  <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={field.quantity}
+                                                    onChange={(e) =>
+                                                      updateProductQuantity(
+                                                        index,
+                                                        Number.parseInt(
+                                                          e.target.value
+                                                        ) || 1
+                                                      )
+                                                    }
+                                                    className="w-20 rounded border border-slate-200 p-2 text-center text-slate-700"
+                                                  />
+                                                )}
+                                              </td>
+                                              {!viewOnly && (
+                                                <td className="p-3 text-center">
+                                                  <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => remove(index)}
+                                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                  >
+                                                    <Trash2 className="h-4 w-4" />
+                                                  </Button>
+                                                </td>
+                                              )}
+                                            </tr>
+                                            {/* Mostrar variantes si existen */}
+                                            {(field.variants && field.variants.length > 0) && (
+                                              <tr>
+                                                <td></td>
+                                                <td colSpan={viewOnly ? 2 : 3} className="pl-8 pr-3 pb-1 pt-0 text-xs text-slate-500">
+                                                  <div className="flex flex-wrap gap-4">
+                                                    {field.variants.map((variant, vIdx) => (
+                                                      <div
+                                                        key={vIdx}
+                                                        className="bg-slate-100 rounded px-2 py-1 mr-2 flex items-center"
+                                                      >
+                                                        {/* Mostrar pares clave:valor de la variante */}
+                                                        {Object.entries(variant).map(([key, value], i) => (
+                                                          <span key={i} className="mr-2">
+                                                            <span className="font-semibold">{key}:</span> {value}
+                                                          </span>
+                                                        ))}
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                </td>
+                                              </tr>
                                             )}
-                                          </tr>
+                                          </React.Fragment>
                                         ))}
                                       </tbody>
                                     </table>
