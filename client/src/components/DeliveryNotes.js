@@ -388,7 +388,7 @@ export default function DeliveryNotes() {
             onClick={redirectNavigation}
           >
             <ArrowLeftIcon className="h-5 w-5 cursor-pointer" />
-            <div>Remitos</div>
+            <div>Egreso de Mercadería</div>
           </div>
           {stage === "LIST" && !viewOnly && (
             <Button

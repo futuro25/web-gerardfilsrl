@@ -288,7 +288,7 @@ export default function Products() {
             onClick={redirectNavigation}
           >
             <ArrowLeftIcon className="h-5 w-5 cursor-pointer" />
-            <div>Productos</div>
+            <div>Stock</div>
           </div>
           {stage === "LIST" && (
             <Button

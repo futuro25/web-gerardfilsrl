@@ -81,12 +81,14 @@ function HomeButton({ item }) {
       <div className="flex flex-col items-center gap-2">
         {isLoading ? (
           <div className="flex items-center justify-center">
-            <MoonLoader size={40} />
+            <MoonLoader size={20} />
           </div>
         ) : (
-          <item.icon className="w-6 h-6 sm:w-10 sm:h-10 text-gray-600" />
+          <div className="flex items-center justify-end w-6 h-6">
+            <item.icon className="w-6 h-6 sm:w-10 sm:h-10 text-gray-600" />
+          </div>
         )}
-        <span className="text-gray-900 text-xs text-center">{item.label}</span>
+        <span className="text-gray-900 text-xs text-center h-[36px] flex items-center justify-end">{item.label}</span>
       </div>
     </div>
   );
