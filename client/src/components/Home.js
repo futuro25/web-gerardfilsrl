@@ -21,15 +21,15 @@ export default function Home() {
 
   let navItems = [
     { label: "Pedidos", icon: BookOpenCheck, path: "/pedidos" },
-    { label: "Remitos", icon: Package, path: "/remitos" },
+    { label: "Egreso de Mercaderia", icon: Package, path: "/remitos" },
     { label: "Facturas", icon: FileText, path: "/entregas" },
-    { label: "Productos", icon: ShirtIcon, path: "/productos" },
+    { label: "Stock", icon: ShirtIcon, path: "/productos" },
     { label: "Proveedores", icon: TruckIcon, path: "/proveedores" },
     { label: "Clientes", icon: UsersIcon, path: "/clientes" },
     { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow" },
     { label: "Cheques", icon: Banknote, path: "/cheques" },
     { label: "Libros", icon: BookOpenCheck, path: "/libros-selector" },
-    { label: "Stock", icon: Layers, path: "/stock" },
+    { label: "Ingreso de Mercaderia", icon: Layers, path: "/stock" },
     { label: "Logout", icon: LogOutIcon, path: "/logout" },
   ];
 
@@ -86,7 +86,7 @@ function HomeButton({ item }) {
         ) : (
           <item.icon className="w-6 h-6 sm:w-10 sm:h-10 text-gray-600" />
         )}
-        <span className="text-gray-900 text-xs">{item.label}</span>
+        <span className="text-gray-900 text-xs text-center">{item.label}</span>
       </div>
     </div>
   );
