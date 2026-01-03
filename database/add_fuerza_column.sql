@@ -8,3 +8,7 @@ ADD COLUMN IF NOT EXISTS fuerza VARCHAR(50);
 -- Agregar comentario para documentación
 COMMENT ON COLUMN stock_entries_products.fuerza IS 'Fuerza del producto en este ingreso (Sastreria Militar, Gendarmeria, Fuerza Aerea, Policia Federal, Intendencia, Policia de Neuquen, Penitenciaria de Neuquen, Privados)';
 
+
+
+
+
