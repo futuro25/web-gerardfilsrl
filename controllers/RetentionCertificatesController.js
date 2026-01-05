@@ -322,7 +322,7 @@ self.createRetentionPayment = async (req, res) => {
         type: "EGRESO",
         category: fullCategory,
         net_amount: netAmount,
-        amount: totalToPay,
+        amount: -totalToPay,
         date: issueDate,
         description: `Pago factura ${invoiceNumber} - ${supplier}`,
         provider: supplier,
@@ -549,8 +549,9 @@ self.updateRetentionPayment = async (req, res) => {
       }
     }
 
-    // Actualizar cashflow si existe
-    if (updatedPayment.cashflow_id) {
+    // Actualizar o crear cashflow
+    let cashflowId = updatedPayment.cashflow_id;
+    if (cashflowId) {
       // Construir categoría completa: categoria - servicio
       const fullCategory = cashflowCategory && cashflowService 
         ? `${cashflowCategory} - ${cashflowService}`
@@ -567,10 +568,129 @@ self.updateRetentionPayment = async (req, res) => {
           category: fullCategory,
           payment_method: paymentMethod || "EFECTIVO",
         })
-        .eq("id", updatedPayment.cashflow_id);
+        .eq("id", cashflowId);
+    } else if (totalToPay > 0) {
+      // Crear cashflow si no existe
+      const fullCategory = cashflowCategory && cashflowService 
+        ? `${cashflowCategory} - ${cashflowService}`
+        : cashflowCategory || "Pago a Proveedor";
+
+      const cashflow = {
+        type: "EGRESO",
+        category: fullCategory,
+        net_amount: netAmount,
+        amount: totalToPay,
+        date: issueDate,
+        description: `Pago factura ${invoiceNumber} - ${supplier}`,
+        provider: supplier,
+        reference: invoiceNumber,
+        payment_method: paymentMethod || "EFECTIVO",
+      };
+
+      const { data: newCashflow, error: cashflowError } = await supabase
+        .from("cashflow")
+        .insert(cashflow)
+        .select()
+        .single();
+
+      if (!cashflowError && newCashflow) {
+        cashflowId = newCashflow.id;
+        await supabase
+          .from("retention_payments")
+          .update({ cashflow_id: cashflowId })
+          .eq("id", payment_id);
+      }
     }
 
-    res.json(updatedPayment);
+    // Buscar supplier_id por nombre del proveedor
+    let supplierId = null;
+    if (supplier) {
+      const { data: supplierData, error: supplierError } = await supabase
+        .from("suppliers")
+        .select("id")
+        .eq("fantasy_name", supplier)
+        .is("deleted_at", null)
+        .single();
+      
+      if (!supplierError && supplierData) {
+        supplierId = supplierData.id;
+      }
+    }
+
+    // Actualizar o crear factura en la tabla invoices
+    let invoiceId = updatedPayment.invoice_id;
+    if (supplierId) {
+      if (invoiceId) {
+        // Actualizar factura existente
+        await supabase
+          .from("invoices")
+          .update({
+            supplier_id: supplierId,
+            amount: netAmount,
+            invoice_number: invoiceNumber,
+            description: `Factura ${invoiceNumber} - ${supplier}`,
+            due_date: dueDate || null,
+            total: totalAmount,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", invoiceId);
+
+        // Actualizar impuestos (eliminar los anteriores y crear nuevos)
+        await supabase
+          .from("taxes")
+          .delete()
+          .eq("invoice_id", invoiceId);
+
+        if (iva > 0) {
+          await supabase
+            .from("taxes")
+            .insert({
+              invoice_id: invoiceId,
+              name: "IVA",
+              amount: iva,
+            });
+        }
+      } else {
+        // Crear nueva factura
+        const invoice = {
+          supplier_id: supplierId,
+          amount: netAmount,
+          invoice_number: invoiceNumber,
+          description: `Factura ${invoiceNumber} - ${supplier}`,
+          due_date: dueDate || null,
+          total: totalAmount,
+        };
+
+        const { data: newInvoice, error: invoiceError } = await supabase
+          .from("invoices")
+          .insert(invoice)
+          .select()
+          .single();
+
+        if (!invoiceError && newInvoice) {
+          invoiceId = newInvoice.id;
+          
+          // Crear impuestos de la factura (IVA)
+          if (iva > 0) {
+            await supabase
+              .from("taxes")
+              .insert({
+                invoice_id: newInvoice.id,
+                name: "IVA",
+                amount: iva,
+              });
+          }
+
+          // Actualizar el pago con el invoice_id
+          await supabase
+            .from("retention_payments")
+            .update({ invoice_id: invoiceId })
+            .eq("id", payment_id);
+        }
+      }
+    }
+
+    res.json({ ...updatedPayment, cashflow_id: cashflowId, invoice_id: invoiceId });
   } catch (e) {
     console.error("Error updating retention payment:", e.message);
     res.json({ error: e.message });
@@ -582,35 +702,55 @@ self.deleteRetentionPayment = async (req, res) => {
     const payment_id = req.params.payment_id;
     const update = { deleted_at: new Date().toISOString() };
 
-    // Obtener el pago primero para verificar cashflow_id
+    // Obtener el pago primero para verificar cashflow_id e invoice_id
     const { data: payment, error: paymentError } = await supabase
       .from("retention_payments")
-      .select("cashflow_id")
+      .select("cashflow_id, invoice_id")
       .eq("id", payment_id)
+      .is("deleted_at", null)
       .single();
 
     if (paymentError) throw paymentError;
 
-    // Soft delete del pago
-    const { error } = await supabase
+    // 1. Soft delete del pago en retention_payments (registro principal)
+    const { error: deletePaymentError } = await supabase
       .from("retention_payments")
       .update(update)
-      .eq("id", payment_id);
+      .eq("id", payment_id)
+      .is("deleted_at", null);
 
-    if (error) throw error;
+    if (deletePaymentError) throw deletePaymentError;
 
-    // Soft delete del certificado asociado
+    // 2. Soft delete del certificado asociado en retention_certificates
     await supabase
       .from("retention_certificates")
       .update(update)
-      .eq("retention_payment_id", payment_id);
+      .eq("retention_payment_id", payment_id)
+      .is("deleted_at", null);
 
-    // Soft delete del cashflow asociado si existe
+    // 3. Soft delete del cashflow asociado si existe
     if (payment && payment.cashflow_id) {
       await supabase
         .from("cashflow")
         .update(update)
-        .eq("id", payment.cashflow_id);
+        .eq("id", payment.cashflow_id)
+        .is("deleted_at", null);
+    }
+
+    // 4. Soft delete de la factura asociada si existe
+    if (payment && payment.invoice_id) {
+      // Soft delete de la factura en invoices
+      await supabase
+        .from("invoices")
+        .update(update)
+        .eq("id", payment.invoice_id)
+        .is("deleted_at", null);
+
+      // Eliminar los impuestos (taxes) asociados a la factura (hard delete)
+      await supabase
+        .from("taxes")
+        .delete()
+        .eq("invoice_id", payment.invoice_id);
     }
 
     res.json({ success: true });
