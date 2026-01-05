@@ -33,11 +33,14 @@ import Stock from "./components/Stock";
 import Orders from "./components/Orders";
 import Web from "./components/Web";
 import Logout from "./components/Logout";
+import RetentionCertificates from "./components/RetentionCertificates";
+import RetentionCalculator from "./components/RetentionCalculator";
 import _, { capitalize } from "lodash";
 import { useState } from "react";
 import { cn } from "./utils/utils";
 import "./App.css";
 import config from "./config";
+
 
 function getMenu() {
   let menu = ["home", "usuarios", "pagos", "facturas", "proveedores", "logout"];
@@ -66,6 +69,7 @@ export default function App() {
           }
         />
         <Route path="login" element={<Login />} />
+        <Route path="retenciones" element={<RetentionCalculator />} />
         <Route path="/login" element={<Login />} />
         <Route path="/invite" element={<Invite inviteId={inviteId} />} />
         <Route path="/logout" element={<Logout />} />
@@ -93,6 +97,7 @@ export default function App() {
           <Route path="cashflowin" element={<CashflowIn />} />
           <Route path="cashflowout" element={<CashflowOut />} />
           <Route path="cheques" element={<Paychecks />} />
+          <Route path="certificados-retencion" element={<RetentionCertificates />} />
           <Route path="home" element={<Home />} />
           <Route path="entregas" element={<Deliveries />} />
           <Route path="remitos" element={<DeliveryNotes />} />

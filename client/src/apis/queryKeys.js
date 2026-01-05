@@ -24,3 +24,6 @@ export const queryUsersEmailValidationKey = (param) => [
 ];
 export const queryOrdersKey = () => ["orders"];
 export const queryStockEntriesKey = () => ["stock-entries"];
+export const queryRetentionPaymentsKey = () => ["retention-payments"];
+export const queryRetentionPaymentByIdKey = (id) => ["retention-payment", id];
+export const queryRetentionCertificateKey = (paymentId) => ["retention-certificate", paymentId];

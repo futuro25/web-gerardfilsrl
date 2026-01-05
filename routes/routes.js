@@ -14,6 +14,7 @@ const PaycheckController = require("../controllers/PaycheckController.js");
 const BooksController = require("../controllers/BooksController.js");
 const OrderController = require("../controllers/OrderController.js");
 const StockController = require("../controllers/StockController.js");
+const RetentionCertificatesController = require("../controllers/RetentionCertificatesController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -75,6 +76,35 @@ router.patch("/payments/:payment_id", (req, res, next) =>
 
 router.delete("/payments/:payment_id", (req, res, next) =>
   PaymentsController.deletePaymentById(req, res, next)
+);
+
+// RETENTION CERTIFICATES
+router.get("/retention-certificates/payments", (req, res, next) =>
+  RetentionCertificatesController.getRetentionPayments(req, res, next)
+);
+
+router.get("/retention-certificates/payments/:payment_id", (req, res, next) =>
+  RetentionCertificatesController.getRetentionPaymentById(req, res, next)
+);
+
+router.post("/retention-certificates/payments", (req, res, next) =>
+  RetentionCertificatesController.createRetentionPayment(req, res, next)
+);
+
+router.patch("/retention-certificates/payments/:payment_id", (req, res, next) =>
+  RetentionCertificatesController.updateRetentionPayment(req, res, next)
+);
+
+router.delete("/retention-certificates/payments/:payment_id", (req, res, next) =>
+  RetentionCertificatesController.deleteRetentionPayment(req, res, next)
+);
+
+router.get("/retention-certificates/:payment_id", (req, res, next) =>
+  RetentionCertificatesController.getRetentionCertificate(req, res, next)
+);
+
+router.get("/retention-certificates/certificate/:certificate_number", (req, res, next) =>
+  RetentionCertificatesController.getRetentionCertificateByNumber(req, res, next)
 );
 
 // SUPPLIERS
