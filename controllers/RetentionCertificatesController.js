@@ -348,8 +348,62 @@ self.createRetentionPayment = async (req, res) => {
       }
     }
 
-    // Crear factura si es necesario (opcional, según requerimientos)
-    // Por ahora, solo creamos el certificado de retención
+    // Buscar supplier_id por nombre del proveedor
+    let supplierId = null;
+    if (supplier) {
+      const { data: supplierData, error: supplierError } = await supabase
+        .from("suppliers")
+        .select("id")
+        .eq("fantasy_name", supplier)
+        .is("deleted_at", null)
+        .single();
+      
+      if (!supplierError && supplierData) {
+        supplierId = supplierData.id;
+      }
+    }
+
+    // Crear factura en la tabla invoices
+    let invoiceId = null;
+    if (supplierId) {
+      const invoice = {
+        supplier_id: supplierId,
+        amount: netAmount,
+        invoice_number: invoiceNumber,
+        description: `Factura ${invoiceNumber} - ${supplier}`,
+        due_date: dueDate || null,
+        total: totalAmount,
+      };
+
+      const { data: newInvoice, error: invoiceError } = await supabase
+        .from("invoices")
+        .insert(invoice)
+        .select()
+        .single();
+
+      if (invoiceError) {
+        console.error("Error creando factura:", invoiceError);
+      } else if (newInvoice) {
+        invoiceId = newInvoice.id;
+        
+        // Crear impuestos de la factura (IVA)
+        if (iva > 0) {
+          await supabase
+            .from("taxes")
+            .insert({
+              invoice_id: newInvoice.id,
+              name: "IVA",
+              amount: iva,
+            });
+        }
+
+        // Actualizar el pago con el invoice_id
+        await supabase
+          .from("retention_payments")
+          .update({ invoice_id: invoiceId })
+          .eq("id", newPayment.id);
+      }
+    }
 
     // Crear certificado de retención
     if (retentionAmount > 0) {
@@ -382,14 +436,16 @@ self.createRetentionPayment = async (req, res) => {
       }
 
       return res.json({
-        payment: { ...newPayment, cashflow_id: cashflowId },
+        payment: { ...newPayment, cashflow_id: cashflowId, invoice_id: invoiceId },
         certificate: newCertificate || null,
+        invoice: invoiceId ? { id: invoiceId } : null,
       });
     }
 
     return res.json({
-      payment: { ...newPayment, cashflow_id: cashflowId },
+      payment: { ...newPayment, cashflow_id: cashflowId, invoice_id: invoiceId },
       certificate: null,
+      invoice: invoiceId ? { id: invoiceId } : null,
     });
   } catch (e) {
     console.log("Retention payment creation error", e.message);

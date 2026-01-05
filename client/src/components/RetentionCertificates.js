@@ -174,30 +174,32 @@ export default function RetentionCertificates() {
     return Math.round(retention * 100) / 100;
   }, []);
 
-  // Definir calculateRetention antes de usarlo en useEffect (igual a RetentionCalculator.js)
-  const calculateRetention = useCallback((categoryCode, amount, profitsCondition) => {
+  // Función de cálculo de retención (igual a RetentionCalculator.js)
+  const calculateRetention = useCallback((categoryCode, inscripto, amount) => {
     if (amount <= 0) {
-      setCalculatedRetention(0);
-      setCalculatedTotalToPay(amount);
-      return;
+      return {
+        retention: 0,
+        netAmount: 0,
+        iva: 0,
+      };
     }
 
     const categoryConfig = RETENTION_TABLE[categoryCode];
     
     if (!categoryConfig) {
-      setCalculatedRetention(0);
-      setCalculatedTotalToPay(amount);
-      return;
+      return {
+        retention: 0,
+        netAmount: 0,
+        iva: 0,
+      };
     }
 
-    // Calcular neto e IVA internamente (igual a RetentionCalculator.js)
+    // Calcular neto e IVA
     const { netAmount, iva } = calculateNetAndIVA(amount);
     const montoNoSujeto = categoryConfig.montoNoSujeto;
     let retention = 0;
 
-    const isInscripto = profitsCondition === "Inscripto" || profitsCondition === "inscripto";
-
-    if (isInscripto) {
+    if (inscripto) {
       if (categoryConfig.usaEscala) {
         retention = calculateScaleRetention(netAmount, montoNoSujeto);
       } else {
@@ -216,10 +218,8 @@ export default function RetentionCertificates() {
     } else {
       // No inscripto
       if (categoryConfig.usaEscala) {
-        // Para categorías con escala, usar calculateScaleRetention directamente
         retention = calculateScaleRetention(netAmount, montoNoSujeto);
       } else {
-        // Para categorías sin escala, aplicar porcentaje sobre el excedente
         const porcentaje = categoryConfig.noInscripto;
         
         if (netAmount > montoNoSujeto) {
@@ -230,12 +230,14 @@ export default function RetentionCertificates() {
       }
     }
 
-    const totalToPay = Math.round((amount - retention) * 100) / 100;
-    setCalculatedRetention(retention);
-    setCalculatedTotalToPay(totalToPay);
+    return {
+      retention,
+      netAmount,
+      iva,
+    };
   }, [calculateNetAndIVA, calculateScaleRetention]);
 
-  // Calcular neto e IVA cuando cambia el importe total (igual a RetentionCalculator.js)
+  // Calcular neto e IVA cuando cambia el importe total
   useEffect(() => {
     if (watchedTotalAmount) {
       const total = parseFloat(watchedTotalAmount) || 0;
@@ -247,9 +249,6 @@ export default function RetentionCertificates() {
       
       setValue("netAmount", calculatedNet);
       setValue("iva", calculatedIva);
-      
-      // La retención se recalculará automáticamente en el otro useEffect
-      // cuando cambien netAmount, selectedCategory o watchedProfitsCondition
     } else {
       setTotalAmount(0);
       setNetAmount(0);
@@ -259,13 +258,16 @@ export default function RetentionCertificates() {
     }
   }, [watchedTotalAmount, setValue, calculateNetAndIVA]);
 
-  // Calcular retención cuando cambian los valores (incluyendo categoría o importe total)
+  // Calcular retención cuando cambian los valores
   useEffect(() => {
     const amount = parseFloat(watchedTotalAmount) || 0;
     if (amount > 0 && selectedCategory && watchedProfitsCondition) {
-      calculateRetention(selectedCategory.code, amount, watchedProfitsCondition);
+      const isInscripto = watchedProfitsCondition === "Inscripto" || watchedProfitsCondition === "inscripto";
+      const result = calculateRetention(selectedCategory.code, isInscripto, amount);
+      
+      setCalculatedRetention(result.retention);
+      setCalculatedTotalToPay(Math.round((amount - result.retention) * 100) / 100);
     } else {
-      // Si falta algún dato, resetear los cálculos
       if (amount <= 0) {
         setCalculatedRetention(0);
         setCalculatedTotalToPay(0);
@@ -1215,7 +1217,7 @@ export default function RetentionCertificates() {
                           <td>
                             <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
                               <label className="text-slate-500 md:w-32 font-bold">
-                                Condición:
+                                Condición frente a Ganancias:
                               </label>
                               {viewOnly ? (
                                 <label className="text-slate-500">
@@ -1245,15 +1247,17 @@ export default function RetentionCertificates() {
                             </div>
                           </td>
                         </tr>
-                        {/* Categoría Cashflow */}
+                        {/* Condición (Categoría del proveedor) */}
                         <tr>
                           <td>
                             <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
                               <label className="text-slate-500 md:w-32 font-bold">
-                                Categoría:
+                                Condición:
                               </label>
                               {viewOnly ? (
-                                <label className="text-slate-500">-</label>
+                                <label className="text-slate-500">
+                                  {selectedPayment?.cashflow_category || "-"}
+                                </label>
                               ) : (
                                 <Controller
                                   name="cashflowCategory"
@@ -1286,7 +1290,7 @@ export default function RetentionCertificates() {
                             </div>
                           </td>
                         </tr>
-                        {/* Servicio Cashflow */}
+                        {/* Servicio */}
                         <tr>
                           <td>
                             <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
@@ -1294,7 +1298,9 @@ export default function RetentionCertificates() {
                                 Servicio:
                               </label>
                               {viewOnly ? (
-                                <label className="text-slate-500">-</label>
+                                <label className="text-slate-500">
+                                  {selectedPayment?.cashflow_service || "-"}
+                                </label>
                               ) : (
                                 <Controller
                                   name="cashflowService"
@@ -1396,15 +1402,29 @@ export default function RetentionCertificates() {
                                 Cancelar
                               </Button>
                               {!viewOnly && (
-                                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                                  {createMutation.isPending || updateMutation.isPending ? (
-                                    <Spinner />
-                                  ) : isCalculated ? (
-                                    selectedPaymentToEdit?.id ? "Actualizar" : "Guardar"
-                                  ) : (
-                                    "Calcular"
+                                <>
+                                  {isCalculated && (
+                                    <Button
+                                      variant="alternative"
+                                      onClick={() => {
+                                        setShowCertificate(false);
+                                        setCalculatedCertificate(null);
+                                        setIsCalculated(false);
+                                      }}
+                                    >
+                                      Resetear
+                                    </Button>
                                   )}
-                                </Button>
+                                  <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                                    {createMutation.isPending || updateMutation.isPending ? (
+                                      <Spinner />
+                                    ) : isCalculated ? (
+                                      selectedPaymentToEdit?.id ? "Actualizar" : "Guardar"
+                                    ) : (
+                                      "Calcular"
+                                    )}
+                                  </Button>
+                                </>
                               )}
                             </div>
                           </td>
@@ -1429,10 +1449,10 @@ export default function RetentionCertificates() {
                     {calculatedCertificate ? "Vista Previa del Certificado" : "Certificado de Retención"}
                   </h2>
                   <div className="flex gap-2">
-                    <Button onClick={handlePrint} size="sm">
+                    {/* <Button onClick={handlePrint} size="sm">
                       <ReceiptIcon className="w-4 h-4 mr-2" />
                       Imprimir
-                    </Button>
+                    </Button> */}
                     {calculatedCertificate ? (
                       <>
                         <Button
@@ -1440,7 +1460,7 @@ export default function RetentionCertificates() {
                           onClick={onRejectCertificate}
                           size="sm"
                         >
-                          Rechazar
+                          Cancelar
                         </Button>
                         <Button
                           onClick={onAcceptCertificate}
