@@ -617,7 +617,9 @@ export default function RetentionCertificates() {
       invoice_number: concatenatedInvoiceNumber,
       issue_date: body.issueDate,
       due_date: null,
+      total_amount: totalAmount,
       net_amount: netAmount,
+      iva: iva,
       profits_condition: body.profitsCondition,
     };
 
@@ -1491,6 +1493,13 @@ export default function RetentionCertificates() {
                     {calculatedCertificate && (
                       <p className="text-sm text-amber-600 mt-2 font-semibold">(Vista Previa - No Guardado)</p>
                     )}
+
+                    <div>
+                      <p className="font-semibold">Gerardfil SRL</p>
+                      <p>CUIT: 30-71878217-8</p>
+                      <p>Pilar 5180, Caseros, Buenos Aires</p>
+                      <p>Tel: 54 11 7856 4391</p>
+                    </div>
                   </div>
 
                   {(() => {
@@ -1558,19 +1567,35 @@ export default function RetentionCertificates() {
                           <p>{certData.profits_condition}</p>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="flex gap-2 justify-between">
                           <div>
-                            <p className="font-semibold">Importe Neto:</p>
-                            <p>${certData.net_amount?.toFixed(2) || "0.00"}</p>
+                            <p className="font-semibold">Total a pagar:</p>
+                            <p className="text-xl font-bold">${
+                              calculatedCertificate
+                                ? calculatedTotalToPay?.toFixed(2) || "0.00"
+                                : selectedPayment?.total_to_pay?.toFixed(2) ||
+                                  ((certData.net_amount * 1.21) - (certData.retention_amount || 0)).toFixed(2) ||
+                                  "0.00"
+                            }</p>
                           </div>
-                          <div>
-                            <p className="font-semibold">Monto Retenido:</p>
-                            <p className="text-xl font-bold">
-                              ${certData.retention_amount?.toFixed(2) || "0.00"}
-                            </p>
+                          
+                          
+                            <div>
+                              <p className="font-semibold">Monto Retenido:</p>
+                              <p className="text-xl font-bold">
+                                ${certData.retention_amount?.toFixed(2) || "0.00"}
+                              </p>
+                            </div>
+                          
+                            <div>
+                              <p className="font-semibold">Total Factura:</p>
+                              <p className="text-xl font-bold">
+                                ${certData.total_amount?.toFixed(2) || selectedPayment?.total_amount?.toFixed(2) || "0.00"}
+                              </p>
+                            </div>
+
                           </div>
                         </div>
-                      </div>
                     );
                   })()}
 
