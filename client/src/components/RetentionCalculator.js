@@ -294,6 +294,16 @@ export default function RetentionCalculator() {
                   </p>
                 </div>
 
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm font-semibold text-blue-900 mb-2">ℹ️ Nota sobre Cálculo Mensual</p>
+                  <p className="text-xs text-blue-800">
+                    Esta calculadora muestra la retención sobre un pago individual. En el sistema de certificados, 
+                    la retención se calcula considerando el <strong>acumulado mensual</strong>: se suman todos los pagos 
+                    del mes para el mismo proveedor, categoría y condición, se calcula la retención total del mes, 
+                    se resta lo ya retenido y se retiene solo la diferencia.
+                  </p>
+                </div>
+
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                     <p className="text-sm text-gray-600 mb-1">Retención a Aplicar</p>

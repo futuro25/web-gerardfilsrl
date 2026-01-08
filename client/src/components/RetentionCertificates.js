@@ -1383,15 +1383,25 @@ export default function RetentionCertificates() {
                               <label className="text-slate-500 md:w-32 font-bold">
                                 Resumen:
                               </label>
-                              <div className="space-y-1 p-4 bg-gray-50 rounded">
-                                <p>
-                                  <strong>Retención calculada:</strong> $
-                                  {calculatedRetention.toFixed(2)}
-                                </p>
-                                <p>
-                                  <strong>Total a pagar:</strong> $
-                                  {calculatedTotalToPay.toFixed(2)}
-                                </p>
+                              <div className="space-y-2 p-4 bg-gray-50 rounded flex-1">
+                                <div className="space-y-1">
+                                  <p>
+                                    <strong>Retención estimada:</strong> $
+                                    {calculatedRetention.toFixed(2)}
+                                  </p>
+                                  <p>
+                                    <strong>Total a pagar estimado:</strong> $
+                                    {calculatedTotalToPay.toFixed(2)}
+                                  </p>
+                                </div>
+                                <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-800">
+                                  <p className="font-semibold mb-1">ℹ️ Cálculo Mensual Acumulado</p>
+                                  <p>
+                                    La retención final se calcula considerando todos los pagos del mes para este proveedor, 
+                                    categoría y condición. Se suma el acumulado mensual, se calcula la retención total del mes, 
+                                    se resta lo ya retenido y se retiene solo la diferencia.
+                                  </p>
+                                </div>
                               </div>
                             </div>
                           </td>

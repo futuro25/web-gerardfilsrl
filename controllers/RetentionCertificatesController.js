@@ -18,29 +18,29 @@ const RETENTION_SCALES = [
 
 // Tabla AFIP de retenciones: Categoría -> { inscripto: %, noInscripto: %, montoNoSujeto: $, usaEscala: boolean }
 const RETENTION_TABLE = {
-  "19": { inscripto: 0.03, noInscripto: 0.10, montoNoSujeto: 0, usaEscala: false },
-  "21": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 5000, usaEscala: false },
-  "25": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 10700, usaEscala: true }, // s/escala para inscriptos
-  "30": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 7120, usaEscala: false },
-  "31": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 7120, usaEscala: false },
-  "32": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 7120, usaEscala: false },
-  "35": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 5000, usaEscala: false },
-  "43": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 5000, usaEscala: false },
-  "51": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 5000, usaEscala: false },
-  "53": { inscripto: 0.005, noInscripto: 0.02, montoNoSujeto: 0, usaEscala: false },
-  "55": { inscripto: 0.005, noInscripto: 0.02, montoNoSujeto: 0, usaEscala: false },
-  "78": { inscripto: 0.02, noInscripto: 0.10, montoNoSujeto: 142400, usaEscala: false },
-  "86": { inscripto: 0.02, noInscripto: 0.10, montoNoSujeto: 142400, usaEscala: false },
-  "94": { inscripto: 0.02, noInscripto: 0.28, montoNoSujeto: 42700, usaEscala: false },
-  "95": { inscripto: 0.0025, noInscripto: 0.28, montoNoSujeto: 42700, usaEscala: false },
-  "110": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 10000, usaEscala: true }, // s/escala para inscriptos
-  "111": { inscripto: 0.005, noInscripto: 0.02, montoNoSujeto: 0, usaEscala: false },
-  "112": { inscripto: 0.03, noInscripto: 0.03, montoNoSujeto: 10700, usaEscala: false },
-  "113": { inscripto: 0.03, noInscripto: 0.03, montoNoSujeto: 10700, usaEscala: false },
-  "116": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 42700, usaEscala: true }, // s/escala para inscriptos (b) - usando $42700 como predeterminado
-  "124": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 10700, usaEscala: true }, // s/escala para inscriptos
-  "779": { inscripto: 0.02, noInscripto: 0.10, montoNoSujeto: 48400, usaEscala: false },
-  "780": { inscripto: 0.02, noInscripto: 0.28, montoNoSujeto: 20000, usaEscala: false },
+  "19": { inscripto: 0.03, noInscripto: 0.10, montoNoSujeto: 0, usaEscala: false, },
+  "21": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 7870, usaEscala: false, },
+  "25": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 16830, usaEscala: true, },
+  "30": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 11200, usaEscala: false, },
+  "31": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 11200, usaEscala: false, },
+  "32": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 11200, usaEscala: false, },
+  "35": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 7870, usaEscala: false, },
+  "43": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 7870, usaEscala: false, },
+  "51": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 7870, usaEscala: false, },
+  "53": { inscripto: 0.005, noInscripto: 0.02, montoNoSujeto: 0, usaEscala: false, },
+  "55": { inscripto: 0.005, noInscripto: 0.02, montoNoSujeto: 0, usaEscala: false, },
+  "78": { inscripto: 0.02, noInscripto: 0.10, montoNoSujeto: 224000, usaEscala: false, },
+  "86": { inscripto: 0.02, noInscripto: 0.10, montoNoSujeto: 224000, usaEscala: false, },
+  "94": { inscripto: 0.02, noInscripto: 0.28, montoNoSujeto: 67170, usaEscala: false, },
+  "95": { inscripto: 0.0025, noInscripto: 0.28, montoNoSujeto: 67170, usaEscala: false, },
+  "110": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 10000, usaEscala: true, },
+  "111": { inscripto: 0.005, noInscripto: 0.02, montoNoSujeto: 0, usaEscala: false, },
+  "112": { inscripto: 0.03, noInscripto: 0.03, montoNoSujeto: 16830, usaEscala: false, },
+  "113": { inscripto: 0.03, noInscripto: 0.03, montoNoSujeto: 16830, usaEscala: false, },
+  "116": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 67170, usaEscala: true, },
+  "124": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 16830, usaEscala: true, },
+  "779": { inscripto: 0.02, noInscripto: 0.10, montoNoSujeto: 76140, usaEscala: false, },
+  "780": { inscripto: 0.02, noInscripto: 0.28, montoNoSujeto: 31460, usaEscala: false, },
 };
 
 /**
@@ -58,6 +58,7 @@ function calculateNetAndIVA(totalAmount) {
 
 /**
  * Calcula la retención según la categoría, el importe neto y la condición frente a ganancias
+ * Esta función calcula la retención sobre un monto individual (sin considerar acumulado mensual)
  */
 function calculateRetention(categoryCode, netAmount, profitsCondition) {
   let retention = 0;
@@ -137,6 +138,92 @@ function calculateRetention(categoryCode, netAmount, profitsCondition) {
   }
 
   return retention;
+}
+
+/**
+ * Obtiene todos los pagos del mes para un proveedor, categoría y condición específicos
+ * Excluye el pago actual si se proporciona un payment_id
+ */
+async function getMonthlyPayments(supplierCuit, categoryCode, profitsCondition, issueDate, excludePaymentId = null) {
+  try {
+    // Extraer año y mes de la fecha
+    const date = new Date(issueDate);
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1; // getMonth() devuelve 0-11
+
+    // Construir rango de fechas para el mes
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = new Date(year, month, 0).toISOString().split('T')[0]; // Último día del mes
+
+    let query = supabase
+      .from("retention_payments")
+      .select("id, net_amount, retention_amount, issue_date")
+      .eq("supplier_cuit", supplierCuit)
+      .eq("category_code", categoryCode)
+      .eq("profits_condition", profitsCondition)
+      .gte("issue_date", startDate)
+      .lte("issue_date", endDate)
+      .is("deleted_at", null);
+
+    // Excluir el pago actual si se está editando
+    if (excludePaymentId) {
+      query = query.neq("id", excludePaymentId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error("Error obteniendo pagos del mes:", error);
+      return [];
+    }
+
+    return data || [];
+  } catch (e) {
+    console.error("Error en getMonthlyPayments:", e);
+    return [];
+  }
+}
+
+/**
+ * Calcula la retención considerando el acumulado mensual
+ * Lógica: Suma todos los pagos del mes, calcula retención total, resta lo ya retenido, retiene solo la diferencia
+ */
+async function calculateMonthlyRetention(
+  categoryCode,
+  netAmount,
+  profitsCondition,
+  supplierCuit,
+  issueDate,
+  excludePaymentId = null
+) {
+  // Obtener todos los pagos del mes (excluyendo el actual si se está editando)
+  const monthlyPayments = await getMonthlyPayments(
+    supplierCuit,
+    categoryCode,
+    profitsCondition,
+    issueDate,
+    excludePaymentId
+  );
+
+  // Sumar todos los net_amount del mes (incluyendo el nuevo pago)
+  const totalNetAmount = monthlyPayments.reduce((sum, p) => sum + (parseFloat(p.net_amount) || 0), 0) + netAmount;
+
+  // Sumar lo ya retenido en el mes (excluyendo el pago actual si se está editando)
+  const totalRetained = monthlyPayments.reduce((sum, p) => sum + (parseFloat(p.retention_amount) || 0), 0);
+
+  // Calcular la retención teórica total del mes sobre el acumulado
+  const totalRetentionForMonth = calculateRetention(categoryCode, totalNetAmount, profitsCondition);
+
+  // Calcular la diferencia: retención total del mes - lo ya retenido
+  const newRetention = Math.max(0, totalRetentionForMonth - totalRetained);
+
+  return {
+    retention: Math.round(newRetention * 100) / 100,
+    totalNetAmount: Math.round(totalNetAmount * 100) / 100,
+    totalRetained: Math.round(totalRetained * 100) / 100,
+    totalRetentionForMonth: Math.round(totalRetentionForMonth * 100) / 100,
+    monthlyPaymentsCount: monthlyPayments.length + 1, // +1 por el nuevo pago
+  };
 }
 
 /**
@@ -277,12 +364,16 @@ self.createRetentionPayment = async (req, res) => {
       paymentMethod,
     } = req.body;
 
-    // Calcular retención
-    const retentionAmount = calculateRetention(
+    // Calcular retención considerando el acumulado mensual
+    const retentionResult = await calculateMonthlyRetention(
       categoryCode,
       netAmount,
-      profitsCondition
+      profitsCondition,
+      supplierCuit,
+      issueDate,
+      null // No excluir ningún pago al crear uno nuevo
     );
+    const retentionAmount = retentionResult.retention;
     const totalToPay = Math.round((totalAmount - retentionAmount) * 100) / 100;
 
     // Crear el pago
@@ -473,12 +564,17 @@ self.updateRetentionPayment = async (req, res) => {
       paymentMethod,
     } = req.body;
 
-    // Recalcular retención
-    const retentionAmount = calculateRetention(
+    // Recalcular retención considerando el acumulado mensual
+    // Excluir el pago actual al recalcular para obtener el acumulado correcto
+    const retentionResult = await calculateMonthlyRetention(
       categoryCode,
       netAmount,
-      profitsCondition
+      profitsCondition,
+      supplierCuit,
+      issueDate,
+      payment_id // Excluir el pago actual al recalcular
     );
+    const retentionAmount = retentionResult.retention;
     const totalToPay = Math.round((totalAmount - retentionAmount) * 100) / 100;
 
     const update = {
