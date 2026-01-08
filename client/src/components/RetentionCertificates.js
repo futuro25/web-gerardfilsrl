@@ -1495,10 +1495,8 @@ export default function RetentionCertificates() {
                     )}
 
                     <div>
-                      <p className="font-semibold">Gerardfil SRL</p>
-                      <p>CUIT: 30-71878217-8</p>
-                      <p>Pilar 5180, Caseros, Buenos Aires</p>
-                      <p>Tel: 54 11 7856 4391</p>
+                      <p className="font-semibold">Gerardfil SRL - CUIT: 30-71878217-8</p>
+                      <p>Pilar 5180, Caseros, Buenos Aires - Tel: 54 11 7856 4391</p>
                     </div>
                   </div>
 
@@ -1506,18 +1504,21 @@ export default function RetentionCertificates() {
                     const certData = calculatedCertificate || certificate;
                     return (
                       <div className="space-y-4 mb-8">
-                        <div>
-                          <p className="font-semibold">Número de Certificado:</p>
-                          <p>{certData.certificate_number}</p>
-                        </div>
 
-                        <div>
-                          <p className="font-semibold">Fecha de Emisión:</p>
-                          <p>
-                            {certData.issued_date
-                              ? new Date(certData.issued_date).toLocaleDateString("es-AR")
-                              : "-"}
-                          </p>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="font-semibold">Número de Certificado:</p>
+                            <p>{certData.certificate_number}</p>
+                          </div>
+
+                          <div>
+                            <p className="font-semibold">Fecha de Emisión:</p>
+                            <p>
+                              {certData.issued_date
+                                ? new Date(certData.issued_date).toLocaleDateString("es-AR")
+                                : "-"}
+                            </p>
+                          </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
@@ -1531,28 +1532,30 @@ export default function RetentionCertificates() {
                           </div>
                         </div>
 
-                        <div>
-                          <p className="font-semibold">Número de Factura:</p>
-                          <p>{utils.formatInvoiceNumber(certData.invoice_number)}</p>
-                        </div>
-
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <p className="font-semibold">Fecha de Factura:</p>
-                            <p>
-                              {certData.issue_date
-                                ? new Date(certData.issue_date).toLocaleDateString("es-AR")
-                                : "-"}
-                            </p>
+                            <p className="font-semibold">Número de Factura:</p>
+                            <p>{utils.formatInvoiceNumber(certData.invoice_number)}</p>
                           </div>
-                          {certData.due_date && (
+
+                          <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <p className="font-semibold">Fecha de Vencimiento:</p>
+                              <p className="font-semibold">Fecha de Factura:</p>
                               <p>
-                                {new Date(certData.due_date).toLocaleDateString("es-AR")}
+                                {certData.issue_date
+                                  ? new Date(certData.issue_date).toLocaleDateString("es-AR")
+                                  : "-"}
                               </p>
                             </div>
-                          )}
+                            {certData.due_date && (
+                              <div>
+                                <p className="font-semibold">Fecha de Vencimiento:</p>
+                                <p>
+                                  {new Date(certData.due_date).toLocaleDateString("es-AR")}
+                                </p>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         <div>
