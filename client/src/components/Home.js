@@ -28,7 +28,7 @@ export default function Home() {
     { label: "Clientes", icon: UsersIcon, path: "/clientes" },
     { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow" },
     { label: "Cheques", icon: Banknote, path: "/cheques" },
-    { label: "Pagos y Retenciones", icon: CircleDollarSign, path: "/certificados-retencion" },
+    { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion" },
     { label: "Libros", icon: BookOpenCheck, path: "/libros-selector" },
     { label: "Ingreso de Mercaderia", icon: Layers, path: "/stock" },
     { label: "Logout", icon: LogOutIcon, path: "/logout" },

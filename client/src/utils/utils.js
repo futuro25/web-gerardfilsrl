@@ -78,11 +78,31 @@ export function formatAmount(numero) {
 }
 
 export function formatInvoiceNumber(numero) {
+  if (!numero || numero.trim() === "") {
+    return "-";
+  }
   const letra = numero.charAt(0);
   const numeros = numero.slice(1);
   const parte1 = numeros.slice(0, 4);
   const parte2 = numeros.slice(4);
   return `${letra} ${parte1}-${parte2}`.toUpperCase();
+}
+
+/**
+ * Formatea una fecha ISO (YYYY-MM-DD) a formato local sin problemas de zona horaria
+ * @param {string} dateString - Fecha en formato ISO (YYYY-MM-DD)
+ * @param {string} locale - Locale para formatear (default: "es-AR")
+ * @returns {string} Fecha formateada o "-" si no hay fecha
+ */
+export function formatDate(dateString, locale = "es-AR") {
+  if (!dateString) return "-";
+  
+  // Parsear la fecha manualmente para evitar problemas de zona horaria
+  const [year, month, day] = dateString.split("T")[0].split("-");
+  if (!year || !month || !day) return "-";
+  
+  const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  return date.toLocaleDateString(locale);
 }
 
 export function getTaxes() {

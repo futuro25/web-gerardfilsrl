@@ -71,8 +71,9 @@ function calculateRetention(categoryCode, netAmount, profitsCondition) {
     return 0;
   }
 
-  // Determinar si es inscripto o no inscripto
-  const isInscripto = profitsCondition === "Inscripto" || profitsCondition === "inscripto";
+  // Determinar si es inscripto o no inscripto (por defecto "Inscripto" si no se especifica)
+  const condition = profitsCondition || "Inscripto";
+  const isInscripto = condition === "Inscripto" || condition === "inscripto";
   
   // Para categorías con escala: regla especial
   if (categoryConfig.usaEscala) {
@@ -368,7 +369,7 @@ self.createRetentionPayment = async (req, res) => {
     const retentionResult = await calculateMonthlyRetention(
       categoryCode,
       netAmount,
-      profitsCondition,
+      profitsCondition || "Inscripto",
       supplierCuit,
       issueDate,
       null // No excluir ningún pago al crear uno nuevo
@@ -378,7 +379,7 @@ self.createRetentionPayment = async (req, res) => {
 
     // Crear el pago
     const payment = {
-      invoice_number: invoiceNumber,
+      invoice_number: invoiceNumber || "",
       category_code: categoryCode,
       category_detail: categoryDetail || "",
       supplier: supplier,
@@ -388,7 +389,7 @@ self.createRetentionPayment = async (req, res) => {
       total_amount: totalAmount,
       net_amount: netAmount,
       iva: iva,
-      profits_condition: profitsCondition,
+      profits_condition: profitsCondition || "Inscripto",
       retention_amount: retentionAmount,
       total_to_pay: totalToPay,
     };
@@ -401,100 +402,7 @@ self.createRetentionPayment = async (req, res) => {
 
     if (paymentError) throw paymentError;
 
-    // Crear egreso en cashflow
-    let cashflowId = null;
-    if (totalToPay > 0) {
-      // Construir categoría completa: categoria - servicio
-      const fullCategory = cashflowCategory && cashflowService 
-        ? `${cashflowCategory} - ${cashflowService}`
-        : cashflowCategory || "Pago a Proveedor";
-
-      const cashflow = {
-        type: "EGRESO",
-        category: fullCategory,
-        net_amount: netAmount,
-        amount: -totalToPay,
-        date: issueDate,
-        description: `Pago factura ${invoiceNumber} - ${supplier}`,
-        provider: supplier,
-        reference: invoiceNumber,
-        payment_method: paymentMethod || "EFECTIVO",
-      };
-
-      const { data: newCashflow, error: cashflowError } = await supabase
-        .from("cashflow")
-        .insert(cashflow)
-        .select()
-        .single();
-
-      if (cashflowError) {
-        console.error("Error creando cashflow:", cashflowError);
-      } else {
-        cashflowId = newCashflow.id;
-        // Actualizar el pago con el cashflow_id
-        await supabase
-          .from("retention_payments")
-          .update({ cashflow_id: cashflowId })
-          .eq("id", newPayment.id);
-      }
-    }
-
-    // Buscar supplier_id por nombre del proveedor
-    let supplierId = null;
-    if (supplier) {
-      const { data: supplierData, error: supplierError } = await supabase
-        .from("suppliers")
-        .select("id")
-        .eq("fantasy_name", supplier)
-        .is("deleted_at", null)
-        .single();
-      
-      if (!supplierError && supplierData) {
-        supplierId = supplierData.id;
-      }
-    }
-
-    // Crear factura en la tabla invoices
-    let invoiceId = null;
-    if (supplierId) {
-      const invoice = {
-        supplier_id: supplierId,
-        amount: netAmount,
-        invoice_number: invoiceNumber,
-        description: `Factura ${invoiceNumber} - ${supplier}`,
-        due_date: dueDate || null,
-        total: totalAmount,
-      };
-
-      const { data: newInvoice, error: invoiceError } = await supabase
-        .from("invoices")
-        .insert(invoice)
-        .select()
-        .single();
-
-      if (invoiceError) {
-        console.error("Error creando factura:", invoiceError);
-      } else if (newInvoice) {
-        invoiceId = newInvoice.id;
-        
-        // Crear impuestos de la factura (IVA)
-        if (iva > 0) {
-          await supabase
-            .from("taxes")
-            .insert({
-              invoice_id: newInvoice.id,
-              name: "IVA",
-              amount: iva,
-            });
-        }
-
-        // Actualizar el pago con el invoice_id
-        await supabase
-          .from("retention_payments")
-          .update({ invoice_id: invoiceId })
-          .eq("id", newPayment.id);
-      }
-    }
+    // No crear cashflow ni invoices - solo guardar datos del certificado
 
     // Crear certificado de retención
     if (retentionAmount > 0) {
@@ -509,11 +417,11 @@ self.createRetentionPayment = async (req, res) => {
         category_detail: categoryDetail || "",
         supplier_name: supplier,
         supplier_cuit: supplierCuit,
-        invoice_number: invoiceNumber,
+        invoice_number: invoiceNumber || "",
         issue_date: issueDate,
         due_date: dueDate || null,
         net_amount: netAmount,
-        profits_condition: profitsCondition,
+        profits_condition: profitsCondition || "Inscripto",
       };
 
       const { data: newCertificate, error: certError } = await supabase
@@ -527,16 +435,14 @@ self.createRetentionPayment = async (req, res) => {
       }
 
       return res.json({
-        payment: { ...newPayment, cashflow_id: cashflowId, invoice_id: invoiceId },
+        payment: { ...newPayment },
         certificate: newCertificate || null,
-        invoice: invoiceId ? { id: invoiceId } : null,
       });
     }
 
     return res.json({
-      payment: { ...newPayment, cashflow_id: cashflowId, invoice_id: invoiceId },
+      payment: { ...newPayment },
       certificate: null,
-      invoice: invoiceId ? { id: invoiceId } : null,
     });
   } catch (e) {
     console.log("Retention payment creation error", e.message);
@@ -569,7 +475,7 @@ self.updateRetentionPayment = async (req, res) => {
     const retentionResult = await calculateMonthlyRetention(
       categoryCode,
       netAmount,
-      profitsCondition,
+      profitsCondition || "Inscripto",
       supplierCuit,
       issueDate,
       payment_id // Excluir el pago actual al recalcular
@@ -578,7 +484,7 @@ self.updateRetentionPayment = async (req, res) => {
     const totalToPay = Math.round((totalAmount - retentionAmount) * 100) / 100;
 
     const update = {
-      invoice_number: invoiceNumber,
+      invoice_number: invoiceNumber || "",
       category_code: categoryCode,
       category_detail: categoryDetail || "",
       supplier: supplier,
@@ -588,7 +494,7 @@ self.updateRetentionPayment = async (req, res) => {
       total_amount: totalAmount,
       net_amount: netAmount,
       iva: iva,
-      profits_condition: profitsCondition,
+      profits_condition: profitsCondition || "Inscripto",
       retention_amount: retentionAmount,
       total_to_pay: totalToPay,
       updated_at: new Date().toISOString(),
@@ -619,11 +525,11 @@ self.updateRetentionPayment = async (req, res) => {
         category_detail: categoryDetail || "",
         supplier_name: supplier,
         supplier_cuit: supplierCuit,
-        invoice_number: invoiceNumber,
+        invoice_number: invoiceNumber || "",
         issue_date: issueDate,
         due_date: dueDate || null,
         net_amount: netAmount,
-        profits_condition: profitsCondition,
+        profits_condition: profitsCondition || "Inscripto",
         updated_at: new Date().toISOString(),
       };
 
@@ -645,148 +551,9 @@ self.updateRetentionPayment = async (req, res) => {
       }
     }
 
-    // Actualizar o crear cashflow
-    let cashflowId = updatedPayment.cashflow_id;
-    if (cashflowId) {
-      // Construir categoría completa: categoria - servicio
-      const fullCategory = cashflowCategory && cashflowService 
-        ? `${cashflowCategory} - ${cashflowService}`
-        : cashflowCategory || "Pago a Proveedor";
+    // No actualizar cashflow ni invoices - solo guardar datos del certificado
 
-      await supabase
-        .from("cashflow")
-        .update({
-          amount: totalToPay,
-          net_amount: netAmount,
-          date: issueDate,
-          description: `Pago factura ${invoiceNumber} - ${supplier}`,
-          reference: invoiceNumber,
-          category: fullCategory,
-          payment_method: paymentMethod || "EFECTIVO",
-        })
-        .eq("id", cashflowId);
-    } else if (totalToPay > 0) {
-      // Crear cashflow si no existe
-      const fullCategory = cashflowCategory && cashflowService 
-        ? `${cashflowCategory} - ${cashflowService}`
-        : cashflowCategory || "Pago a Proveedor";
-
-      const cashflow = {
-        type: "EGRESO",
-        category: fullCategory,
-        net_amount: netAmount,
-        amount: totalToPay,
-        date: issueDate,
-        description: `Pago factura ${invoiceNumber} - ${supplier}`,
-        provider: supplier,
-        reference: invoiceNumber,
-        payment_method: paymentMethod || "EFECTIVO",
-      };
-
-      const { data: newCashflow, error: cashflowError } = await supabase
-        .from("cashflow")
-        .insert(cashflow)
-        .select()
-        .single();
-
-      if (!cashflowError && newCashflow) {
-        cashflowId = newCashflow.id;
-        await supabase
-          .from("retention_payments")
-          .update({ cashflow_id: cashflowId })
-          .eq("id", payment_id);
-      }
-    }
-
-    // Buscar supplier_id por nombre del proveedor
-    let supplierId = null;
-    if (supplier) {
-      const { data: supplierData, error: supplierError } = await supabase
-        .from("suppliers")
-        .select("id")
-        .eq("fantasy_name", supplier)
-        .is("deleted_at", null)
-        .single();
-      
-      if (!supplierError && supplierData) {
-        supplierId = supplierData.id;
-      }
-    }
-
-    // Actualizar o crear factura en la tabla invoices
-    let invoiceId = updatedPayment.invoice_id;
-    if (supplierId) {
-      if (invoiceId) {
-        // Actualizar factura existente
-        await supabase
-          .from("invoices")
-          .update({
-            supplier_id: supplierId,
-            amount: netAmount,
-            invoice_number: invoiceNumber,
-            description: `Factura ${invoiceNumber} - ${supplier}`,
-            due_date: dueDate || null,
-            total: totalAmount,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", invoiceId);
-
-        // Actualizar impuestos (eliminar los anteriores y crear nuevos)
-        await supabase
-          .from("taxes")
-          .delete()
-          .eq("invoice_id", invoiceId);
-
-        if (iva > 0) {
-          await supabase
-            .from("taxes")
-            .insert({
-              invoice_id: invoiceId,
-              name: "IVA",
-              amount: iva,
-            });
-        }
-      } else {
-        // Crear nueva factura
-        const invoice = {
-          supplier_id: supplierId,
-          amount: netAmount,
-          invoice_number: invoiceNumber,
-          description: `Factura ${invoiceNumber} - ${supplier}`,
-          due_date: dueDate || null,
-          total: totalAmount,
-        };
-
-        const { data: newInvoice, error: invoiceError } = await supabase
-          .from("invoices")
-          .insert(invoice)
-          .select()
-          .single();
-
-        if (!invoiceError && newInvoice) {
-          invoiceId = newInvoice.id;
-          
-          // Crear impuestos de la factura (IVA)
-          if (iva > 0) {
-            await supabase
-              .from("taxes")
-              .insert({
-                invoice_id: newInvoice.id,
-                name: "IVA",
-                amount: iva,
-              });
-          }
-
-          // Actualizar el pago con el invoice_id
-          await supabase
-            .from("retention_payments")
-            .update({ invoice_id: invoiceId })
-            .eq("id", payment_id);
-        }
-      }
-    }
-
-    res.json({ ...updatedPayment, cashflow_id: cashflowId, invoice_id: invoiceId });
+    res.json({ ...updatedPayment });
   } catch (e) {
     console.error("Error updating retention payment:", e.message);
     res.json({ error: e.message });

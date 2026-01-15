@@ -278,34 +278,11 @@ export default function RetentionCertificates() {
     }
   }, [watchedTotalAmount, selectedCategory, watchedProfitsCondition, calculateRetention]);
 
-  // Sincronizar valores de cashflow cuando se edita un pago
-  useEffect(() => {
-    if (selectedPaymentToEdit && stage === "FORM") {
-      // Asegurar que los valores se establezcan correctamente después del reset
-      const payment = selectedPaymentToEdit;
-      if (payment.cashflow_category) {
-        setValue("cashflowCategory", payment.cashflow_category);
-        setCashflowCategory(payment.cashflow_category);
-      }
-      if (payment.cashflow_service) {
-        setValue("cashflowService", payment.cashflow_service);
-        setCashflowService(payment.cashflow_service);
-      }
-      if (payment.cashflow_payment_method) {
-        setValue("paymentMethod", payment.cashflow_payment_method);
-        setPaymentMethod(payment.cashflow_payment_method);
-      }
-    }
-  }, [selectedPaymentToEdit, stage, setValue]);
-
   // Establecer valores por defecto cuando se crea un nuevo pago
   useEffect(() => {
     if (stage === "CREATE" && !selectedPaymentToEdit) {
       // Establecer valores por defecto para nuevos pagos
-      const defaultPaymentMethod = utils.getPaymentMethods()[0] || "EFECTIVO";
       setValue("profitsCondition", "Inscripto");
-      setValue("paymentMethod", defaultPaymentMethod);
-      setPaymentMethod(defaultPaymentMethod);
     }
   }, [stage, selectedPaymentToEdit, setValue]);
 
@@ -386,28 +363,6 @@ export default function RetentionCertificates() {
     setValue("netAmount", payment?.net_amount || 0);
     setValue("iva", payment?.iva || 0);
     setValue("profitsCondition", payment?.profits_condition || "Inscripto");
-    
-    // Obtener campos de cashflow del payment
-    setCashflowCategory(payment?.cashflow_category || "");
-    setCashflowService(payment?.cashflow_service || "");
-    setPaymentMethod(payment?.cashflow_payment_method || utils.getPaymentMethods()[0] || "EFECTIVO");
-    
-    // Establecer valores en el formulario
-    setValue("cashflowCategory", payment?.cashflow_category || "");
-    setValue("cashflowService", payment?.cashflow_service || "");
-    setValue("paymentMethod", payment?.cashflow_payment_method || utils.getPaymentMethods()[0] || "EFECTIVO");
-    
-    // Parsear número de factura
-    if (payment?.invoice_number) {
-      const { letter, first4, last8 } = splitInvoiceNumber(payment.invoice_number);
-      setInvoiceLetter(letter || "A");
-      setInvoiceFirst4(first4 || "");
-      setInvoiceLast8(last8 || "");
-    } else {
-      setInvoiceLetter("A");
-      setInvoiceFirst4("");
-      setInvoiceLast8("");
-    }
     
     // Buscar y establecer categoría
     if (payment?.category_code) {
@@ -510,19 +465,10 @@ export default function RetentionCertificates() {
     setCalculatedRetention(0);
     setCalculatedTotalToPay(0);
     setIsCalculated(false);
-    setInvoiceLetter("A");
-    setInvoiceFirst4("");
-    setInvoiceLast8("");
-    setFormSubmitted(false);
-    setCashflowCategory("");
-    setCashflowService("");
-    setPaymentMethod(utils.getPaymentMethods()[0] || "EFECTIVO");
     // Establecer valores por defecto antes de reset
     setValue("profitsCondition", "Inscripto");
-    setValue("paymentMethod", utils.getPaymentMethods()[0] || "EFECTIVO");
     reset({
       profitsCondition: "Inscripto",
-      paymentMethod: utils.getPaymentMethods()[0] || "EFECTIVO",
     });
   };
 
@@ -550,25 +496,6 @@ export default function RetentionCertificates() {
       return;
     }
 
-    // Validar formato de factura
-    if (!invoiceLetter || !invoiceFirst4 || !invoiceLast8) {
-      alert("Debe completar todos los campos del número de factura");
-      setFormSubmitted(true);
-      return;
-    }
-
-    if (invoiceFirst4.length !== 4) {
-      alert("El punto de venta debe tener 4 dígitos");
-      setFormSubmitted(true);
-      return;
-    }
-
-    if (invoiceLast8.length !== 8) {
-      alert("El número de factura debe tener 8 dígitos");
-      setFormSubmitted(true);
-      return;
-    }
-
     if (!body.issueDate) {
       alert("Debe ingresar la fecha de emisión");
       return;
@@ -576,21 +503,6 @@ export default function RetentionCertificates() {
 
     if (!totalAmount || totalAmount <= 0) {
       alert("Debe ingresar un importe total válido");
-      return;
-    }
-
-    if (!cashflowCategory) {
-      alert("Debe seleccionar una categoría para el cashflow");
-      return;
-    }
-
-    if (!cashflowService) {
-      alert("Debe seleccionar un servicio para el cashflow");
-      return;
-    }
-
-    if (!paymentMethod) {
-      alert("Debe seleccionar una forma de pago");
       return;
     }
 
@@ -603,8 +515,6 @@ export default function RetentionCertificates() {
     const minute = String(now.getMinutes()).padStart(2, "0");
     const tempCertificateNumber = `CR-${year}${month}${day}-${hour}${minute}-PREVIEW`;
 
-    const concatenatedInvoiceNumber = concatenateInvoiceNumber();
-
     // Crear certificado calculado
     const calculatedCert = {
       certificate_number: tempCertificateNumber,
@@ -614,13 +524,13 @@ export default function RetentionCertificates() {
       category_detail: selectedCategory.description,
       supplier_name: selectedSupplier.name,
       supplier_cuit: body.supplierCuit,
-      invoice_number: concatenatedInvoiceNumber,
+      invoice_number: "",
       issue_date: body.issueDate,
       due_date: null,
       total_amount: totalAmount,
       net_amount: netAmount,
       iva: iva,
-      profits_condition: body.profitsCondition,
+      profits_condition: body.profitsCondition || "Inscripto",
     };
 
     setCalculatedCertificate(calculatedCert);
@@ -629,10 +539,8 @@ export default function RetentionCertificates() {
   };
 
   const onSave = async (body) => {
-    const concatenatedInvoiceNumber = concatenateInvoiceNumber();
-    
     const paymentData = {
-      invoiceNumber: concatenatedInvoiceNumber,
+      invoiceNumber: "",
       categoryCode: selectedCategory.code,
       categoryDetail: selectedCategory.description,
       supplier: selectedSupplier.name,
@@ -642,10 +550,10 @@ export default function RetentionCertificates() {
       totalAmount: totalAmount,
       netAmount: netAmount,
       iva: iva,
-      profitsCondition: body.profitsCondition,
-      cashflowCategory: cashflowCategory,
-      cashflowService: cashflowService,
-      paymentMethod: paymentMethod,
+      profitsCondition: body.profitsCondition || "Inscripto",
+      cashflowCategory: "",
+      cashflowService: "",
+      paymentMethod: "",
     };
 
     if (selectedPaymentToEdit?.id) {
@@ -720,10 +628,8 @@ export default function RetentionCertificates() {
               className="ml-auto"
               size={"sm"}
               onClick={() => {
-                const defaultPaymentMethod = utils.getPaymentMethods()[0] || "EFECTIVO";
                 reset({
                   profitsCondition: "Inscripto",
-                  paymentMethod: defaultPaymentMethod,
                 });
                 setStage("CREATE");
                 setSelectedSupplier(null);
@@ -735,15 +641,7 @@ export default function RetentionCertificates() {
                 setCalculatedTotalToPay(0);
                 setIsCalculated(false);
                 setCalculatedCertificate(null);
-                setInvoiceLetter("A");
-                setInvoiceFirst4("");
-                setInvoiceLast8("");
-                setFormSubmitted(false);
-                setCashflowCategory("");
-                setCashflowService("");
-                setPaymentMethod(defaultPaymentMethod);
                 setValue("profitsCondition", "Inscripto");
-                setValue("paymentMethod", defaultPaymentMethod);
               }}
             >
               Crear
@@ -845,7 +743,7 @@ export default function RetentionCertificates() {
                             )}
                           >
                             <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
-                              {utils.formatInvoiceNumber(pago.invoice_number)}
+                              {pago.invoice_number ? utils.formatInvoiceNumber(pago.invoice_number) : "-"}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
                               {pago.category_code}
@@ -860,7 +758,7 @@ export default function RetentionCertificates() {
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
                               {pago.issue_date
-                                ? new Date(pago.issue_date).toLocaleDateString()
+                                ? utils.formatDate(pago.issue_date)
                                 : "-"}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
@@ -1002,76 +900,6 @@ export default function RetentionCertificates() {
                             </div>
                           </td>
                         </tr>
-                        {/* Número de Factura */}
-                        <tr>
-                          <td>
-                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
-                              <label className="text-slate-500 md:w-32 font-bold">
-                                Factura Nro:
-                              </label>
-                              {viewOnly ? (
-                                <label className="text-slate-500">
-                                  {selectedPayment?.invoice_number
-                                    ? utils.formatInvoiceNumber(selectedPayment.invoice_number)
-                                    : "-"}
-                                </label>
-                              ) : (
-                                <div className="flex flex-col gap-2">
-                                  <div className="flex gap-2 items-center">
-                                    <select
-                                      value={invoiceLetter}
-                                      onChange={(e) => setInvoiceLetter(e.target.value)}
-                                      className="rounded border border-slate-200 p-4 text-slate-500 w-16 text-center"
-                                    >
-                                      <option value="A">A</option>
-                                      <option value="B">B</option>
-                                      <option value="C">C</option>
-                                    </select>
-                                    <span className="text-slate-400">-</span>
-                                    <input
-                                      type="text"
-                                      value={invoiceFirst4}
-                                      onChange={(e) => {
-                                        const value = e.target.value.replace(/\D/g, "").slice(0, 4);
-                                        setInvoiceFirst4(value);
-                                      }}
-                                      placeholder="0001"
-                                      maxLength={4}
-                                      className="rounded border border-slate-200 p-4 text-slate-500 w-20 text-center"
-                                    />
-                                    <span className="text-slate-400">-</span>
-                                    <input
-                                      type="text"
-                                      value={invoiceLast8}
-                                      onChange={(e) => {
-                                        const value = e.target.value.replace(/\D/g, "").slice(0, 8);
-                                        setInvoiceLast8(value);
-                                      }}
-                                      placeholder="00000001"
-                                      maxLength={8}
-                                      className="rounded border border-slate-200 p-4 text-slate-500 w-28 text-center"
-                                    />
-                                  </div>
-                                  {formSubmitted && (!invoiceLetter || !invoiceFirst4 || !invoiceLast8) && (
-                                    <span className="text-red-500 text-sm">
-                                      * Todos los campos son obligatorios
-                                    </span>
-                                  )}
-                                  {formSubmitted && invoiceFirst4.length !== 4 && (
-                                    <span className="text-red-500 text-sm">
-                                      * El punto de venta debe tener 4 dígitos
-                                    </span>
-                                  )}
-                                  {formSubmitted && invoiceLast8.length !== 8 && (
-                                    <span className="text-red-500 text-sm">
-                                      * El número de factura debe tener 8 dígitos
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
                         {/* Categoría */}
                         <tr>
                           <td>
@@ -1119,7 +947,7 @@ export default function RetentionCertificates() {
                               {viewOnly ? (
                                 <label className="text-slate-500">
                                   {selectedPayment?.issue_date
-                                    ? new Date(selectedPayment.issue_date).toLocaleDateString()
+                                    ? utils.formatDate(selectedPayment.issue_date)
                                     : "-"}
                                 </label>
                               ) : (
@@ -1229,7 +1057,6 @@ export default function RetentionCertificates() {
                                 <Controller
                                   name="profitsCondition"
                                   control={control}
-                                  rules={{ required: true }}
                                   defaultValue={selectedPayment?.profits_condition || "Inscripto"}
                                   render={({ field }) => (
                                     <select
@@ -1242,136 +1069,6 @@ export default function RetentionCertificates() {
                                     </select>
                                   )}
                                 />
-                              )}
-                              {errors.profitsCondition && (
-                                <span className="px-2 text-red-500">* Obligatorio</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {/* Condición (Categoría del proveedor) */}
-                        <tr>
-                          <td>
-                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
-                              <label className="text-slate-500 md:w-32 font-bold">
-                                Condición:
-                              </label>
-                              {viewOnly ? (
-                                <label className="text-slate-500">
-                                  {selectedPayment?.cashflow_category || "-"}
-                                </label>
-                              ) : (
-                                <Controller
-                                  name="cashflowCategory"
-                                  control={control}
-                                  rules={{ required: !viewOnly }}
-                                  render={({ field }) => (
-                                    <select
-                                      {...field}
-                                      value={cashflowCategory || ""}
-                                      onChange={(e) => {
-                                        const value = e.target.value;
-                                        setCashflowCategory(value);
-                                        field.onChange(value);
-                                      }}
-                                      className="rounded border border-slate-200 p-4 text-slate-500 md:w-64"
-                                    >
-                                      <option value="">SELECCIONAR</option>
-                                      {utils.getCashflowOutCategories().map((cat) => (
-                                        <option key={cat} value={cat}>
-                                          {cat}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  )}
-                                />
-                              )}
-                              {errors.cashflowCategory && (
-                                <span className="px-2 text-red-500">* Obligatorio</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {/* Servicio */}
-                        <tr>
-                          <td>
-                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
-                              <label className="text-slate-500 md:w-32 font-bold">
-                                Servicio:
-                              </label>
-                              {viewOnly ? (
-                                <label className="text-slate-500">
-                                  {selectedPayment?.cashflow_service || "-"}
-                                </label>
-                              ) : (
-                                <Controller
-                                  name="cashflowService"
-                                  control={control}
-                                  rules={{ required: !viewOnly }}
-                                  render={({ field }) => (
-                                    <select
-                                      {...field}
-                                      value={cashflowService || ""}
-                                      onChange={(e) => {
-                                        const value = e.target.value;
-                                        setCashflowService(value);
-                                        field.onChange(value);
-                                      }}
-                                      className="rounded border border-slate-200 p-4 text-slate-500 md:w-64"
-                                    >
-                                      <option value="">SELECCIONAR</option>
-                                      {utils.getExpensesCategories().map((service) => (
-                                        <option key={service} value={service}>
-                                          {service}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  )}
-                                />
-                              )}
-                              {errors.cashflowService && (
-                                <span className="px-2 text-red-500">* Obligatorio</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {/* Forma de Pago */}
-                        <tr>
-                          <td>
-                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
-                              <label className="text-slate-500 md:w-32 font-bold">
-                                Forma de Pago:
-                              </label>
-                              {viewOnly ? (
-                                <label className="text-slate-500">-</label>
-                              ) : (
-                                <Controller
-                                  name="paymentMethod"
-                                  control={control}
-                                  rules={{ required: !viewOnly }}
-                                  defaultValue={utils.getPaymentMethods()[0] || "EFECTIVO"}
-                                  render={({ field }) => (
-                                    <select
-                                      {...field}
-                                      value={field.value || paymentMethod || utils.getPaymentMethods()[0] || "EFECTIVO"}
-                                      onChange={(e) => {
-                                        const value = e.target.value;
-                                        setPaymentMethod(value);
-                                        field.onChange(value);
-                                      }}
-                                      className="rounded border border-slate-200 p-4 text-slate-500 md:w-64"
-                                    >
-                                      {utils.getPaymentMethods().map((method) => (
-                                        <option key={method} value={method}>
-                                          {method}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  )}
-                                />
-                              )}
-                              {errors.paymentMethod && (
-                                <span className="px-2 text-red-500">* Obligatorio</span>
                               )}
                             </div>
                           </td>
@@ -1524,9 +1221,7 @@ export default function RetentionCertificates() {
                           <div>
                             <p className="font-semibold">Fecha de Emisión:</p>
                             <p>
-                              {certData.issued_date
-                                ? new Date(certData.issued_date).toLocaleDateString("es-AR")
-                                : "-"}
+                              {utils.formatDate(certData.issued_date)}
                             </p>
                           </div>
                         </div>
@@ -1542,31 +1237,36 @@ export default function RetentionCertificates() {
                           </div>
                         </div>
 
+                        {
+                          /*
+
+                         
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <p className="font-semibold">Número de Factura:</p>
-                            <p>{utils.formatInvoiceNumber(certData.invoice_number)}</p>
+                            <p>{certData.invoice_number ? utils.formatInvoiceNumber(certData.invoice_number) : "-"}</p>
                           </div>
 
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <p className="font-semibold">Fecha de Factura:</p>
                               <p>
-                                {certData.issue_date
-                                  ? new Date(certData.issue_date).toLocaleDateString("es-AR")
-                                  : "-"}
+                                {utils.formatDate(certData.issue_date)}
                               </p>
                             </div>
                             {certData.due_date && (
                               <div>
                                 <p className="font-semibold">Fecha de Vencimiento:</p>
                                 <p>
-                                  {new Date(certData.due_date).toLocaleDateString("es-AR")}
+                                  {utils.formatDate(certData.due_date)}
                                 </p>
                               </div>
                             )}
                           </div>
                         </div>
+
+                          */
+                        }
 
                         <div>
                           <p className="font-semibold">Categoría (Régimen 830):</p>
