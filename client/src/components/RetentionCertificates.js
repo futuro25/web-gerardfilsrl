@@ -19,6 +19,7 @@ import {
 } from "../apis/api.retentioncertificates";
 import { useSuppliersQuery } from "../apis/api.suppliers";
 import { Download, FileText } from "lucide-react";
+import { jsPDF } from "jspdf";
 
 // Categorías del Régimen 830 según RG 4525 Anexo 1
 const REGIMEN_830_CATEGORIES = [
@@ -438,6 +439,145 @@ export default function RetentionCertificates() {
     }
   };
 
+  const downloadCertificatePDF = async (payment_id) => {
+    try {
+      // Obtener el pago y el certificado
+      const payment = payments.find((p) => p.id === payment_id);
+      if (!payment) {
+        alert("No se encontró el pago");
+        return;
+      }
+
+      const cert = await useRetentionCertificateQuery(payment_id);
+      if (!cert || cert.error) {
+        alert("No se encontró certificado para este pago");
+        return;
+      }
+
+      // Crear el PDF
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 20;
+      let y = 20;
+
+      // Título principal
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.text("CERTIFICADO DE RETENCIÓN", pageWidth / 2, y, { align: "center" });
+      y += 8;
+
+      // Subtítulo
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "normal");
+      doc.text("Régimen de Retención de Ganancias", pageWidth / 2, y, { align: "center" });
+      y += 12;
+
+      // Datos del agente de retención
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("Gerardfil SRL - CUIT: 30-71878217-8", pageWidth / 2, y, { align: "center" });
+      y += 6;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text("Pilar 5180, Caseros, Buenos Aires - Tel: 54 11 7856 4391", pageWidth / 2, y, { align: "center" });
+      y += 15;
+
+      // Línea separadora
+      doc.setLineWidth(0.5);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 10;
+
+      // Datos del certificado
+      doc.setFontSize(10);
+      
+      // Número de certificado y fecha
+      doc.setFont("helvetica", "bold");
+      doc.text("Número de Certificado:", margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(cert.certificate_number || "-", margin + 50, y);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("Fecha de Emisión:", pageWidth / 2, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(utils.formatDate(cert.issued_date) || "-", pageWidth / 2 + 40, y);
+      y += 10;
+
+      // Razón social y CUIT
+      doc.setFont("helvetica", "bold");
+      doc.text("Razón Social:", margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(cert.supplier_name || "-", margin + 30, y);
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("CUIT:", pageWidth / 2, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(cert.supplier_cuit || "-", pageWidth / 2 + 15, y);
+      y += 15;
+
+      // Categoría
+      doc.setFont("helvetica", "bold");
+      doc.text("Categoría (Régimen 830):", margin, y);
+      y += 6;
+      doc.setFont("helvetica", "normal");
+      const categoryDesc = REGIMEN_830_CATEGORIES.find(cat => cat.code === cert.category_code)?.description || cert.category_detail || "";
+      const categoryText = `${cert.category_code} - ${categoryDesc}`;
+      const splitCategory = doc.splitTextToSize(categoryText, pageWidth - (margin * 2));
+      doc.text(splitCategory, margin, y);
+      y += (splitCategory.length * 5) + 5;
+
+      // Condición frente a Ganancias
+      doc.setFont("helvetica", "bold");
+      doc.text("Condición frente a Ganancias:", margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(cert.profits_condition || "Inscripto", margin + 60, y);
+      y += 15;
+
+      // Línea separadora
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 10;
+
+      // Montos
+      doc.setFontSize(11);
+      const totalToPay = payment.total_to_pay || ((cert.net_amount * 1.21) - (cert.retention_amount || 0));
+      const totalFactura = payment.total_amount || (cert.net_amount * 1.21);
+
+      // Tabla de montos
+      const colWidth = (pageWidth - margin * 2) / 3;
+      
+      doc.setFont("helvetica", "bold");
+      doc.text("Total a Pagar", margin, y);
+      doc.text("Monto Retenido", margin + colWidth, y);
+      doc.text("Total Factura", margin + colWidth * 2, y);
+      y += 8;
+      
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      doc.text(`$${totalToPay?.toFixed(2) || "0.00"}`, margin, y);
+      doc.text(`$${cert.retention_amount?.toFixed(2) || "0.00"}`, margin + colWidth, y);
+      doc.text(`$${totalFactura?.toFixed(2) || "0.00"}`, margin + colWidth * 2, y);
+      y += 20;
+
+      // Línea separadora
+      doc.setLineWidth(0.5);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 15;
+
+      // Pie de página
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "italic");
+      const footerText = "Este certificado ha sido generado electrónicamente y tiene validez legal conforme a la normativa vigente.";
+      const splitFooter = doc.splitTextToSize(footerText, pageWidth - (margin * 2));
+      doc.text(splitFooter, pageWidth / 2, y, { align: "center" });
+
+      // Guardar el PDF
+      const fileName = `Certificado_Retencion_${cert.certificate_number || payment_id}.pdf`;
+      doc.save(fileName);
+    } catch (e) {
+      console.error("Error generando PDF:", e);
+      alert("Error al generar el PDF del certificado");
+    }
+  };
+
   const removePayment = async (payment_id) => {
     if (window.confirm("¿Seguro desea eliminar este pago?")) {
       try {
@@ -784,6 +924,13 @@ export default function RetentionCertificates() {
                                   onClick={() => onViewCertificate(pago.id)}
                                 >
                                   <FileText className="w-4 h-4" />
+                                </button>
+                                <button
+                                  className="flex items-center justify-center w-8 h-8 text-indigo-600 hover:text-indigo-800"
+                                  title="Descargar PDF"
+                                  onClick={() => downloadCertificatePDF(pago.id)}
+                                >
+                                  <Download className="w-4 h-4" />
                                 </button>
                                 <button
                                   className="flex items-center justify-center w-8 h-8"
@@ -1158,10 +1305,6 @@ export default function RetentionCertificates() {
                     {calculatedCertificate ? "Vista Previa del Certificado" : "Certificado de Retención"}
                   </h2>
                   <div className="flex gap-2">
-                    {/* <Button onClick={handlePrint} size="sm">
-                      <ReceiptIcon className="w-4 h-4 mr-2" />
-                      Imprimir
-                    </Button> */}
                     {calculatedCertificate ? (
                       <>
                         <Button
@@ -1179,16 +1322,30 @@ export default function RetentionCertificates() {
                         </Button>
                       </>
                     ) : (
-                      <Button
-                        variant="destructive"
-                        onClick={() => {
-                          setShowCertificate(false);
-                          setCertificate(null);
-                        }}
-                        size="sm"
-                      >
-                        Cerrar
-                      </Button>
+                      <>
+                        <Button
+                          variant="alternative"
+                          onClick={() => {
+                            if (certificate?.retention_payment_id) {
+                              downloadCertificatePDF(certificate.retention_payment_id);
+                            }
+                          }}
+                          size="sm"
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Descargar PDF
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => {
+                            setShowCertificate(false);
+                            setCertificate(null);
+                          }}
+                          size="sm"
+                        >
+                          Cerrar
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
