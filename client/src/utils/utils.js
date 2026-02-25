@@ -121,19 +121,27 @@ export function getPaymentMethods() {
 }
 
 export function getProductColors() {
-  return ["BLANCO", "NEGRO", "ARENA", "CELESTE", "OTROS"];
+  return ["ARENA", "BLANCO", "NEGRO", "GRIS", "CELESTE"];
 }
 
 export function getProductGenres() {
-  return ["Masculino", "Femenino"];
+  return ["MASCULINO", "FEMENINO"];
 }
 
 export function getProductSleeves() {
-  return ["Corta", "Larga"];
+  return ["CORTA", "LARGA"];
 }
 
 export function getProductNecks() {
-  return ["Solapa", "Corbata", "Mao"];
+  return ["SOLAPA", "CORBATA", "MAO"];
+}
+
+export function getProductTypes() {
+  return ["CAMISA", "CORBATA", "CORBATIN", "MOÑO", "OTROS"];
+}
+
+export function getOrderTypes() {
+  return ["Egreso", "Consignacion", "Compra Directa", "Licitacion"];
 }
 
 export function getProductFuerzas() {
@@ -150,7 +158,7 @@ export function getProductFuerzas() {
 }
 
 export function getProductTalles() {
-  return Array.from({ length: 35 }, (_, i) => String(30 + i));
+  return ["30", "32", "34", "36", "38", "40", "42", "44", "46", "48", "50", "52", "54", "56", "58", "60", "62", "64"];
 }
 
 export function getPaycheckString() {

@@ -46,8 +46,8 @@ self.getStockEntryById = async (req, res) => {
 self.createStockEntry = async (req, res) => {
   try {
     const stockEntry = {
-      supplier_id: req.body.supplier_id,
-      remito_number: req.body.remito_number,
+      supplier_id: req.body.supplier_id || null,
+      remito_number: req.body.remito_number || null,
       entry_date: req.body.entry_date,
       description: req.body.description || null,
     };
@@ -64,14 +64,16 @@ self.createStockEntry = async (req, res) => {
     // Create stock entry products
     const stockEntryProducts = req.body.products.map((product) => ({
       stock_entry_id: newStockEntry[0].id,
-      product_id: product.product_id,
+      product_id: product.product_id || null,
       quantity: product.quantity,
-      color: product.color,
-      genre: product.genre,
-      sleeve: product.sleeve,
-      neck: product.neck,
-      fuerza: product.fuerza,
-      talle: product.talle,
+      color: product.color || null,
+      genre: product.genre || null,
+      sleeve: product.sleeve || null,
+      neck: product.neck || null,
+      fuerza: product.fuerza || null,
+      talle: product.talle || null,
+      producto_tipo: product.producto_tipo || null,
+      cuello: product.cuello || null,
     }));
 
     const { data: newStockEntryProducts, errorProducts } = await supabase

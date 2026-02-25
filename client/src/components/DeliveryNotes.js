@@ -1,13 +1,11 @@
 "use client";
 
-import { ExternalLinkIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
-import { Trash2, Plus } from "lucide-react";
-import { Controller, useForm } from "react-hook-form";
-import { useFieldArray } from "react-hook-form";
+import React, { useState } from "react";
+import { Trash2, Plus, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { EditIcon, TrashIcon, EyeIcon, CloseIcon } from "./icons";
+import { TrashIcon, EyeIcon, CloseIcon } from "./icons";
 import * as utils from "../utils/utils";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
@@ -19,43 +17,54 @@ import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import {
   useDeliveryNotesQuery,
   useCreateDeliveryNoteMutation,
-  useUpdateDeliveryNoteMutation,
   useDeleteDeliveryNoteMutation,
 } from "../apis/api.deliverynotes.js";
-import { useClientsQuery } from "../apis/api.clients";
-import {
-  queryDeliveryNotesKey,
-  queryClientsKey,
-  queryProductsKey,
-  queryOrdersKey,
-} from "../apis/queryKeys";
-import { useProductsQuery } from "../apis/api.products.js";
 import { useActiveOrdersQuery } from "../apis/api.orders.js";
+import { queryDeliveryNotesKey, queryOrdersKey } from "../apis/queryKeys";
 
 export default function DeliveryNotes() {
   const [stage, setStage] = useState("LIST");
   const [search, setSearch] = useState("");
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [viewOnly, setViewOnly] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [productQuantity, setProductQuantity] = useState(1);
   const [selectedDeliveryNote, setSelectedDeliveryNote] = useState(null);
-  const [client, setClient] = useState(null);
+  const [expandedRows, setExpandedRows] = useState({});
   const [selectedOrder, setSelectedOrder] = useState(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const [formSubmitted, setFormSubmitted] = useState(false);
+  const defaultProductRow = {
+    codigo: "",
+    fuerza: "",
+    producto_tipo: "",
+    manga: "",
+    genero: "",
+    color: "",
+    cuello: "",
+    talle: "",
+    cantidad_por_talle: "",
+    cantidad_total: "",
+    cantidad_pedido: "",
+    cantidad_pendiente: "",
+    origen: "",
+    lo_que_falta: 0,
+  };
 
   const {
     register,
     handleSubmit,
     reset,
-    trigger,
-    setValue,
     control,
+    watch,
+    setValue,
     formState: { errors },
-  } = useForm();
+  } = useForm({
+    defaultValues: {
+      order_number_text: "",
+      remito_number: "",
+      products: Array.from({ length: 3 }, () => ({ ...defaultProductRow })),
+    },
+  });
 
   const { fields, append, remove, update } = useFieldArray({
     control,
@@ -67,29 +76,7 @@ export default function DeliveryNotes() {
     queryFn: useDeliveryNotesQuery,
   });
 
-  const {
-    data: clients,
-    isLoading: isLoadingClients,
-    error: errorClients,
-  } = useQuery({
-    queryKey: queryClientsKey(),
-    queryFn: useClientsQuery,
-  });
-
-  const {
-    data: availableProducts,
-    isLoading: isLoadingProducts,
-    error: errorProducts,
-  } = useQuery({
-    queryKey: queryProductsKey(),
-    queryFn: useProductsQuery,
-  });
-
-  const {
-    data: activeOrders,
-    isLoading: isLoadingOrders,
-    error: errorOrders,
-  } = useQuery({
+  const { data: orders, isLoading: isLoadingOrders } = useQuery({
     queryKey: queryOrdersKey(),
     queryFn: useActiveOrdersQuery,
   });
@@ -98,29 +85,17 @@ export default function DeliveryNotes() {
     data &&
     data?.length > 0 &&
     data?.filter((d) =>
-      search ? d.name.toLowerCase().includes(search.toLowerCase()) : d
+      search
+        ? d.order_number_text?.toLowerCase().includes(search.toLowerCase()) ||
+          d.remito_number?.toLowerCase().includes(search.toLowerCase())
+        : d
     );
-  if (error) console.log(error);
 
   const createMutation = useMutation({
     mutationFn: useCreateDeliveryNoteMutation,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryDeliveryNotesKey() });
-      console.log("Remito creada:", data);
-    },
     onError: (error) => {
-      console.error("Error creando remito:", error);
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: useUpdateDeliveryNoteMutation,
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryDeliveryNotesKey() });
-      console.log("Remito creada:", data);
-    },
-    onError: (error) => {
-      console.error("Error creando remito:", error);
+      console.error("Error creando egreso:", error);
+      alert(error.message || "Error al registrar el egreso de mercadería");
     },
   });
 
@@ -128,17 +103,17 @@ export default function DeliveryNotes() {
     mutationFn: useDeleteDeliveryNoteMutation,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: queryDeliveryNotesKey() });
-      console.log("Remito eliminada:", data);
+      console.log("Egreso eliminado:", data);
     },
     onError: (error) => {
-      console.error("Error eliminando remito:", error);
+      console.error("Error eliminando egreso:", error);
     },
   });
 
   const removeDeliveryNote = async (deliverynoteId) => {
-    if (window.confirm("Seguro desea eliminar esta remito?")) {
+    if (window.confirm("¿Está seguro que desea eliminar este egreso? Esta acción no se puede deshacer.")) {
       try {
-        await deleteMutation.mutate(deliverynoteId);
+        await deleteMutation.mutateAsync(deliverynoteId);
         setStage("LIST");
       } catch (e) {
         console.log(e);
@@ -146,229 +121,201 @@ export default function DeliveryNotes() {
     }
   };
 
-  const addProduct = () => {
-    if (selectedProduct && productQuantity > 0) {
-      const existingIndex = fields?.findIndex(
-        (field) => field.productId === selectedProduct.id
-      );
+  const calculateLoQueFalta = (cantidadPorTalle, cantidadTotal) => {
+    const porTalle = parseInt(cantidadPorTalle) || 0;
+    const total = parseInt(cantidadTotal) || 0;
+    return Math.max(0, total - porTalle);
+  };
 
-      if (existingIndex >= 0) {
-        update(existingIndex, {
-          ...fields[existingIndex],
-          quantity: fields[existingIndex].quantity + productQuantity,
-        });
-      } else {
-        append({
-          productId: selectedProduct.id,
-          productName: selectedProduct.name + "- " + selectedProduct.color,
-          productCode: selectedProduct.code,
-          productPrice: selectedProduct.price,
-          quantity: productQuantity,
-        });
-      }
+  const handleOrderSelect = (orderOption) => {
+    setSelectedOrder(orderOption);
+    setValue("selected_order", orderOption);
+    
+    if (!orderOption || !orderOption.id) {
+      return;
+    }
 
-      setSelectedProduct(null);
-      setProductQuantity(1);
+    const order = orders?.find((o) => o.id === orderOption.id);
+    if (!order || !order.orders_products) {
+      return;
+    }
+
+    const productsFromOrder = order.orders_products.map((op) => {
+      const cantidadPedido = op.quantity || 0;
+      const cantidadEntregada = op.quantity_delivered || 0;
+      const cantidadPendiente = Math.max(0, cantidadPedido - cantidadEntregada);
+      
+      return {
+        codigo: op.codigo || "",
+        fuerza: op.fuerza || "",
+        producto_tipo: op.producto_tipo || "",
+        manga: op.manga || "",
+        genero: op.genero || "",
+        color: op.color || "",
+        cuello: op.cuello || "",
+        talle: op.talle || "",
+        cantidad_por_talle: "",
+        cantidad_total: cantidadPendiente.toString(),
+        cantidad_pedido: cantidadPedido,
+        cantidad_pendiente: cantidadPendiente,
+        origen: "STOCK",
+        lo_que_falta: cantidadPendiente,
+      };
+    });
+
+    if (productsFromOrder.length > 0) {
+      reset({
+        ...watch(),
+        selected_order: orderOption,
+        products: productsFromOrder,
+      });
     }
   };
 
-  const updateProductQuantity = (index, newQuantity) => {
-    if (newQuantity > 0) {
-      update(index, {
-        ...fields[index],
-        quantity: newQuantity,
-      });
-    }
+  const handleCantidadChange = (index, field, value) => {
+    const currentProducts = watch("products");
+    const currentProduct = currentProducts[index];
+    const cantidadPorTalle = field === "cantidad_por_talle" ? value : (currentProduct?.cantidad_por_talle || "");
+    const cantidadPendiente = currentProduct?.cantidad_pendiente || 0;
+    const loQueFalta = Math.max(0, cantidadPendiente - (parseInt(cantidadPorTalle) || 0));
+    
+    setValue(`products.${index}.lo_que_falta`, loQueFalta);
   };
 
   const onSubmit = async (data) => {
     try {
-      setFormSubmitted(true);
+      setIsLoadingSubmit(true);
 
-      if (!data.client || !data.client.id) {
+      const validProducts = data.products.filter(
+        (product) =>
+          product.producto_tipo &&
+          product.talle &&
+          parseInt(product.cantidad_por_talle) > 0
+      );
+
+      if (validProducts.length === 0) {
+        alert("Debe agregar al menos un producto válido con cantidad");
+        setIsLoadingSubmit(false);
         return;
       }
 
-      setIsLoadingSubmit(true);
+      const orderNumber = selectedOrder?.order_number || data.selected_order?.order_number || null;
 
       const body = {
-        client_id: data.client.id,
-        order_id: data.order?.id || null,
-        number: data.number || null,
-        description: data.description,
-        products: fields.map((field) => ({
-          product_id: field.productId,
-          quantity: field.quantity,
-          price: field.productPrice || 0,
+        order_number_text: orderNumber ? `#${orderNumber}` : null,
+        order_id: selectedOrder?.id || data.selected_order?.id || null,
+        remito_number: data.remito_number || null,
+        products: validProducts.map((product) => ({
+          product_id: null,
+          codigo: product.codigo || null,
+          fuerza: product.fuerza || null,
+          producto_tipo: product.producto_tipo || null,
+          manga: product.manga || null,
+          genero: product.genero || null,
+          color: product.color || null,
+          cuello: product.cuello || null,
+          talle: product.talle || null,
+          cantidad_por_talle: parseInt(product.cantidad_por_talle) || 0,
+          cantidad_total: parseInt(product.cantidad_pedido) || 0,
+          origen: product.origen || null,
+          lo_que_falta: Math.max(0, (parseInt(product.cantidad_pendiente) || 0) - (parseInt(product.cantidad_por_talle) || 0)),
+          quantity: parseInt(product.cantidad_por_talle) || 0,
+          price: 0,
         })),
-        amount: fields.reduce(
-          (total, field) =>
-            total +
-            (availableProducts.find((p) => p.id === field.productId)?.price ||
-              0) *
-              field.quantity,
-          0
-        ),
+        amount: 0,
       };
 
-      if (selectedDeliveryNote) {
-        updateMutation.mutate({ ...body, id: selectedDeliveryNote.id });
-      } else {
-        createMutation.mutate(body);
+      const result = await createMutation.mutateAsync(body);
+
+      if (result.error) {
+        alert(result.error);
+        setIsLoadingSubmit(false);
+        return;
       }
+
+      queryClient.invalidateQueries({ queryKey: queryDeliveryNotesKey() });
+      queryClient.invalidateQueries({ queryKey: queryOrdersKey() });
+
+      reset({
+        selected_order: null,
+        remito_number: "",
+        products: Array.from({ length: 3 }, () => ({ ...defaultProductRow })),
+      });
+      setSelectedOrder(null);
       setIsLoadingSubmit(false);
       setStage("LIST");
+      alert("Egreso de mercadería registrado exitosamente");
     } catch (e) {
       console.log(e);
+      alert("Error al guardar el egreso de mercadería");
+      setIsLoadingSubmit(false);
     }
   };
 
-  const getClientFantasyName = (id) => {
-    return clients?.find((s) => s.id === id)?.fantasy_name || "";
+  const addRow = () => {
+    append({ ...defaultProductRow });
   };
 
-  const onEdit = (deliverynoteId) => {
-    const deliverynote =
-      data.find((deliverynote) => deliverynote.id === deliverynoteId) || null;
-    setSelectedDeliveryNote(deliverynote);
-    setFormSubmitted(false);
-    setViewOnly(false);
-
-    console.log("[v0] onEdit - deliverynote:", deliverynote);
-    console.log(
-      "[v0] onEdit - deliverynotes_products:",
-      deliverynote?.deliverynotes_products
-    );
-    console.log("[v0] onEdit - availableProducts:", availableProducts);
-
-    const formData = {
-      products: [],
-      client: null,
-      order: null,
-      description: deliverynote?.description || "",
-    };
-
-    if (deliverynote?.client_id && clients) {
-      const selectedClient = clients.find(
-        (s) => s.id === deliverynote.client_id
-      );
-      if (selectedClient) {
-        const clientOption = {
-          id: selectedClient.id,
-          name: selectedClient.name,
-          label: selectedClient.name,
-        };
-        formData.client = clientOption;
-        setClient(clientOption);
-      }
-    }
-
-    if (deliverynote?.order_id && activeOrders) {
-      const order = activeOrders.find((o) => o.id === deliverynote.order_id);
-      if (order) {
-        const orderOption = {
-          id: order.id,
-          name: `Pedido #${order.order_number}`,
-          label: `Pedido #${order.order_number}`,
-        };
-        formData.order = orderOption;
-        setSelectedOrder(orderOption);
-      }
-    }
-
-    if (deliverynote?.deliverynotes_products && availableProducts) {
-      const productsToLoad = deliverynote.deliverynotes_products.map((dnp) => {
-        const product = availableProducts.find((p) => p.id === dnp.product_id);
-        return {
-          productId: dnp.product_id,
-          productName: product?.name + "- " + product?.color || "",
-          productCode: product?.code || "",
-          productPrice: dnp.price || product?.price || 0,
-          quantity: dnp.quantity,
-        };
+  const duplicateRow = (index) => {
+    const currentProducts = watch("products");
+    const productToDuplicate = currentProducts[index];
+    if (productToDuplicate) {
+      append({
+        codigo: productToDuplicate.codigo || "",
+        fuerza: productToDuplicate.fuerza || "",
+        producto_tipo: productToDuplicate.producto_tipo || "",
+        manga: productToDuplicate.manga || "",
+        genero: productToDuplicate.genero || "",
+        color: productToDuplicate.color || "",
+        cuello: productToDuplicate.cuello || "",
+        talle: "",
+        cantidad_por_talle: "",
+        cantidad_total: productToDuplicate.cantidad_total || "",
+        cantidad_pedido: productToDuplicate.cantidad_pedido || "",
+        cantidad_pendiente: productToDuplicate.cantidad_pendiente || "",
+        origen: productToDuplicate.origen || "",
+        lo_que_falta: productToDuplicate.cantidad_pendiente || 0,
       });
-      formData.products = productsToLoad;
-      console.log("[v0] onEdit - productsToLoad:", productsToLoad);
     }
-
-    console.log("[v0] onEdit - formData:", formData);
-    reset(formData);
-
-    setStage("CREATE");
-  };
-
-  const onView = (deliverynoteId) => {
-    reset();
-    const deliverynote =
-      data.find((deliverynote) => deliverynote.id === deliverynoteId) || null;
-    setSelectedDeliveryNote(deliverynote);
-    setViewOnly(true);
-
-    if (deliverynote?.client_id && clients) {
-      const selectedClient = clients.find(
-        (s) => s.id === deliverynote.client_id
-      );
-      if (selectedClient) {
-        const clientOption = {
-          id: selectedClient.id,
-          name: selectedClient.name,
-          label: selectedClient.name,
-        };
-        setValue("client", clientOption);
-        setClient(clientOption);
-      }
-    }
-
-    if (deliverynote?.order_id && activeOrders) {
-      const order = activeOrders.find((o) => o.id === deliverynote.order_id);
-      if (order) {
-        const orderOption = {
-          id: order.id,
-          name: `Pedido #${order.order_number}`,
-          label: `Pedido #${order.order_number}`,
-        };
-        setValue("order", orderOption);
-        setSelectedOrder(orderOption);
-      }
-    }
-
-    if (deliverynote?.deliverynotes_products && availableProducts) {
-      const productsToLoad = deliverynote.deliverynotes_products.map((dnp) => {
-        const product = availableProducts.find((p) => p.id === dnp.product_id);
-        return {
-          productId: dnp.product_id,
-          productName: product?.name + " - " + product?.color || "",
-          productCode: product?.code || "",
-          productPrice: dnp.price || product?.price || 0,
-          quantity: dnp.quantity,
-        };
-      });
-      setValue("products", productsToLoad);
-    }
-
-    setStage("CREATE");
   };
 
   const onCreate = () => {
     setSelectedDeliveryNote(null);
-    setSelectedProduct(null);
-    setFormSubmitted(false);
-    setClient(null);
     setSelectedOrder(null);
+    setViewOnly(false);
+    reset({
+      selected_order: null,
+      remito_number: "",
+      products: Array.from({ length: 3 }, () => ({ ...defaultProductRow })),
+    });
     setStage("CREATE");
-    reset({ products: [] });
   };
 
   const onCancel = () => {
     setSelectedDeliveryNote(null);
-    setSelectedProduct(null);
+    setSelectedOrder(null);
     setViewOnly(false);
     setIsLoadingSubmit(false);
-    setFormSubmitted(false);
-    setClient(null);
-    setSelectedOrder(null);
-    reset({ products: [] });
+    reset({
+      selected_order: null,
+      remito_number: "",
+      products: Array.from({ length: 3 }, () => ({ ...defaultProductRow })),
+    });
     setStage("LIST");
+  };
+
+  const onView = (deliverynoteId) => {
+    const deliverynote = data.find((d) => d.id === deliverynoteId) || null;
+    setSelectedDeliveryNote(deliverynote);
+    setViewOnly(true);
+    setStage("VIEW");
+  };
+
+  const toggleRowExpansion = (id) => {
+    setExpandedRows((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
   };
 
   const redirectNavigation = () => {
@@ -377,6 +324,23 @@ export default function DeliveryNotes() {
     } else {
       setStage("LIST");
     }
+  };
+
+  const getTotalProducts = (entry) => {
+    if (entry.deliverynotes_products) {
+      return entry.deliverynotes_products.length;
+    }
+    return 0;
+  };
+
+  const getTotalQuantity = (entry) => {
+    if (entry.deliverynotes_products) {
+      return entry.deliverynotes_products.reduce(
+        (sum, product) => sum + (product.cantidad_por_talle || product.quantity || 0),
+        0
+      );
+    }
+    return 0;
   };
 
   return (
@@ -390,7 +354,7 @@ export default function DeliveryNotes() {
             <ArrowLeftIcon className="h-5 w-5 cursor-pointer" />
             <div>Egreso de Mercadería</div>
           </div>
-          {stage === "LIST" && !viewOnly && (
+          {stage === "LIST" && (
             <Button
               variant="alternative"
               className="ml-auto"
@@ -405,149 +369,288 @@ export default function DeliveryNotes() {
 
       <div className="px-4 h-full overflow-auto">
         {stage === "LIST" && (
-          <div className="w-full flex shadow rounded mb-4">
-            <Input
-              rightElement={
-                <div className="cursor-pointer" onClick={() => setSearch("")}>
-                  {search && <CloseIcon />}
-                </div>
-              }
-              type="text"
-              value={search}
-              name="search"
-              id="search"
-              placeholder="Buscador..."
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        )}
-        {isLoading && (
-          <div>
-            <Spinner />
-          </div>
-        )}
-        {error && <div className="text-red-500">{/* ERROR... */}</div>}
-        {stage === "LIST" && data && (
-          <div className="my-4 mb-28">
-            <p className="pl-1 pb-1 text-slate-500">
-              Total de remitos {data?.length}
-            </p>
-            <div className="not-prose relative bg-slate-50 rounded-xl overflow-hidden ">
-              <div
-                className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,#fff,rgba(255,255,255,0.6))] "
-                style={{ backgroundPosition: "10px 10px" }}
-              ></div>
-              <div className="relative rounded-xl overflow-auto">
-                <div className="shadow-sm overflow-auto my-8">
-                  <table className="border-collapse table-auto w-full text-sm">
-                    <thead>
-                      <tr>
-                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left w-4">
-                          #
-                        </th>
-                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Fecha
-                        </th>
-                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Cliente
-                        </th>
-                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Nro Pedido
-                        </th>
-                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Status
-                        </th>
-                        <th className="border-b font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
-                          Acciones
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white">
-                      {dataFiltered?.length ? (
-                        dataFiltered.map((deliverynote, index) => (
-                          <tr
-                            key={deliverynote.id}
-                            className={utils.cn(
-                              "border-b last:border-b-0 hover:bg-gray-100",
-                              index % 2 === 0 && "bg-gray-50"
-                            )}
-                          >
-                            <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
-                              {deliverynote.id}
-                            </td>
-                            <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
-                              {new Date(
-                                deliverynote.created_at
-                              ).toLocaleDateString()}
-                            </td>
-                            <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
-                              {getClientFantasyName(deliverynote.client_id)}
-                            </td>
-                            <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
-                              {deliverynote.order_number
-                                ? `#${deliverynote.order_number}`
-                                : "-"}
-                            </td>
-                            <td className="!text-xs text-left border-b border-slate-100 p-4">
-                              {deliverynote.order_status ? (
-                                <span
+          <>
+            <div className="w-full flex shadow rounded mb-4">
+              <Input
+                rightElement={
+                  <div className="cursor-pointer" onClick={() => setSearch("")}>
+                    {search && <CloseIcon />}
+                  </div>
+                }
+                type="text"
+                value={search}
+                name="search"
+                id="search"
+                placeholder="Buscar por número de pedido o remito..."
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            {isLoading && (
+              <div>
+                <Spinner />
+              </div>
+            )}
+            {error && <div className="text-red-500">{/* ERROR... */}</div>}
+            {data && (
+              <div className="my-4 mb-28">
+                <p className="pl-1 pb-1 text-slate-500">
+                  Total de egresos {data?.length}
+                </p>
+                <div className="not-prose relative bg-slate-50 rounded-xl overflow-hidden">
+                  <div
+                    className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,#fff,rgba(255,255,255,0.6))]"
+                    style={{ backgroundPosition: "10px 10px" }}
+                  ></div>
+                  <div className="relative rounded-xl overflow-auto">
+                    <div className="shadow-sm overflow-auto my-8">
+                      <table className="border-collapse table-auto w-full text-sm">
+                        <thead>
+                          <tr>
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left w-4"></th>
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left w-4">
+                              #
+                            </th>
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left">
+                              Fecha
+                            </th>
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left">
+                              Nro. Pedido
+                            </th>
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left">
+                              Nro. Remito
+                            </th>
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left">
+                              Productos
+                            </th>
+                            <th className="border-b font-medium text-sm p-4 pt-0 pb-3 text-slate-400 text-left">
+                              Cantidad Total
+                            </th>
+                            <th className="border-b font-medium text-sm p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
+                              Acciones
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white">
+                          {dataFiltered?.length ? (
+                            dataFiltered.map((entry, index) => (
+                              <React.Fragment key={entry.id}>
+                                <tr
                                   className={utils.cn(
-                                    "px-2 py-1 rounded text-xs font-medium",
-                                    deliverynote.order_status === "ENTREGADO"
-                                      ? "bg-green-100 text-green-800"
-                                      : "bg-yellow-100 text-yellow-800"
+                                    "border-b last:border-b-0 hover:bg-gray-100",
+                                    index % 2 === 0 && "bg-gray-50"
                                   )}
                                 >
-                                  {deliverynote.order_status}
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">-</span>
-                              )}
-                            </td>
-                            <td className="!text-xs text-left border-b border-slate-100 text-slate-500 w-10">
-                              <div className="flex gap-2">
-                                <button
-                                  className="flex items-center justify-center w-8 h-8"
-                                  title="Ver detalle"
-                                  onClick={() => onView(deliverynote.id)}
-                                >
-                                  <EyeIcon />
-                                </button>
-                                <button
-                                  className="flex items-center justify-center w-8 h-8"
-                                  title="Editar"
-                                  onClick={() => onEdit(deliverynote.id)}
-                                >
-                                  <EditIcon />
-                                </button>
-                                <button
-                                  className="flex items-center justify-center w-8 h-8"
-                                  title="Eliminar"
-                                  onClick={() =>
-                                    removeDeliveryNote(deliverynote.id)
-                                  }
-                                >
-                                  <TrashIcon />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan={6}
-                            className="border-b border-slate-100 p-4 text-slate-500"
-                          >
-                            No data
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    <button
+                                      onClick={() => toggleRowExpansion(entry.id)}
+                                      className="flex items-center justify-center w-6 h-6 hover:bg-gray-200 rounded"
+                                    >
+                                      {expandedRows[entry.id] ? (
+                                        <ChevronDown className="h-4 w-4" />
+                                      ) : (
+                                        <ChevronRight className="h-4 w-4" />
+                                      )}
+                                    </button>
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    {entry.id}
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    {new Date(entry.created_at).toLocaleDateString("es-AR")}
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    {entry.order_number_text || entry.order_number || "-"}
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    {entry.remito_number || entry.number || "-"}
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    {getTotalProducts(entry)}
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                    {getTotalQuantity(entry)}
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 text-slate-500 w-10">
+                                    <div className="flex gap-2">
+                                      <button
+                                        className="flex items-center justify-center w-8 h-8"
+                                        title="Ver detalle"
+                                        onClick={() => onView(entry.id)}
+                                      >
+                                        <EyeIcon />
+                                      </button>
+                                      <button
+                                        className="flex items-center justify-center w-8 h-8"
+                                        title="Eliminar"
+                                        onClick={() => removeDeliveryNote(entry.id)}
+                                      >
+                                        <TrashIcon />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                                {expandedRows[entry.id] && (
+                                  <tr>
+                                    <td colSpan={8} className="bg-gray-50 border-b border-slate-200">
+                                      <div className="p-4">
+                                        <h4 className="font-semibold text-slate-700 mb-3">
+                                          Detalle de Productos
+                                        </h4>
+                                        {entry.deliverynotes_products?.length > 0 ? (
+                                          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                                            <table className="w-full text-sm">
+                                              <thead className="bg-slate-100">
+                                                <tr>
+                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Código</th>
+                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Fuerza</th>
+                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Producto</th>
+                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Manga</th>
+                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Género</th>
+                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Color</th>
+                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Cuello</th>
+                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Talle</th>
+                                                  <th className="text-center p-2 text-slate-600 font-medium text-xs">Cant/Talle</th>
+                                                  <th className="text-center p-2 text-slate-600 font-medium text-xs">Cant Total</th>
+                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Origen</th>
+                                                  <th className="text-center p-2 text-slate-600 font-medium text-xs">Falta</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody>
+                                                {entry.deliverynotes_products.map((product, idx) => (
+                                                  <tr key={product.id || idx} className="border-t border-slate-200">
+                                                    <td className="p-2 text-slate-700 text-xs">{product.codigo || "-"}</td>
+                                                    <td className="p-2 text-slate-700 text-xs">{product.fuerza || "-"}</td>
+                                                    <td className="p-2 text-slate-700 text-xs">{product.producto_tipo || product.products?.name || "-"}</td>
+                                                    <td className="p-2 text-slate-700 text-xs">{product.manga || "-"}</td>
+                                                    <td className="p-2 text-slate-700 text-xs">{product.genero || "-"}</td>
+                                                    <td className="p-2 text-slate-700 text-xs">{product.color || "-"}</td>
+                                                    <td className="p-2 text-slate-700 text-xs">{product.cuello || "-"}</td>
+                                                    <td className="p-2 text-slate-700 text-xs">{product.talle || "-"}</td>
+                                                    <td className="p-2 text-center text-slate-700 text-xs">{product.cantidad_por_talle || product.quantity || "-"}</td>
+                                                    <td className="p-2 text-center text-slate-700 text-xs">{product.cantidad_total || "-"}</td>
+                                                    <td className="p-2 text-slate-700 text-xs">
+                                                      <span className={utils.cn(
+                                                        "px-2 py-1 rounded text-xs",
+                                                        product.origen === "STOCK" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"
+                                                      )}>
+                                                        {product.origen || "-"}
+                                                      </span>
+                                                    </td>
+                                                    <td className="p-2 text-center text-slate-700 text-xs font-medium">
+                                                      {product.lo_que_falta || 0}
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        ) : (
+                                          <div className="text-slate-500 text-center py-4 bg-white rounded border border-slate-200">
+                                            No hay productos en este egreso
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={8} className="border-b border-slate-100 p-4 text-slate-500">
+                                No hay egresos registrados
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="absolute inset-0 pointer-events-none border border-black/5 rounded-xl"></div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {stage === "VIEW" && selectedDeliveryNote && (
+          <div className="my-4">
+            <div className="bg-white rounded-lg p-6 shadow">
+              <h3 className="text-lg font-bold mb-4">Detalle del Egreso #{selectedDeliveryNote.id}</h3>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="text-slate-500 font-medium">Nro. Pedido:</label>
+                  <p className="text-slate-700">{selectedDeliveryNote.order_number_text || "-"}</p>
+                </div>
+                <div>
+                  <label className="text-slate-500 font-medium">Nro. Remito:</label>
+                  <p className="text-slate-700">{selectedDeliveryNote.remito_number || selectedDeliveryNote.number || "-"}</p>
+                </div>
+                <div>
+                  <label className="text-slate-500 font-medium">Fecha:</label>
+                  <p className="text-slate-700">{new Date(selectedDeliveryNote.created_at).toLocaleDateString("es-AR")}</p>
+                </div>
+              </div>
+              
+              <h4 className="font-semibold text-slate-700 mb-3 mt-6">Productos</h4>
+              {selectedDeliveryNote.deliverynotes_products?.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border border-slate-200 rounded">
+                    <thead className="bg-slate-100">
+                      <tr>
+                        <th className="text-left p-2 text-slate-600 font-medium text-xs">Código</th>
+                        <th className="text-left p-2 text-slate-600 font-medium text-xs">Fuerza</th>
+                        <th className="text-left p-2 text-slate-600 font-medium text-xs">Producto</th>
+                        <th className="text-left p-2 text-slate-600 font-medium text-xs">Manga</th>
+                        <th className="text-left p-2 text-slate-600 font-medium text-xs">Género</th>
+                        <th className="text-left p-2 text-slate-600 font-medium text-xs">Color</th>
+                        <th className="text-left p-2 text-slate-600 font-medium text-xs">Cuello</th>
+                        <th className="text-left p-2 text-slate-600 font-medium text-xs">Talle</th>
+                        <th className="text-center p-2 text-slate-600 font-medium text-xs">Cant/Talle</th>
+                        <th className="text-center p-2 text-slate-600 font-medium text-xs">Cant Total</th>
+                        <th className="text-left p-2 text-slate-600 font-medium text-xs">Origen</th>
+                        <th className="text-center p-2 text-slate-600 font-medium text-xs">Falta</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedDeliveryNote.deliverynotes_products.map((product, idx) => (
+                        <tr key={product.id || idx} className="border-t border-slate-200">
+                          <td className="p-2 text-slate-700 text-xs">{product.codigo || "-"}</td>
+                          <td className="p-2 text-slate-700 text-xs">{product.fuerza || "-"}</td>
+                          <td className="p-2 text-slate-700 text-xs">{product.producto_tipo || "-"}</td>
+                          <td className="p-2 text-slate-700 text-xs">{product.manga || "-"}</td>
+                          <td className="p-2 text-slate-700 text-xs">{product.genero || "-"}</td>
+                          <td className="p-2 text-slate-700 text-xs">{product.color || "-"}</td>
+                          <td className="p-2 text-slate-700 text-xs">{product.cuello || "-"}</td>
+                          <td className="p-2 text-slate-700 text-xs">{product.talle || "-"}</td>
+                          <td className="p-2 text-center text-slate-700 text-xs">{product.cantidad_por_talle || product.quantity || "-"}</td>
+                          <td className="p-2 text-center text-slate-700 text-xs">{product.cantidad_total || "-"}</td>
+                          <td className="p-2 text-slate-700 text-xs">
+                            <span className={utils.cn(
+                              "px-2 py-1 rounded text-xs",
+                              product.origen === "STOCK" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"
+                            )}>
+                              {product.origen || "-"}
+                            </span>
                           </td>
+                          <td className="p-2 text-center text-slate-700 text-xs font-medium">{product.lo_que_falta || 0}</td>
                         </tr>
-                      )}
+                      ))}
                     </tbody>
                   </table>
                 </div>
+              ) : (
+                <p className="text-slate-500">No hay productos</p>
+              )}
+
+              <div className="mt-6 flex gap-4 justify-end">
+                <Button variant="destructive" onClick={() => removeDeliveryNote(selectedDeliveryNote.id)}>
+                  Eliminar
+                </Button>
+                <Button variant="alternative" onClick={() => setStage("LIST")}>
+                  Volver
+                </Button>
               </div>
-              <div className="absolute inset-0 pointer-events-none border border-black/5 rounded-xl"></div>
             </div>
           </div>
         )}
@@ -556,7 +659,7 @@ export default function DeliveryNotes() {
           <div className="my-4">
             <div className="not-prose relative bg-slate-50 rounded-xl overflow-hidden">
               <div
-                className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,#fff,rgba(255,255,255,0.6))] "
+                className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,#fff,rgba(255,255,255,0.6))]"
                 style={{ backgroundPosition: "10px 10px" }}
               ></div>
               <div className="relative rounded-xl overflow-auto">
@@ -565,516 +668,277 @@ export default function DeliveryNotes() {
                     onSubmit={handleSubmit(onSubmit)}
                     className="w-full flex flex-col"
                   >
-                    <table className="border-collapse table-fixed w-full text-sm bg-white">
-                      <tbody>
+                    <div className="bg-white p-4">
+                      {/* Número de Pedido */}
+                      <div className="p-4 gap-4 flex items-center">
+                        <label className="text-slate-500 w-32 font-bold text-sm">
+                          Nro. Pedido:
+                        </label>
+                        <div className="flex-1 max-w-md">
+                          <Controller
+                            name="selected_order"
+                            control={control}
+                            render={({ field }) => (
+                              <SelectComboBox
+                                options={sortBy(orders || [], "order_number").map((order) => ({
+                                  id: order.id,
+                                  name: `#${order.order_number} - ${order.client_name || "Sin cliente"}`,
+                                  label: `Pedido #${order.order_number}`,
+                                  order_number: order.order_number,
+                                }))}
+                                value={field.value}
+                                onChange={(option) => {
+                                  field.onChange(option);
+                                  handleOrderSelect(option);
+                                }}
+                                placeholder="Buscar pedido por número..."
+                              />
+                            )}
+                          />
+                        </div>
+                        {selectedOrder && (
+                          <span className="text-xs text-green-600 font-medium">
+                            Pedido #{selectedOrder.order_number} seleccionado
+                          </span>
+                        )}
+                      </div>
 
-                      <tr>
-                          <td>
-                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
-                              <label className="text-slate-500 md:w-20 font-bold">
-                                Número:
-                              </label>
-                              {viewOnly ? (
-                                <label className="text-slate-500">
-                                  {selectedDeliveryNote?.number || "Sin número"}
-                                </label>
-                              ) : (
-                                <div className="flex flex-col gap-2 w-full">
-                                  <input
-                                    type="text"
-                                    defaultValue={
-                                      selectedDeliveryNote?.number || ""
-                                    }
-                                    {...register("number")}
-                                    id="number"
-                                    name="number"
-                                    className="rounded border border-slate-200 p-4 text-slate-500 w-full md:w-[200px]"
-                                    placeholder="Número de remito"
-                                  />
-                                  {errors.number && (
-                                    <span className="text-red-500 text-sm">
-                                      * Obligatorio
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+                      {/* Número de Remito */}
+                      <div className="p-4 gap-4 flex items-center">
+                        <label className="text-slate-500 w-32 font-bold text-sm">
+                          Nro. Remito:
+                        </label>
+                        <input
+                          type="text"
+                          {...register("remito_number")}
+                          className="rounded border border-slate-200 p-2 text-slate-500 text-sm max-w-xs"
+                          placeholder="Número de remito"
+                        />
+                      </div>
 
-                        <tr>
-                          <td>
-                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
-                              <label className="text-slate-500 md:w-20 font-bold">
-                                Cliente:
-                              </label>
-                              <div className="flex flex-col gap-2">
-                                {viewOnly ? (
-                                  <>
-                                    {getClientFantasyName(
-                                      selectedDeliveryNote?.client_id
-                                    )}
-                                  </>
-                                ) : (
-                                  <div className="flex gap-2 w-full items-center">
-                                    <Controller
-                                      name="client"
-                                      control={control}
-                                      rules={{ required: true }}
-                                      defaultValue={null}
-                                      render={({ field }) => (
-                                        <SelectComboBox
-                                          options={sortBy(
-                                            clients,
-                                            "fantasy_name"
-                                          ).map((client) => ({
-                                            id: client.id,
-                                            name: client.fantasy_name,
-                                            label: client.name,
-                                          }))}
-                                          value={field.value}
-                                          onChange={(option) => {
-                                            field.onChange(option);
-                                            setValue("client", option);
-                                            setClient(option);
-                                            trigger("client");
-                                          }}
-                                          onKeyDown={(e) => {
-                                            if (e.key === "Enter") {
-                                              e.preventDefault();
-                                            }
-                                          }}
-                                        />
-                                      )}
+                      {/* Productos */}
+                      <div className="p-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <label className="text-slate-500 font-bold">
+                            Productos:
+                          </label>
+                          <button
+                            type="button"
+                            onClick={addRow}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                          >
+                            <Plus className="h-5 w-5" />
+                            Agregar fila
+                          </button>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full border-collapse text-xs">
+                            <thead>
+                              <tr className="bg-gray-100">
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">Código</th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">Fuerza</th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">Producto *</th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">Manga</th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">Género</th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">Color</th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">Cuello</th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">Talle *</th>
+                                <th className="border border-slate-200 p-2 text-center text-xs text-slate-600 bg-blue-50">Pedido</th>
+                                <th className="border border-slate-200 p-2 text-center text-xs text-slate-600 bg-orange-50">Pendiente</th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">Cant/Talle</th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">Origen</th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">Falta</th>
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600 w-12">Acción</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {fields.map((field, index) => (
+                                <tr key={field.id}>
+                                  {/* Código */}
+                                  <td className="border border-slate-200 p-1">
+                                    <input
+                                      type="text"
+                                      {...register(`products.${index}.codigo`)}
+                                      className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
+                                      placeholder="Código"
                                     />
-
-                                    <Button
-                                      variant="alternative"
-                                      className="h-8"
-                                      onClick={() => {
-                                        navigate("/clientes?create=true");
+                                  </td>
+                                  {/* Fuerza */}
+                                  <td className="border border-slate-200 p-1">
+                                    <select
+                                      {...register(`products.${index}.fuerza`)}
+                                      className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
+                                    >
+                                      <option value="">-</option>
+                                      {utils.getProductFuerzas().map((fuerza) => (
+                                        <option key={fuerza} value={fuerza}>{fuerza}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  {/* Producto */}
+                                  <td className="border border-slate-200 p-1">
+                                    <select
+                                      {...register(`products.${index}.producto_tipo`)}
+                                      className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
+                                    >
+                                      <option value="">-</option>
+                                      {utils.getProductTypes().map((tipo) => (
+                                        <option key={tipo} value={tipo}>{tipo}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  {/* Manga */}
+                                  <td className="border border-slate-200 p-1">
+                                    <select
+                                      {...register(`products.${index}.manga`)}
+                                      className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
+                                    >
+                                      <option value="">-</option>
+                                      {utils.getProductSleeves().map((sleeve) => (
+                                        <option key={sleeve} value={sleeve}>{sleeve}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  {/* Género */}
+                                  <td className="border border-slate-200 p-1">
+                                    <select
+                                      {...register(`products.${index}.genero`)}
+                                      className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
+                                    >
+                                      <option value="">-</option>
+                                      {utils.getProductGenres().map((genre) => (
+                                        <option key={genre} value={genre}>{genre}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  {/* Color */}
+                                  <td className="border border-slate-200 p-1">
+                                    <select
+                                      {...register(`products.${index}.color`)}
+                                      className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
+                                    >
+                                      <option value="">-</option>
+                                      {utils.getProductColors().map((color) => (
+                                        <option key={color} value={color}>{color}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  {/* Cuello */}
+                                  <td className="border border-slate-200 p-1">
+                                    <select
+                                      {...register(`products.${index}.cuello`)}
+                                      className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
+                                    >
+                                      <option value="">-</option>
+                                      {utils.getProductNecks().map((neck) => (
+                                        <option key={neck} value={neck}>{neck}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  {/* Talle */}
+                                  <td className="border border-slate-200 p-1">
+                                    <select
+                                      {...register(`products.${index}.talle`)}
+                                      className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
+                                    >
+                                      <option value="">-</option>
+                                      {utils.getProductTalles().map((talle) => (
+                                        <option key={talle} value={talle}>{talle}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  {/* Cantidad Pedido (readonly) */}
+                                  <td className="border border-slate-200 p-1 bg-blue-50">
+                                    <span className="block w-14 text-center text-xs font-semibold text-blue-700">
+                                      {watch(`products.${index}.cantidad_pedido`) || "-"}
+                                    </span>
+                                  </td>
+                                  {/* Cantidad Pendiente (readonly) */}
+                                  <td className="border border-slate-200 p-1 bg-orange-50">
+                                    <span className="block w-14 text-center text-xs font-semibold text-orange-700">
+                                      {watch(`products.${index}.cantidad_pendiente`) || "-"}
+                                    </span>
+                                  </td>
+                                  {/* Cantidad por Talle */}
+                                  <td className="border border-slate-200 p-1">
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
+                                      {...register(`products.${index}.cantidad_por_talle`)}
+                                      onChange={(e) => {
+                                        const value = e.target.value.replace(/\D/g, '');
+                                        e.target.value = value;
+                                        handleCantidadChange(index, "cantidad_por_talle", value);
                                       }}
-                                    >
-                                      Nuevo Cliente
-                                      <ExternalLinkIcon className="ml-1 h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                )}
-                                {errors.client && (
-                                  <span className="text-red-500 text-sm">
-                                    * Obligatorio
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-
-                        <tr>
-                          <td>
-                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
-                              <label className="text-slate-500 md:w-20 font-bold">
-                                Pedido:
-                              </label>
-                              <div className="flex flex-col gap-2 flex-1">
-                                {viewOnly ? (
-                                  <>
-                                    {selectedDeliveryNote?.order_id
-                                      ? `Pedido #${
-                                          activeOrders?.find(
-                                            (o) =>
-                                              o.id ===
-                                              selectedDeliveryNote.order_id
-                                          )?.order_number || ""
-                                        }`
-                                      : "Sin pedido asociado"}
-                                  </>
-                                ) : (
-                                  <div className="flex gap-2 w-full items-center">
-                                    <Controller
-                                      name="order"
-                                      control={control}
-                                      defaultValue={null}
-                                      render={({ field }) => (
-                                        <SelectComboBox
-                                          options={
-                                            activeOrders
-                                              ? sortBy(
-                                                  activeOrders,
-                                                  "order_number"
-                                                ).map((order) => ({
-                                                  id: order.id,
-                                                  name: `Pedido #${order.order_number} - ${order.client_name}`,
-                                                  label: `Pedido #${order.order_number}`,
-                                                }))
-                                              : []
-                                          }
-                                          value={field.value}
-                                          onChange={(option) => {
-                                            field.onChange(option);
-                                            setValue("order", option);
-                                            setSelectedOrder(option);
-                                          }}
-                                          onKeyDown={(e) => {
-                                            if (e.key === "Enter") {
-                                              e.preventDefault();
-                                            }
-                                          }}
-                                        />
-                                      )}
+                                      className="w-16 rounded border border-slate-200 p-1 text-xs text-slate-500 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      placeholder="0"
                                     />
-                                    <span className="text-slate-400 text-sm whitespace-nowrap">
-                                      (Opcional)
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-
-                        <tr>
-                          <td>
-                            <div className="p-4 flex flex-col gap-4">
-                              <label className="text-slate-500 font-bold">
-                                Productos:
-                              </label>
-
-                              {!viewOnly && (
-                                <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                                  <div className="flex flex-col md:flex-row gap-4 items-end">
-                                    <div className="flex-1">
-                                      <label className="text-slate-600 text-sm font-medium mb-2 block">
-                                        Seleccionar Producto
-                                      </label>
-                                      <select
-                                        value={selectedProduct?.id || ""}
-                                        onChange={(e) => {
-                                          const product =
-                                            availableProducts.find(
-                                              (p) =>
-                                                p.id ===
-                                                Number.parseInt(e.target.value)
-                                            );
-                                          setSelectedProduct(product || null);
-                                        }}
-                                        className="w-full rounded border border-slate-200 p-3 text-slate-700"
-                                      >
-                                        <option value="">
-                                          Seleccione un producto...
-                                        </option>
-                                        {availableProducts.map((product) => (
-                                          <option
-                                            key={product.id}
-                                            value={product.id}
-                                          >
-                                            {product.code} - {product.name} -{" "}
-                                            {product.color} (Stock:{" "}
-                                            {product.stock})
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </div>
-
-                                    <div className="w-full md:w-32">
-                                      <label className="text-slate-600 text-sm font-medium mb-2 block">
-                                        Cantidad
-                                      </label>
-                                      <input
-                                        type="number"
-                                        min="1"
-                                        value={productQuantity}
-                                        onChange={(e) =>
-                                          setProductQuantity(
-                                            Number.parseInt(e.target.value) || 1
-                                          )
-                                        }
-                                        className="w-full rounded border border-slate-200 p-3 text-slate-700 text-center"
-                                      />
-                                    </div>
-
-                                    <Button
-                                      type="button"
-                                      onClick={addProduct}
-                                      disabled={!selectedProduct}
-                                      className="w-full md:w-auto"
+                                  </td>
+                                  {/* Origen */}
+                                  <td className="border border-slate-200 p-1">
+                                    <select
+                                      {...register(`products.${index}.origen`)}
+                                      className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
                                     >
-                                      <Plus className="h-4 w-4 mr-2" />
-                                      Agregar
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
-
-                              <div className="space-y-2">
-                                {viewOnly &&
-                                  selectedDeliveryNote.deliverynotes_products
-                                    .length && (
-                                    <>
-                                      <div className="border border-slate-200 rounded-lg overflow-hidden">
-                                        <table className="w-full">
-                                          <thead className="bg-slate-100">
-                                            <tr>
-                                              <th className="text-left p-3 text-slate-600 font-medium">
-                                                Código
-                                              </th>
-                                              <th className="text-left p-3 text-slate-600 font-medium">
-                                                Producto
-                                              </th>
-                                              <th className="text-left p-3 text-slate-600 font-medium">
-                                                Color
-                                              </th>
-                                              <th className="text-center p-3 text-slate-600 font-medium">
-                                                Cantidad
-                                              </th>
-                                              {!viewOnly && (
-                                                <th className="text-center p-3 text-slate-600 font-medium">
-                                                  Acciones
-                                                </th>
-                                              )}
-                                            </tr>
-                                          </thead>
-                                          <tbody>
-                                            {selectedDeliveryNote.deliverynotes_products?.map(
-                                              (field, index) => (
-                                                <tr
-                                                  key={field.id}
-                                                  className="border-t border-slate-200"
-                                                >
-                                                  <td className="p-3 text-slate-700 text-sm">
-                                                    {field.products.id}
-                                                  </td>
-                                                  <td className="p-3 text-slate-700">
-                                                    {field.products.name}
-                                                  </td>
-                                                  <td className="p-3 text-slate-700">
-                                                    {field.products.color}
-                                                  </td>
-                                                  <td className="p-3 text-center">
-                                                    {viewOnly ? (
-                                                      <span className="text-slate-700">
-                                                        {field.quantity}
-                                                      </span>
-                                                    ) : (
-                                                      <input
-                                                        type="number"
-                                                        min="1"
-                                                        value={field.quantity}
-                                                        onChange={(e) =>
-                                                          updateProductQuantity(
-                                                            index,
-                                                            Number.parseInt(
-                                                              e.target.value
-                                                            ) || 1
-                                                          )
-                                                        }
-                                                        className="w-20 rounded border border-slate-200 p-2 text-center text-slate-700"
-                                                      />
-                                                    )}
-                                                  </td>
-                                                  {!viewOnly && (
-                                                    <td className="p-3 text-center">
-                                                      <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() =>
-                                                          remove(index)
-                                                        }
-                                                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                      >
-                                                        <Trash2 className="h-4 w-4" />
-                                                      </Button>
-                                                    </td>
-                                                  )}
-                                                </tr>
-                                              )
-                                            )}
-                                          </tbody>
-                                        </table>
-                                      </div>
-                                    </>
-                                  )}
-
-                                {!viewOnly && fields?.length > 0 && (
-                                  <div className="border border-slate-200 rounded-lg overflow-hidden">
-                                    <table className="w-full">
-                                      <thead className="bg-slate-100">
-                                        <tr>
-                                          <th className="text-left p-3 text-slate-600 font-medium">
-                                            Código
-                                          </th>
-                                          <th className="text-left p-3 text-slate-600 font-medium">
-                                            Producto
-                                          </th>
-                                          <th className="text-left p-3 text-slate-600 font-medium">
-                                            Precio
-                                          </th>
-                                          <th className="text-center p-3 text-slate-600 font-medium">
-                                            Cantidad
-                                          </th>
-                                          {!viewOnly && (
-                                            <th className="text-center p-3 text-slate-600 font-medium">
-                                              Acciones
-                                            </th>
-                                          )}
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {fields?.map((field, index) => (
-                                          <tr
-                                            key={field.id}
-                                            className="border-t border-slate-200"
-                                          >
-                                            <td className="p-3 text-slate-700 text-sm">
-                                              {field.productId}
-                                            </td>
-                                            <td className="p-3 text-slate-700">
-                                              {field.productName}
-                                            </td>
-                                            <td className="p-3 text-slate-700">
-                                              {field.productPrice}
-                                            </td>
-                                            <td className="p-3 text-center">
-                                              {viewOnly ? (
-                                                <span className="text-slate-700">
-                                                  {field.quantity}
-                                                </span>
-                                              ) : (
-                                                <input
-                                                  type="number"
-                                                  min="1"
-                                                  value={field.quantity}
-                                                  onChange={(e) =>
-                                                    updateProductQuantity(
-                                                      index,
-                                                      Number.parseInt(
-                                                        e.target.value
-                                                      ) || 1
-                                                    )
-                                                  }
-                                                  className="w-20 rounded border border-slate-200 p-2 text-center text-slate-700"
-                                                />
-                                              )}
-                                            </td>
-                                            {!viewOnly && (
-                                              <td className="p-3 text-center">
-                                                <Button
-                                                  type="button"
-                                                  variant="outline"
-                                                  size="sm"
-                                                  onClick={() => remove(index)}
-                                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                >
-                                                  <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                              </td>
-                                            )}
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                )}
-
-                                {!viewOnly && fields?.length === 0 && (
-                                  <div className="text-slate-400 text-center py-4 border border-dashed border-slate-200 rounded">
-                                    No hay productos seleccionados
-                                  </div>
-                                )}
-
-                                {selectedDeliveryNote &&
-                                  selectedDeliveryNote.deliverynotes_products
-                                    ?.length === 0 && (
-                                    <div className="text-slate-400 text-center py-4 border border-dashed border-slate-200 rounded">
-                                      No hay productos seleccionados
-                                    </div>
-                                  )}
-
-                                {errors.products && (
-                                  <span className="text-red-500 text-sm">
-                                    * Debe seleccionar al menos un producto
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-
-                        <tr>
-                          <td>
-                            <div className="p-4 flex flex-col gap-2 md:gap-4 md:items-start">
-                              <label className="text-slate-500 md:w-20 font-bold">
-                                Descripcion:
-                              </label>
-                              {viewOnly ? (
-                                <label className="text-slate-500">
-                                  {selectedDeliveryNote?.description}
-                                </label>
-                              ) : (
-                                <div className="flex flex-col gap-2 w-full">
-                                  <textarea
-                                    type="text"
-                                    defaultValue={
-                                      selectedDeliveryNote?.description || ""
-                                    }
-                                    {...register("description")}
-                                    id="description"
-                                    name="description"
-                                    className="rounded border border-slate-200 p-4 text-slate-500 w-full md:w-[400px] h-[100px]"
-                                    rows={4}
-                                    cols={50}
-                                    placeholder="Ingrese una descripcion"
-                                  />
-                                  {errors.description && (
-                                    <span className="text-red-500 text-sm">
-                                      * Obligatorio
+                                      <option value="">-</option>
+                                      <option value="STOCK">STOCK</option>
+                                      <option value="CONFECCION">CONFECCION</option>
+                                    </select>
+                                  </td>
+                                  {/* Lo que falta */}
+                                  <td className="border border-slate-200 p-1 text-center">
+                                    <span className="text-xs font-medium text-orange-600">
+                                      {watch(`products.${index}.lo_que_falta`) || 0}
                                     </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+                                  </td>
+                                  {/* Acción */}
+                                  <td className="border border-slate-200 p-1 text-center">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => duplicateRow(index)}
+                                        className="text-blue-500 hover:text-blue-700 p-1"
+                                        title="Duplicar fila"
+                                      >
+                                        <Copy className="h-3 w-3" />
+                                      </button>
+                                      {fields.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => remove(index)}
+                                          className="text-red-500 hover:text-red-700 font-bold text-lg"
+                                          title="Eliminar fila"
+                                        >
+                                          ×
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
 
-                        <tr>
-                          <td>
-                            <div className="p-4 flex flex-col md:flex-row gap-4 md:items-center md:justify-end">
-                              {viewOnly ? (
-                                <div>
-                                  <Button
-                                    variant="destructive"
-                                    onClick={() => onCancel()}
-                                    className="w-full md:w-auto"
-                                  >
-                                    Cancelar
-                                  </Button>
-                                </div>
-                              ) : (
-                                <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
-                                  <Button
-                                    variant="destructive"
-                                    onClick={() => onCancel()}
-                                    className="w-full md:w-auto"
-                                  >
-                                    Cancelar
-                                  </Button>
-                                  <Button
-                                    type="submit"
-                                    disabled={isLoadingSubmit}
-                                    className="w-full md:w-auto"
-                                  >
-                                    {isLoadingSubmit
-                                      ? "Guardando..."
-                                      : "Guardar"}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
+                      {/* Botones */}
+                      <div className="p-4 gap-4 flex items-center justify-end">
+                        <div className="gap-4 flex">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={onCancel}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button type="submit" disabled={isLoadingSubmit}>
+                            {isLoadingSubmit ? "Guardando..." : "Guardar"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   </form>
                 </div>
               </div>

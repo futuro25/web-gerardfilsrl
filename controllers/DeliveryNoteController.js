@@ -119,11 +119,13 @@ self.getDeliveryNoteByEmail = async (req, res) => {
 self.createDeliveryNote = async (req, res) => {
   try {
     const deliverynote = {
-      client_id: req.body.client_id,
-      order_id: req.body.order_id || null, // Added order_id to link delivery note to order
-      description: req.body.description,
-      amount: req.body.amount,
-      number: req.body.number,
+      client_id: req.body.client_id || null,
+      order_id: req.body.order_id || null,
+      description: req.body.description || null,
+      amount: req.body.amount || 0,
+      number: req.body.number || null,
+      order_number_text: req.body.order_number_text || null,
+      remito_number: req.body.remito_number || null,
     };
 
     const { data: newDeliveryNote, error } = await supabase
@@ -131,48 +133,66 @@ self.createDeliveryNote = async (req, res) => {
       .insert(deliverynote)
       .select();
 
+    if (error) {
+      console.error("Error creating delivery note:", error);
+      return res.json({ error: error.message });
+    }
+
     const deliverynoteProducts = req.body.products.map((product) => ({
       deliverynote_id: newDeliveryNote[0].id,
-      product_id: product.product_id,
-      quantity: product.quantity,
-      price: product.price,
+      product_id: product.product_id || null,
+      quantity: product.quantity || product.cantidad_por_talle || 0,
+      price: product.price || 0,
+      codigo: product.codigo || null,
+      fuerza: product.fuerza || null,
+      producto_tipo: product.producto_tipo || null,
+      manga: product.manga || null,
+      genero: product.genero || null,
+      color: product.color || null,
+      cuello: product.cuello || null,
+      talle: product.talle || null,
+      cantidad_por_talle: product.cantidad_por_talle || 0,
+      cantidad_total: product.cantidad_total || 0,
+      origen: product.origen || null,
+      lo_que_falta: product.lo_que_falta || 0,
     }));
 
-    const { data: newDeliveryNoteProducts, errorProducts } = await supabase
+    const { data: newDeliveryNoteProducts, error: errorProducts } = await supabase
       .from("deliverynotes_products")
       .insert(deliverynoteProducts);
 
-    const productsForStock = req.body.products.map((product) => ({
-      id: product.product_id,
-      quantity: product.quantity,
-    }));
+    if (errorProducts) {
+      await supabase.from("deliverynotes").delete().eq("id", newDeliveryNote[0].id);
+      console.error("Error creating delivery note products:", errorProducts);
+      return res.json({ error: errorProducts.message });
+    }
 
-    const updatedStocks = await updateProductStock(productsForStock);
+    // Only update stock for products with origen = "STOCK"
+    const productsFromStock = req.body.products.filter(
+      (product) => product.origen === "STOCK" && product.product_id
+    );
+
+    if (productsFromStock.length > 0) {
+      const productsForStock = productsFromStock.map((product) => ({
+        id: product.product_id,
+        quantity: product.cantidad_por_talle || product.quantity || 0,
+      }));
+
+      try {
+        await updateProductStock(productsForStock);
+      } catch (stockError) {
+        console.error("Error updating stock:", stockError);
+      }
+    }
 
     if (req.body.order_id) {
       await updateOrderProductsDelivered(req.body.order_id, req.body.products);
     }
 
-    if (error || errorProducts) {
-      // Reverse the deliverynote creation
-      const { data: deletedDeliveryNote, error: deleteError } = await supabase
-        .from("deliverynotes")
-        .delete()
-        .eq("id", newDeliveryNote[0].id);
-
-      const { data: deletedDeliveryNoteProducts, error: deleteErrorProducts } =
-        await supabase
-          .from("deliverynotes_products")
-          .delete()
-          .eq("deliverynote_id", newDeliveryNote[0].id);
-
-      return res.json({ error: error.message || errorProducts.message });
-    }
-
     return res.json(newDeliveryNote);
   } catch (e) {
     console.log("DeliveryNote creation error", e.message);
-    return res.json(e);
+    return res.json({ error: e.message });
   }
 };
 
@@ -218,7 +238,7 @@ self.deleteDeliveryNoteById = async (req, res) => {
       .select(
         `
         *,
-        deliverynotes_products(product_id, quantity)
+        deliverynotes_products(*)
       `
       )
       .eq("id", deliverynote_id)
@@ -272,37 +292,53 @@ self.deleteDeliveryNoteById = async (req, res) => {
     if (deliveryNote.order_id) {
       const revertPromises = deliveryNote.deliverynotes_products.map(
         async (dnp) => {
-          const { data: orderProduct, error: getError } = await supabase
+          const deliveredQty = dnp.cantidad_por_talle || dnp.quantity || 0;
+          if (deliveredQty <= 0) return;
+
+          let query = supabase
             .from("orders_products")
-            .select("quantity_delivered")
-            .eq("order_id", deliveryNote.order_id)
-            .eq("product_id", dnp.product_id)
-            .single();
+            .select("id, quantity_delivered")
+            .eq("order_id", deliveryNote.order_id);
+
+          if (dnp.product_id) {
+            query = query.eq("product_id", dnp.product_id);
+          } else {
+            if (dnp.producto_tipo) query = query.eq("producto_tipo", dnp.producto_tipo);
+            if (dnp.talle) query = query.eq("talle", dnp.talle);
+            if (dnp.color) query = query.eq("color", dnp.color);
+            if (dnp.manga) query = query.eq("manga", dnp.manga);
+            if (dnp.genero) query = query.eq("genero", dnp.genero);
+            if (dnp.cuello) query = query.eq("cuello", dnp.cuello);
+            if (dnp.fuerza) query = query.eq("fuerza", dnp.fuerza);
+          }
+
+          const { data: orderProducts, error: getError } = await query;
 
           if (getError) {
-            console.error(
-              `Error obteniendo order product: ${getError.message}`
-            );
+            console.error(`Error obteniendo order product: ${getError.message}`);
             return;
           }
 
+          if (!orderProducts || orderProducts.length === 0) {
+            console.log(`No matching order product found for variant to revert`);
+            return;
+          }
+
+          const orderProduct = orderProducts[0];
           const currentDelivered = orderProduct?.quantity_delivered || 0;
-          const newDelivered = Math.max(0, currentDelivered - dnp.quantity);
+          const newDelivered = Math.max(0, currentDelivered - deliveredQty);
 
           console.log(
-            `[v0] Revirtiendo cantidad entregada del producto ${dnp.product_id}: ${currentDelivered} - ${dnp.quantity} = ${newDelivered}`
+            `Revirtiendo cantidad entregada: ${currentDelivered} - ${deliveredQty} = ${newDelivered}`
           );
 
           const { error: updateError } = await supabase
             .from("orders_products")
             .update({ quantity_delivered: newDelivered })
-            .eq("order_id", deliveryNote.order_id)
-            .eq("product_id", dnp.product_id);
+            .eq("id", orderProduct.id);
 
           if (updateError) {
-            console.error(
-              `Error revirtiendo cantidad entregada: ${updateError.message}`
-            );
+            console.error(`Error revirtiendo cantidad entregada: ${updateError.message}`);
           }
         }
       );
@@ -399,33 +435,51 @@ const updateProductStock = async (products) => {
 const updateOrderProductsDelivered = async (orderId, products) => {
   try {
     for (const product of products) {
-      // Get current delivered quantity
-      const { data: orderProduct, error: getError } = await supabase
+      const deliveredQty = product.cantidad_por_talle || product.quantity || 0;
+      if (deliveredQty <= 0) continue;
+
+      let query = supabase
         .from("orders_products")
-        .select("quantity_delivered")
-        .eq("order_id", orderId)
-        .eq("product_id", product.product_id)
-        .single();
+        .select("id, quantity_delivered")
+        .eq("order_id", orderId);
+
+      if (product.product_id) {
+        query = query.eq("product_id", product.product_id);
+      } else {
+        if (product.producto_tipo) query = query.eq("producto_tipo", product.producto_tipo);
+        if (product.talle) query = query.eq("talle", product.talle);
+        if (product.color) query = query.eq("color", product.color);
+        if (product.manga) query = query.eq("manga", product.manga);
+        if (product.genero) query = query.eq("genero", product.genero);
+        if (product.cuello) query = query.eq("cuello", product.cuello);
+        if (product.fuerza) query = query.eq("fuerza", product.fuerza);
+      }
+
+      const { data: orderProducts, error: getError } = await query;
 
       if (getError) {
         console.error(`Error getting order product: ${getError.message}`);
         continue;
       }
 
-      const currentDelivered = orderProduct?.quantity_delivered || 0;
-      const newDelivered = currentDelivered + product.quantity;
+      if (!orderProducts || orderProducts.length === 0) {
+        console.log(`No matching order product found for variant`);
+        continue;
+      }
 
-      // Update delivered quantity
+      const orderProduct = orderProducts[0];
+      const currentDelivered = orderProduct?.quantity_delivered || 0;
+      const newDelivered = currentDelivered + deliveredQty;
+
       const { error: updateError } = await supabase
         .from("orders_products")
         .update({ quantity_delivered: newDelivered })
-        .eq("order_id", orderId)
-        .eq("product_id", product.product_id);
+        .eq("id", orderProduct.id);
 
       if (updateError) {
-        console.error(
-          `Error updating delivered quantity: ${updateError.message}`
-        );
+        console.error(`Error updating delivered quantity: ${updateError.message}`);
+      } else {
+        console.log(`Updated order product ${orderProduct.id}: delivered ${currentDelivered} -> ${newDelivered}`);
       }
     }
   } catch (error) {

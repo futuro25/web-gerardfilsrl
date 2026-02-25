@@ -12,57 +12,37 @@ self.getOrders = async (req, res) => {
 
     if (error) throw error;
 
-    const ordersWithDelivered = await Promise.all(
+    const ordersWithDeliveryNotes = await Promise.all(
       orders.map(async (order) => {
-        if (order.orders_products) {
-          const productsWithDelivered = await Promise.all(
-            order.orders_products.map(async (op) => {
-              const { data: deliveredData, error: deliveredError } =
-                await supabase
-                  .from("deliverynotes")
-                  .select(
-                    "id, deliverynotes_products!inner(product_id, quantity)"
-                  )
-                  .eq("client_id", order.client_id)
-                  .eq("deliverynotes_products.product_id", op.product_id)
-                  .is("deleted_at", null);
+        const { data: deliveryNotes, error: dnError } = await supabase
+          .from("deliverynotes")
+          .select("*, deliverynotes_products(*)")
+          .eq("order_id", order.id)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false });
 
-              console.log(
-                "[v0] Query for client:",
-                order.client_id,
-                "product:",
-                op.product_id
-              );
-              console.log("[v0] deliveredData:", deliveredData);
-              console.log("[v0] deliveredError:", deliveredError);
-
-              let totalDelivered = 0;
-              if (deliveredData && deliveredData.length > 0) {
-                deliveredData.forEach((dn) => {
-                  if (dn.deliverynotes_products) {
-                    dn.deliverynotes_products.forEach((dnp) => {
-                      totalDelivered += dnp.quantity || 0;
-                    });
-                  }
-                });
-              }
-
-              console.log("[v0] totalDelivered:", totalDelivered);
-
-              return {
-                ...op,
-                quantity_delivered: totalDelivered,
-                quantity_pending: op.quantity - totalDelivered,
-              };
-            })
-          );
-          order.orders_products = productsWithDelivered;
+        if (dnError) {
+          console.error("Error fetching delivery notes:", dnError);
         }
-        return order;
+
+        if (order.orders_products) {
+          order.orders_products = order.orders_products.map((op) => {
+            const quantityDelivered = op.quantity_delivered || 0;
+            return {
+              ...op,
+              quantity_pending: Math.max(0, op.quantity - quantityDelivered),
+            };
+          });
+        }
+
+        return {
+          ...order,
+          delivery_notes: deliveryNotes || [],
+        };
       })
     );
 
-    res.json(ordersWithDelivered);
+    res.json(ordersWithDeliveryNotes);
   } catch (e) {
     res.json({ error: e.message });
   }
@@ -178,6 +158,8 @@ self.createOrder = async (req, res) => {
       client_id: req.body.client_id,
       order_number: req.body.order_number,
       order_type: req.body.order_type,
+      order_date: req.body.order_date || null,
+      delivery_date: req.body.delivery_date || null,
       description: req.body.description,
       amount: req.body.amount,
     };
@@ -198,6 +180,13 @@ self.createOrder = async (req, res) => {
       quantity: product.quantity,
       quantity_delivered: 0,
       price: product.price,
+      codigo: product.codigo || null,
+      producto_tipo: product.producto_tipo || null,
+      manga: product.manga || null,
+      genero: product.genero || null,
+      color: product.color || null,
+      cuello: product.cuello || null,
+      talle: product.talle || null,
     }));
 
     const { data: newOrderProducts, error: errorProducts } = await supabase
@@ -243,6 +232,13 @@ self.getOrderByIdAndUpdate = async (req, res) => {
         quantity: product.quantity,
         quantity_delivered: 0,
         price: product.price,
+        codigo: product.codigo || null,
+        producto_tipo: product.producto_tipo || null,
+        manga: product.manga || null,
+        genero: product.genero || null,
+        color: product.color || null,
+        cuello: product.cuello || null,
+        talle: product.talle || null,
       }));
 
       const { error: insertError } = await supabase

@@ -279,6 +279,12 @@ export default function Clients() {
                         <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
                           Documento
                         </th>
+                        <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          Alias
+                        </th>
+                        <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          CBU
+                        </th>
                         <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                           Acciones
                         </th>
@@ -304,6 +310,12 @@ export default function Clients() {
                               {client.document_type +
                                 " " +
                                 client.document_number}
+                            </td>
+                            <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
+                              {client.alias || "-"}
+                            </td>
+                            <td className="!text-xs text-left border-b border-slate-100  p-4 text-slate-500 ">
+                              {client.cbu || "-"}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  text-slate-500 w-10">
                               <div className="flex gap-2">
@@ -335,7 +347,7 @@ export default function Clients() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={5}
+                            colSpan={7}
                             className="border-b border-slate-100  p-4  text-slate-500 "
                           >
                             No data
@@ -676,6 +688,52 @@ export default function Clients() {
                                   defaultValue={selectedClient?.zip_code || ""}
                                   {...register("zip_code")}
                                   className="rounded border border-slate-200 p-4 text-slate-500 w-[250px]"
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Alias:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedClient?.alias}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={selectedClient?.alias || ""}
+                                  {...register("alias")}
+                                  className="rounded border border-slate-200 p-4 text-slate-500 w-[250px]"
+                                  placeholder="Alias bancario"
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                CBU:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedClient?.cbu}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={selectedClient?.cbu || ""}
+                                  {...register("cbu")}
+                                  className="rounded border border-slate-200 p-4 text-slate-500 w-[250px]"
+                                  placeholder="CBU"
                                 />
                               )}
                             </div>

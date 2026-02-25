@@ -877,6 +877,30 @@ export default function Suppliers() {
                           </td>
                         </tr>
                         {/* ================ */}
+                        {/* Horario */}
+                        <tr>
+                          <td>
+                            <div className="p-4 gap-4 flex items-center">
+                              <label className="text-slate-500 w-20 font-bold">
+                                Horario:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500 w-20">
+                                  {selectedSupplier?.horario}
+                                </label>
+                              ) : (
+                                <input
+                                  type="text"
+                                  defaultValue={selectedSupplier?.horario || ""}
+                                  {...register("horario")}
+                                  className="rounded border border-slate-200 p-4 text-slate-500"
+                                  placeholder="Ej: Lunes a Viernes 9:00 - 18:00"
+                                />
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
                         <tr>
                           <td>
                             <div className="p-4 gap-4 flex items-center justify-end">

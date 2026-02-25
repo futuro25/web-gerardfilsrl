@@ -20,17 +20,16 @@ export default function Home() {
   }, []);
 
   let navItems = [
+    { label: "Stock", icon: ShirtIcon, path: "/stock" },
     { label: "Pedidos", icon: BookOpenCheck, path: "/pedidos" },
     { label: "Egreso de Mercaderia", icon: Package, path: "/remitos" },
-    { label: "Facturas", icon: FileText, path: "/entregas" },
-    { label: "Stock", icon: ShirtIcon, path: "/productos" },
     { label: "Proveedores", icon: TruckIcon, path: "/proveedores" },
     { label: "Clientes", icon: UsersIcon, path: "/clientes" },
+    { label: "Facturas", icon: FileText, path: "/entregas" },
     { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow" },
     { label: "Cheques", icon: Banknote, path: "/cheques" },
     { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion" },
     { label: "Libros", icon: BookOpenCheck, path: "/libros-selector" },
-    { label: "Ingreso de Mercaderia", icon: Layers, path: "/stock" },
     { label: "Logout", icon: LogOutIcon, path: "/logout" },
   ];
 

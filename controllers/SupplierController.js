@@ -90,6 +90,7 @@ self.createSupplier = async (req, res) => {
       clasificacion: req.body.clasificacion,
       alias: req.body.alias,
       cbu: req.body.cbu,
+      horario: req.body.horario,
     };
 
     const { data: newSupplier, error } = await supabase
