@@ -20,23 +20,23 @@ export default function Home() {
   }, []);
 
   let navItems = [
-    { label: "Stock", icon: ShirtIcon, path: "/stock" },
-    { label: "Pedidos", icon: BookOpenCheck, path: "/pedidos" },
-    { label: "Egreso de Mercaderia", icon: Package, path: "/remitos" },
-    { label: "Proveedores", icon: TruckIcon, path: "/proveedores" },
-    { label: "Clientes", icon: UsersIcon, path: "/clientes" },
-    { label: "Facturas", icon: FileText, path: "/entregas" },
-    { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow" },
-    { label: "Cheques", icon: Banknote, path: "/cheques" },
-    { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion" },
-    { label: "Libros", icon: BookOpenCheck, path: "/libros-selector" },
-    { label: "Logout", icon: LogOutIcon, path: "/logout" },
+    { label: "Stock", icon: ShirtIcon, path: "/stock", order: 1 },
+    { label: "Pedidos", icon: BookOpenCheck, path: "/pedidos", order: 2 },
+    { label: "Egreso de Mercaderia", icon: Package, path: "/remitos", order: 3 },
+    { label: "Proveedores", icon: TruckIcon, path: "/proveedores", order: 4 },
+    { label: "Clientes", icon: UsersIcon, path: "/clientes", order: 5 },
+    { label: "Facturas", icon: FileText, path: "/entregas", order: 6 },
+    { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow", order: 7 },
+    { label: "Cheques", icon: Banknote, path: "/cheques", order: 8 },
+    { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion", order: 9 },
+    { label: "Libros", icon: BookOpenCheck, path: "/libros-selector", order: 10 },
+    { label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 },
   ];
 
   if (sessionStorage.type === "ADMIN") {
     navItems.pop();
-    navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios" });
-    navItems.push({ label: "Logout", icon: LogOutIcon, path: "/logout" });
+    navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios", order: 11 });
+    navItems.push({ label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 });
   }
 
   if (sessionStorage.username === "lcozza") {
@@ -44,6 +44,8 @@ export default function Home() {
     navItems = navItems.filter((item) => item.label !== "Cheques");
     navItems = navItems.filter((item) => item.label !== "Libros");
   }
+
+  navItems.sort((a, b) => a.order - b.order);
 
   return (
     <div className="px-4 h-full overflow-auto mt-0 flex flex-col items-center justify-start">
