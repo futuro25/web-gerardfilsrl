@@ -27,9 +27,37 @@ self.getOrders = async (req, res) => {
 
         if (order.orders_products) {
           order.orders_products = order.orders_products.map((op) => {
-            const quantityDelivered = op.quantity_delivered || 0;
+            // Calculate delivered quantity from delivery notes for this order product
+            let calculatedDelivered = 0;
+            
+            if (deliveryNotes && deliveryNotes.length > 0) {
+              const normalize = (val) => (val || "").toString().toUpperCase().trim();
+              
+              deliveryNotes.forEach((dn) => {
+                if (dn.deliverynotes_products) {
+                  dn.deliverynotes_products.forEach((dnp) => {
+                    // Match by producto_tipo and talle (minimum required)
+                    const matchProducto = normalize(dnp.producto_tipo) === normalize(op.producto_tipo);
+                    const matchTalle = normalize(dnp.talle) === normalize(op.talle);
+                    
+                    // Also check color if both have it
+                    const matchColor = !op.color || !dnp.color || 
+                      normalize(dnp.color) === normalize(op.color);
+                    
+                    if (matchProducto && matchTalle && matchColor) {
+                      calculatedDelivered += dnp.cantidad_por_talle || dnp.quantity || 0;
+                    }
+                  });
+                }
+              });
+            }
+            
+            // Use calculated value or stored value, whichever is greater
+            const quantityDelivered = Math.max(calculatedDelivered, op.quantity_delivered || 0);
+            
             return {
               ...op,
+              quantity_delivered: quantityDelivered,
               quantity_pending: Math.max(0, op.quantity - quantityDelivered),
             };
           });

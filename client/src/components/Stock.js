@@ -17,10 +17,12 @@ import {
   useDeleteStockEntryMutation,
 } from "../apis/api.stock";
 import { useSuppliersQuery } from "../apis/api.suppliers";
+import { useDeliveryNotesQuery } from "../apis/api.deliverynotes";
 import {
   queryStockEntriesKey,
   querySuppliersKey,
   queryProductsKey,
+  queryDeliveryNotesKey,
 } from "../apis/queryKeys";
 
 export default function Stock({}) {
@@ -51,6 +53,7 @@ export default function Stock({}) {
     control,
     setValue,
     trigger,
+    watch,
     formState: { errors },
   } = useForm({
     defaultValues: {
@@ -76,6 +79,59 @@ export default function Stock({}) {
     queryKey: querySuppliersKey(),
     queryFn: useSuppliersQuery,
   });
+
+  const { data: deliveryNotes } = useQuery({
+    queryKey: queryDeliveryNotesKey(),
+    queryFn: useDeliveryNotesQuery,
+  });
+
+  // Calcular resumen de stock actual
+  const getStockSummary = () => {
+    const stockMap = {};
+
+    // Sumar entradas de stock
+    if (stockEntries && Array.isArray(stockEntries)) {
+      stockEntries.forEach((entry) => {
+        if (entry.stock_entries_products) {
+          entry.stock_entries_products.forEach((sep) => {
+            const productoTipo = sep.producto_tipo || sep.products?.name || "SIN TIPO";
+            const key = productoTipo.toUpperCase();
+            if (!stockMap[key]) {
+              stockMap[key] = { entradas: 0, salidas: 0 };
+            }
+            stockMap[key].entradas += sep.quantity || 0;
+          });
+        }
+      });
+    }
+
+    // Restar salidas (delivery notes)
+    if (deliveryNotes && Array.isArray(deliveryNotes)) {
+      deliveryNotes.forEach((dn) => {
+        if (dn.deliverynotes_products) {
+          dn.deliverynotes_products.forEach((dnp) => {
+            const productoTipo = dnp.producto_tipo || "SIN TIPO";
+            const key = productoTipo.toUpperCase();
+            if (!stockMap[key]) {
+              stockMap[key] = { entradas: 0, salidas: 0 };
+            }
+            stockMap[key].salidas += dnp.cantidad_por_talle || dnp.quantity || 0;
+          });
+        }
+      });
+    }
+
+    // Convertir a array con stock actual
+    return Object.entries(stockMap).map(([producto, { entradas, salidas }]) => ({
+      producto,
+      entradas,
+      salidas,
+      actual: Math.max(0, entradas - salidas),
+    })).sort((a, b) => a.producto.localeCompare(b.producto));
+  };
+
+  const stockSummary = getStockSummary();
+  const totalStock = stockSummary.reduce((acc, item) => acc + item.actual, 0);
 
   const dataFiltered =
     stockEntries &&
@@ -352,6 +408,37 @@ export default function Stock({}) {
             {error && <div className="text-red-500">{/* ERROR... */}</div>}
             {stage === "LIST" && stockEntries && (
               <div className="my-4 mb-28">
+                {/* Resumen de Stock Actual */}
+                <div className="mb-5 bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+                    <span className="text-sm font-medium text-slate-600">
+                      Stock Actual
+                    </span>
+                    <span className="text-sm text-slate-500">
+                      Total: <span className="font-semibold">{totalStock}</span> uds.
+                    </span>
+                  </div>
+                  <div className="px-4 py-3">
+                    {stockSummary.length > 0 ? (
+                      <div className="flex flex-wrap gap-x-6 gap-y-2">
+                        {stockSummary.map((item) => (
+                          <div
+                            key={item.producto}
+                            className="flex items-center gap-2 text-sm"
+                          >
+                            <span className="text-slate-500">{item.producto}:</span>
+                            <span className="font-semibold text-slate-700">{item.actual}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-slate-400 text-sm text-center py-2">
+                        Sin stock
+                      </p>
+                    )}
+                  </div>
+                </div>
+
                 <p className="pl-1 pb-1 text-slate-500">
                   Total de ingresos {stockEntries.length}
                 </p>
@@ -750,19 +837,23 @@ export default function Stock({}) {
                                       ))}
                                     </select>
                                   </td>
-                                  {/* Manga */}
+                                  {/* Manga - solo para CAMISA */}
                                   <td className="border border-slate-200 p-2">
-                                    <select
-                                      {...register(`products.${index}.manga`)}
-                                      className="w-full rounded border border-slate-200 p-2 text-xs text-slate-500"
-                                    >
-                                      <option value="">Seleccionar</option>
-                                      {utils.getProductSleeves().map((sleeve) => (
-                                        <option key={sleeve} value={sleeve}>
-                                          {sleeve}
-                                        </option>
-                                      ))}
-                                    </select>
+                                    {watch(`products.${index}.producto_tipo`) === "CAMISA" ? (
+                                      <select
+                                        {...register(`products.${index}.manga`)}
+                                        className="w-full rounded border border-slate-200 p-2 text-xs text-slate-500"
+                                      >
+                                        <option value="">Seleccionar</option>
+                                        {utils.getProductSleeves().map((sleeve) => (
+                                          <option key={sleeve} value={sleeve}>
+                                            {sleeve}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span className="text-xs text-slate-400 p-2">N/A</span>
+                                    )}
                                   </td>
                                   {/* Género */}
                                   <td className="border border-slate-200 p-2">
@@ -792,19 +883,23 @@ export default function Stock({}) {
                                       ))}
                                     </select>
                                   </td>
-                                  {/* Cuello */}
+                                  {/* Cuello - solo para CAMISA */}
                                   <td className="border border-slate-200 p-2">
-                                    <select
-                                      {...register(`products.${index}.cuello`)}
-                                      className="w-full rounded border border-slate-200 p-2 text-xs text-slate-500"
-                                    >
-                                      <option value="">Seleccionar</option>
-                                      {utils.getProductNecks().map((neck) => (
-                                        <option key={neck} value={neck}>
-                                          {neck}
-                                        </option>
-                                      ))}
-                                    </select>
+                                    {watch(`products.${index}.producto_tipo`) === "CAMISA" ? (
+                                      <select
+                                        {...register(`products.${index}.cuello`)}
+                                        className="w-full rounded border border-slate-200 p-2 text-xs text-slate-500"
+                                      >
+                                        <option value="">Seleccionar</option>
+                                        {utils.getProductNecks().map((neck) => (
+                                          <option key={neck} value={neck}>
+                                            {neck}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span className="text-xs text-slate-400 p-2">N/A</span>
+                                    )}
                                   </td>
                                   {/* Talle */}
                                   <td className="border border-slate-200 p-2">

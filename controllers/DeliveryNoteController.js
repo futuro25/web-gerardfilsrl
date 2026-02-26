@@ -185,8 +185,25 @@ self.createDeliveryNote = async (req, res) => {
       }
     }
 
+    console.log("=== Delivery Note Created ===");
+    console.log("req.body.order_id:", req.body.order_id);
+    console.log("typeof order_id:", typeof req.body.order_id);
+    
     if (req.body.order_id) {
-      await updateOrderProductsDelivered(req.body.order_id, req.body.products);
+      console.log("=== Updating order products delivered ===");
+      console.log("Order ID:", req.body.order_id);
+      console.log("Number of products:", req.body.products?.length);
+      req.body.products?.forEach((p, i) => {
+        console.log(`Product ${i}: ${p.producto_tipo}/${p.talle}/${p.color} - qty: ${p.cantidad_por_talle || p.quantity}`);
+      });
+      try {
+        await updateOrderProductsDelivered(req.body.order_id, req.body.products);
+        console.log("updateOrderProductsDelivered completed successfully");
+      } catch (updateError) {
+        console.error("Error in updateOrderProductsDelivered:", updateError);
+      }
+    } else {
+      console.log("No order_id provided, skipping order products update");
     }
 
     return res.json(newDeliveryNote);
@@ -434,52 +451,83 @@ const updateProductStock = async (products) => {
 
 const updateOrderProductsDelivered = async (orderId, products) => {
   try {
+    // Get all order products for this order
+    const { data: allOrderProducts, error: fetchError } = await supabase
+      .from("orders_products")
+      .select("*")
+      .eq("order_id", orderId);
+
+    if (fetchError) {
+      console.error("Error fetching order products:", fetchError);
+      return;
+    }
+
+    if (!allOrderProducts || allOrderProducts.length === 0) {
+      console.log("No order products found for order:", orderId);
+      return;
+    }
+
+    console.log(`Found ${allOrderProducts.length} order products for order ${orderId}`);
+
     for (const product of products) {
       const deliveredQty = product.cantidad_por_talle || product.quantity || 0;
       if (deliveredQty <= 0) continue;
 
-      let query = supabase
-        .from("orders_products")
-        .select("id, quantity_delivered")
-        .eq("order_id", orderId);
+      // Normalize values for comparison (uppercase, handle null/empty)
+      const normalize = (val) => (val || "").toString().toUpperCase().trim();
 
-      if (product.product_id) {
-        query = query.eq("product_id", product.product_id);
-      } else {
-        if (product.producto_tipo) query = query.eq("producto_tipo", product.producto_tipo);
-        if (product.talle) query = query.eq("talle", product.talle);
-        if (product.color) query = query.eq("color", product.color);
-        if (product.manga) query = query.eq("manga", product.manga);
-        if (product.genero) query = query.eq("genero", product.genero);
-        if (product.cuello) query = query.eq("cuello", product.cuello);
-        if (product.fuerza) query = query.eq("fuerza", product.fuerza);
+      // Find matching order product - prioritize exact match, then fallback to producto_tipo + talle only
+      let matchingOrderProduct = allOrderProducts.find((op) => {
+        const matchProducto = normalize(op.producto_tipo) === normalize(product.producto_tipo);
+        const matchTalle = normalize(op.talle) === normalize(product.talle);
+        const matchColor = normalize(op.color) === normalize(product.color);
+        const matchManga = normalize(op.manga) === normalize(product.manga);
+        const matchGenero = normalize(op.genero) === normalize(product.genero);
+        const matchCuello = normalize(op.cuello) === normalize(product.cuello);
+
+        return matchProducto && matchTalle && matchColor && matchManga && matchGenero && matchCuello;
+      });
+
+      // If no exact match, try matching by producto_tipo + talle + color only
+      if (!matchingOrderProduct) {
+        matchingOrderProduct = allOrderProducts.find((op) => {
+          const matchProducto = normalize(op.producto_tipo) === normalize(product.producto_tipo);
+          const matchTalle = normalize(op.talle) === normalize(product.talle);
+          const matchColor = normalize(op.color) === normalize(product.color);
+          return matchProducto && matchTalle && matchColor;
+        });
       }
 
-      const { data: orderProducts, error: getError } = await query;
+      // If still no match, try producto_tipo + talle only (minimum required)
+      if (!matchingOrderProduct) {
+        matchingOrderProduct = allOrderProducts.find((op) => {
+          const matchProducto = normalize(op.producto_tipo) === normalize(product.producto_tipo);
+          const matchTalle = normalize(op.talle) === normalize(product.talle);
+          return matchProducto && matchTalle;
+        });
+      }
 
-      if (getError) {
-        console.error(`Error getting order product: ${getError.message}`);
+      if (!matchingOrderProduct) {
+        console.log(`No matching order product found for: ${product.producto_tipo}/${product.talle}`);
+        console.log(`Delivery product:`, JSON.stringify(product, null, 2));
+        console.log(`Available order products:`, allOrderProducts.map(op => `${op.producto_tipo}/${op.talle}`));
         continue;
       }
 
-      if (!orderProducts || orderProducts.length === 0) {
-        console.log(`No matching order product found for variant`);
-        continue;
-      }
-
-      const orderProduct = orderProducts[0];
-      const currentDelivered = orderProduct?.quantity_delivered || 0;
+      const currentDelivered = matchingOrderProduct.quantity_delivered || 0;
       const newDelivered = currentDelivered + deliveredQty;
+
+      console.log(`Updating order product ${matchingOrderProduct.id}: ${currentDelivered} -> ${newDelivered}`);
 
       const { error: updateError } = await supabase
         .from("orders_products")
         .update({ quantity_delivered: newDelivered })
-        .eq("id", orderProduct.id);
+        .eq("id", matchingOrderProduct.id);
 
       if (updateError) {
         console.error(`Error updating delivered quantity: ${updateError.message}`);
       } else {
-        console.log(`Updated order product ${orderProduct.id}: delivered ${currentDelivered} -> ${newDelivered}`);
+        console.log(`Successfully updated order product ${matchingOrderProduct.id}`);
       }
     }
   } catch (error) {

@@ -201,9 +201,21 @@ export default function DeliveryNotes() {
 
       const orderNumber = selectedOrder?.order_number || data.selected_order?.order_number || null;
 
+      const orderId = selectedOrder?.id || data.selected_order?.id || null;
+      console.log("=== Creating Delivery Note ===");
+      console.log("selectedOrder:", selectedOrder);
+      console.log("data.selected_order:", data.selected_order);
+      console.log("order_id to send:", orderId);
+      console.log("validProducts:", validProducts);
+      
+      // Debug alert - remove after testing
+      if (!orderId) {
+        console.warn("WARNING: No order_id found!");
+      }
+
       const body = {
         order_number_text: orderNumber ? `#${orderNumber}` : null,
-        order_id: selectedOrder?.id || data.selected_order?.id || null,
+        order_id: orderId,
         remito_number: data.remito_number || null,
         products: validProducts.map((product) => ({
           product_id: null,
@@ -788,17 +800,21 @@ export default function DeliveryNotes() {
                                       ))}
                                     </select>
                                   </td>
-                                  {/* Manga */}
+                                  {/* Manga - solo para CAMISA */}
                                   <td className="border border-slate-200 p-1">
-                                    <select
-                                      {...register(`products.${index}.manga`)}
-                                      className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
-                                    >
-                                      <option value="">-</option>
-                                      {utils.getProductSleeves().map((sleeve) => (
-                                        <option key={sleeve} value={sleeve}>{sleeve}</option>
-                                      ))}
-                                    </select>
+                                    {watch(`products.${index}.producto_tipo`) === "CAMISA" ? (
+                                      <select
+                                        {...register(`products.${index}.manga`)}
+                                        className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
+                                      >
+                                        <option value="">-</option>
+                                        {utils.getProductSleeves().map((sleeve) => (
+                                          <option key={sleeve} value={sleeve}>{sleeve}</option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span className="text-xs text-slate-400 p-1">N/A</span>
+                                    )}
                                   </td>
                                   {/* Género */}
                                   <td className="border border-slate-200 p-1">
@@ -824,17 +840,21 @@ export default function DeliveryNotes() {
                                       ))}
                                     </select>
                                   </td>
-                                  {/* Cuello */}
+                                  {/* Cuello - solo para CAMISA */}
                                   <td className="border border-slate-200 p-1">
-                                    <select
-                                      {...register(`products.${index}.cuello`)}
-                                      className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
-                                    >
-                                      <option value="">-</option>
-                                      {utils.getProductNecks().map((neck) => (
-                                        <option key={neck} value={neck}>{neck}</option>
-                                      ))}
-                                    </select>
+                                    {watch(`products.${index}.producto_tipo`) === "CAMISA" ? (
+                                      <select
+                                        {...register(`products.${index}.cuello`)}
+                                        className="w-full rounded border border-slate-200 p-1 text-xs text-slate-500"
+                                      >
+                                        <option value="">-</option>
+                                        {utils.getProductNecks().map((neck) => (
+                                          <option key={neck} value={neck}>{neck}</option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <span className="text-xs text-slate-400 p-1">N/A</span>
+                                    )}
                                   </td>
                                   {/* Talle */}
                                   <td className="border border-slate-200 p-1">

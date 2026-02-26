@@ -76,7 +76,7 @@ self.createStockEntry = async (req, res) => {
       cuello: product.cuello || null,
     }));
 
-    const { data: newStockEntryProducts, errorProducts } = await supabase
+    const { data: newStockEntryProducts, error: errorProducts } = await supabase
       .from("stock_entries_products")
       .insert(stockEntryProducts);
 
@@ -90,13 +90,22 @@ self.createStockEntry = async (req, res) => {
       return res.json({ error: errorProducts.message });
     }
 
-    // Update product stock (increase stock)
-    const productsForStock = req.body.products.map((product) => ({
-      id: product.product_id,
-      quantity: product.quantity,
-    }));
-
-    const updatedStocks = await increaseProductStock(productsForStock);
+    // Update product stock only for products with valid product_id (legacy mode)
+    const productsWithId = req.body.products.filter(
+      (p) => p.product_id && p.product_id !== null && p.product_id !== ""
+    );
+    
+    if (productsWithId.length > 0) {
+      try {
+        const productsForStock = productsWithId.map((product) => ({
+          id: product.product_id,
+          quantity: product.quantity,
+        }));
+        await increaseProductStock(productsForStock);
+      } catch (stockError) {
+        console.log("Error updating stock (non-critical):", stockError.message);
+      }
+    }
 
     return res.json(newStockEntry);
   } catch (e) {
@@ -150,9 +159,13 @@ self.deleteStockEntryById = async (req, res) => {
       return res.json({ error: "Entrada de stock no encontrada" });
     }
 
-    // Restore stock for each product (decrease stock)
-    const restoreStockPromises = stockEntry.stock_entries_products.map(
-      async (sep) => {
+    // Restore stock only for products with product_id (legacy mode)
+    const productsWithId = stockEntry.stock_entries_products.filter(
+      (sep) => sep.product_id
+    );
+
+    if (productsWithId.length > 0) {
+      const restoreStockPromises = productsWithId.map(async (sep) => {
         const { data: productData, error: getProductError } = await supabase
           .from("products")
           .select("stock")
@@ -184,10 +197,10 @@ self.deleteStockEntryById = async (req, res) => {
             updateError
           );
         }
-      }
-    );
+      });
 
-    await Promise.all(restoreStockPromises);
+      await Promise.all(restoreStockPromises);
+    }
 
     // Soft delete the stock entry
     const update = { deleted_at: new Date() };

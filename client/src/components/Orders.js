@@ -25,10 +25,12 @@ import {
 } from "../apis/api.orders.js";
 import { useClientsQuery } from "../apis/api.clients";
 import { useStockEntriesQuery } from "../apis/api.stock";
+import { useDeliveryNotesQuery } from "../apis/api.deliverynotes";
 import {
   queryOrdersKey,
   queryClientsKey,
   queryProductsKey,
+  queryDeliveryNotesKey,
 } from "../apis/queryKeys";
 import { useProductsQuery } from "../apis/api.products.js";
 
@@ -102,6 +104,14 @@ export default function Orders() {
     queryFn: useStockEntriesQuery,
   });
 
+  const {
+    data: deliveryNotes,
+    isLoading: isLoadingDeliveryNotes,
+  } = useQuery({
+    queryKey: queryDeliveryNotesKey(),
+    queryFn: useDeliveryNotesQuery,
+  });
+
   const dataFiltered =
     data &&
     data?.length > 0 &&
@@ -147,26 +157,68 @@ export default function Orders() {
   };
 
   const getStockForVariant = (productoTipo, manga, genero, color, cuello, talle) => {
-    if (!stockEntries || !Array.isArray(stockEntries)) return 0;
+    let totalEntradas = 0;
+    let totalSalidas = 0;
     
-    let totalStock = 0;
-    stockEntries.forEach((entry) => {
-      if (entry.stock_entries_products) {
-        entry.stock_entries_products.forEach((sep) => {
-          const matchesType = !productoTipo || sep.products?.name?.toUpperCase().includes(productoTipo.toUpperCase());
-          const matchesManga = !manga || sep.sleeve?.toUpperCase() === manga.toUpperCase();
-          const matchesGenero = !genero || sep.genre?.toUpperCase() === genero.toUpperCase();
-          const matchesColor = !color || sep.color?.toUpperCase() === color.toUpperCase();
-          const matchesCuello = !cuello || sep.neck?.toUpperCase() === cuello.toUpperCase();
-          const matchesTalle = !talle || sep.talle === talle;
-          
-          if (matchesType && matchesManga && matchesGenero && matchesColor && matchesCuello && matchesTalle) {
-            totalStock += sep.quantity || 0;
-          }
-        });
-      }
-    });
-    return totalStock;
+    // Sumar entradas de stock
+    if (stockEntries && Array.isArray(stockEntries)) {
+      stockEntries.forEach((entry) => {
+        if (entry.stock_entries_products) {
+          entry.stock_entries_products.forEach((sep) => {
+            const sepProductoTipo = sep.producto_tipo || sep.products?.name || "";
+            const matchesType = !productoTipo || sepProductoTipo.toUpperCase() === productoTipo.toUpperCase();
+            
+            const sepManga = sep.sleeve || sep.manga || "";
+            const matchesManga = !manga || sepManga.toUpperCase() === manga.toUpperCase();
+            
+            const sepGenero = sep.genre || sep.genero || "";
+            const matchesGenero = !genero || sepGenero.toUpperCase() === genero.toUpperCase();
+            
+            const matchesColor = !color || (sep.color || "").toUpperCase() === color.toUpperCase();
+            
+            const sepCuello = sep.neck || sep.cuello || "";
+            const matchesCuello = !cuello || sepCuello.toUpperCase() === cuello.toUpperCase();
+            
+            const matchesTalle = !talle || sep.talle === talle;
+            
+            if (matchesType && matchesManga && matchesGenero && matchesColor && matchesCuello && matchesTalle) {
+              totalEntradas += sep.quantity || 0;
+            }
+          });
+        }
+      });
+    }
+    
+    // Restar salidas (delivery notes)
+    if (deliveryNotes && Array.isArray(deliveryNotes)) {
+      deliveryNotes.forEach((dn) => {
+        if (dn.deliverynotes_products) {
+          dn.deliverynotes_products.forEach((dnp) => {
+            const dnpProductoTipo = dnp.producto_tipo || "";
+            const matchesType = !productoTipo || dnpProductoTipo.toUpperCase() === productoTipo.toUpperCase();
+            
+            const dnpManga = dnp.manga || "";
+            const matchesManga = !manga || dnpManga.toUpperCase() === manga.toUpperCase();
+            
+            const dnpGenero = dnp.genero || "";
+            const matchesGenero = !genero || dnpGenero.toUpperCase() === genero.toUpperCase();
+            
+            const matchesColor = !color || (dnp.color || "").toUpperCase() === color.toUpperCase();
+            
+            const dnpCuello = dnp.cuello || "";
+            const matchesCuello = !cuello || dnpCuello.toUpperCase() === cuello.toUpperCase();
+            
+            const matchesTalle = !talle || dnp.talle === talle;
+            
+            if (matchesType && matchesManga && matchesGenero && matchesColor && matchesCuello && matchesTalle) {
+              totalSalidas += dnp.cantidad_por_talle || dnp.quantity || 0;
+            }
+          });
+        }
+      });
+    }
+    
+    return Math.max(0, totalEntradas - totalSalidas);
   };
 
   const resetNewProductFields = () => {
@@ -1288,15 +1340,36 @@ export default function Orders() {
                                             newProductCuello,
                                             newProductTalle
                                           );
-                                          const aRetirar = Math.min(newProductCantidad, stock);
-                                          const enDeposito = Math.max(0, stock - newProductCantidad);
+                                          const cantidadSolicitada = newProductCantidad || 0;
+                                          const aRetirar = Math.min(cantidadSolicitada, stock);
+                                          const enDeposito = Math.max(0, stock - cantidadSolicitada);
+                                          const faltantes = Math.max(0, cantidadSolicitada - stock);
                                           
-                                          return stock > 0 ? (
-                                            <span className="text-green-600">
-                                              Sí - {stock} en stock, {aRetirar} a retirar, {enDeposito} en depósito
-                                            </span>
-                                          ) : (
-                                            <span className="text-red-600">No hay stock disponible</span>
+                                          if (stock <= 0) {
+                                            return (
+                                              <span className="text-red-600">
+                                                No hay stock disponible
+                                                {cantidadSolicitada > 0 && ` (${cantidadSolicitada} faltantes)`}
+                                              </span>
+                                            );
+                                          }
+                                          
+                                          return (
+                                            <>
+                                              <span className="text-green-600">
+                                                {stock} en stock
+                                              </span>
+                                              {cantidadSolicitada > 0 && (
+                                                <span className="text-slate-600">
+                                                  {" - "}{aRetirar} a retirar, {enDeposito} quedan en depósito
+                                                </span>
+                                              )}
+                                              {faltantes > 0 && (
+                                                <span className="text-red-600 font-semibold">
+                                                  {" - "}{faltantes} FALTANTES
+                                                </span>
+                                              )}
+                                            </>
                                           );
                                         })()}
                                       </div>
