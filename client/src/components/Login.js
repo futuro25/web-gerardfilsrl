@@ -149,6 +149,25 @@ export default function Login() {
                   </a>
                 </p> */}
               </div>
+
+              {/* dosmil12 signature */}
+              <div className="flex flex-col items-center gap-2 mt-10">
+                <span className="text-xs text-zinc-500">Sitio desarrollado por</span>
+                <a 
+                  href="https://dosmil12.com/?from=gerardfilsrl" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="hover:opacity-80 transition-opacity"
+                >
+                  <img 
+                    src="https://pub-8df60d5ed0274fa8a9989b2040218ce5.r2.dev/logodosmil12.png" 
+                    alt="dosmil12" 
+                    width={100} 
+                    height={30} 
+                    className="object-contain"
+                  />
+                </a>
+              </div>
             </div>
           </div>
         </main>
