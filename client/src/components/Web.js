@@ -24,7 +24,7 @@ export default function Web() {
         <div className="flex flex-col items-center gap-2 mt-4">
           <span className="text-xs text-zinc-400">Sitio desarrollado por</span>
           <a 
-            href="https://dosmil12.com/?from=gerardfilsrl" 
+            href="https://dosmil12.com/?utm_source=gerardfilsrl&utm_medium=web-home" 
             target="_blank" 
             rel="noopener noreferrer"
             className="hover:opacity-80 transition-opacity"
