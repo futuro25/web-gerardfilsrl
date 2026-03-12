@@ -10,6 +10,7 @@ import {
   FileText,
   ShirtIcon,
   Banknote,
+  FileDown,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { MoonLoader } from "react-spinners";
@@ -29,13 +30,14 @@ export default function Home() {
     { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow", order: 7 },
     { label: "Cheques", icon: Banknote, path: "/cheques", order: 8 },
     { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion", order: 9 },
-    { label: "Libros", icon: BookOpenCheck, path: "/libros-selector", order: 10 },
+    // { label: "Libros", icon: BookOpenCheck, path: "/libros-selector", order: 10 },
+    { label: "Export Fiscal", icon: FileDown, path: "/exportacion-fiscal", order: 11 },
     { label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 },
   ];
 
   if (sessionStorage.type === "ADMIN") {
     navItems.pop();
-    navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios", order: 11 });
+    navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios", order: 12 });
     navItems.push({ label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 });
   }
 
