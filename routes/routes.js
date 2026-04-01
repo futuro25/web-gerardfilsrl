@@ -177,6 +177,10 @@ router.get("/orders/active", (req, res, next) =>
   OrderController.getActiveOrders(req, res, next)
 );
 
+router.get("/orders/:order_id/export/excel", (req, res, next) =>
+  OrderController.exportOrderToExcel(req, res, next)
+);
+
 router.get("/orders/:order_id", (req, res, next) =>
   OrderController.getOrderById(req, res, next)
 );

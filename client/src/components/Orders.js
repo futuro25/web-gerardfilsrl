@@ -3,8 +3,8 @@
 import React from 'react';
 import { ExternalLinkIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
-import { Trash2, Plus, ChevronDown, ChevronRight } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Trash2, Plus, ChevronDown, ChevronRight, FileDown, Pencil } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { useFieldArray } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -12,9 +12,11 @@ import { EditIcon, TrashIcon, EyeIcon, CloseIcon } from "./icons";
 import * as utils from "../utils/utils";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
+import { Dialog, DialogContent } from "./common/Dialog";
 import Spinner from "./common/Spinner";
 import SelectComboBox from "./common/SelectComboBox";
 import { sortBy } from "lodash";
+import { saveAs } from "file-saver";
 
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import {
@@ -23,6 +25,7 @@ import {
   useUpdateOrderMutation,
   useDeleteOrderMutation,
 } from "../apis/api.orders.js";
+import { buildOrderExcelBlob } from "../utils/orderExcelExport";
 import { useClientsQuery } from "../apis/api.clients";
 import { useStockEntriesQuery } from "../apis/api.stock";
 import { useDeliveryNotesQuery } from "../apis/api.deliverynotes";
@@ -33,6 +36,28 @@ import {
   queryDeliveryNotesKey,
 } from "../apis/queryKeys";
 import { useProductsQuery } from "../apis/api.products.js";
+
+const HISTORICAL_PRESETS_MAX = 30;
+
+function buildProductVariantKey(v) {
+  return `${v.codigo || ""}-${v.producto_tipo || ""}-${v.manga || ""}-${v.genero || ""}-${v.color || ""}-${v.cuello || ""}-${v.talle || ""}`;
+}
+
+/** Agrupa sugerencias históricas sin talle (solo “el producto”). */
+function buildProductSuggestionKey(v) {
+  return `${v.codigo || ""}-${v.producto_tipo || ""}-${v.manga || ""}-${v.genero || ""}-${v.color || ""}-${v.cuello || ""}`;
+}
+
+function formatProductSuggestionLabel(p) {
+  const parts = [];
+  if (p.codigo) parts.push(p.codigo);
+  if (p.producto_tipo) parts.push(p.producto_tipo);
+  if (p.manga) parts.push(p.manga);
+  if (p.genero) parts.push(p.genero);
+  if (p.color) parts.push(p.color);
+  if (p.cuello) parts.push(p.cuello);
+  return parts.length ? parts.join(" · ") : "Producto";
+}
 
 export default function Orders() {
   const [stage, setStage] = useState("LIST");
@@ -56,6 +81,17 @@ export default function Orders() {
   const [newProductCuello, setNewProductCuello] = useState("");
   const [newProductTalle, setNewProductTalle] = useState("");
   const [newProductCantidad, setNewProductCantidad] = useState(1);
+
+  const [quickAddSelection, setQuickAddSelection] = useState(null);
+  const [quickAddTalle, setQuickAddTalle] = useState("");
+  const [quickAddQuantity, setQuickAddQuantity] = useState(1);
+
+  const [showProductSuggestions, setShowProductSuggestions] = useState(true);
+  const [showNewProductForm, setShowNewProductForm] = useState(true);
+  const [exportingOrderId, setExportingOrderId] = useState(null);
+
+  /** null | { index, codigo, producto_tipo, manga, genero, color, cuello, talle, cantidad, product_id, price } */
+  const [editProductDraft, setEditProductDraft] = useState(null);
 
   const {
     register,
@@ -120,6 +156,54 @@ export default function Orders() {
     );
   if (error) console.log(error);
 
+  const historicalProductSuggestions = useMemo(() => {
+    if (!data || !Array.isArray(data)) return [];
+    const map = new Map();
+    for (const order of data) {
+      if (!order.orders_products?.length) continue;
+      for (const op of order.orders_products) {
+        const row = {
+          codigo: op.codigo || "",
+          producto_tipo: op.producto_tipo || "",
+          manga: op.manga || "",
+          genero: op.genero || "",
+          color: op.color || "",
+          cuello: op.cuello || "",
+          product_id: op.product_id ?? null,
+          price: op.price ?? 0,
+        };
+        const suggestionKey = buildProductSuggestionKey(row);
+        const prev = map.get(suggestionKey);
+        if (prev) {
+          prev.count += 1;
+          if (prev.product_id == null && row.product_id != null) {
+            prev.product_id = row.product_id;
+          }
+        } else {
+          map.set(suggestionKey, {
+            suggestionKey,
+            count: 1,
+            ...row,
+          });
+        }
+      }
+    }
+    return Array.from(map.values())
+      .filter((p) => p.producto_tipo)
+      .sort((a, b) => {
+        const ca = (a.codigo || "").trim().toLocaleLowerCase();
+        const cb = (b.codigo || "").trim().toLocaleLowerCase();
+        if (ca !== cb) {
+          return ca.localeCompare(cb, "es", { numeric: true, sensitivity: "base" });
+        }
+        return (a.suggestionKey || "").localeCompare(b.suggestionKey || "", "es", {
+          numeric: true,
+          sensitivity: "base",
+        });
+      })
+      .slice(0, HISTORICAL_PRESETS_MAX);
+  }, [data]);
+
   const createMutation = useMutation({
     mutationFn: useCreateOrderMutation,
     onError: (error) => {
@@ -153,6 +237,25 @@ export default function Orders() {
       } catch (e) {
         console.log(e);
       }
+    }
+  };
+
+  const handleDownloadOrderExcel = (orderId, orderNumber) => {
+    setExportingOrderId(orderId);
+    try {
+      const order = data?.find((o) => String(o.id) === String(orderId));
+      if (!order) {
+        alert("No se encontró el pedido. Actualizá la lista e intentá de nuevo.");
+        return;
+      }
+      const blob = buildOrderExcelBlob(order);
+      const safe = String(orderNumber ?? orderId).replace(/[^\w.-]+/g, "_");
+      saveAs(blob, `pedido_${safe}.xlsx`);
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "No se pudo generar el Excel");
+    } finally {
+      setExportingOrderId(null);
     }
   };
 
@@ -232,13 +335,35 @@ export default function Orders() {
     setNewProductCantidad(1);
   };
 
-  const addProduct = () => {
-    if (!newProductTipo || !newProductTalle || newProductCantidad <= 0) {
+  const addProductWithValues = (
+    {
+      codigo = "",
+      producto_tipo,
+      manga = "",
+      genero = "",
+      color = "",
+      cuello = "",
+      talle,
+      cantidad,
+      product_id = null,
+      price = 0,
+    },
+    { resetManualForm = true, clearQuickAdd = false } = {}
+  ) => {
+    if (!producto_tipo || !talle || cantidad <= 0) {
       alert("Debe seleccionar al menos el tipo de producto, talle y cantidad");
       return;
     }
 
-    const variantKey = `${newProductCodigo}-${newProductTipo}-${newProductManga}-${newProductGenero}-${newProductColor}-${newProductCuello}-${newProductTalle}`;
+    const variantKey = buildProductVariantKey({
+      codigo,
+      producto_tipo,
+      manga,
+      genero,
+      color,
+      cuello,
+      talle,
+    });
 
     const existingIndex = fields?.findIndex(
       (field) => field.variantKey === variantKey
@@ -247,20 +372,47 @@ export default function Orders() {
     if (existingIndex >= 0) {
       update(existingIndex, {
         ...fields[existingIndex],
-        cantidad: fields[existingIndex].cantidad + newProductCantidad,
+        cantidad: fields[existingIndex].cantidad + cantidad,
       });
     } else {
       const stockDisponible = getStockForVariant(
-        newProductTipo,
-        newProductManga,
-        newProductGenero,
-        newProductColor,
-        newProductCuello,
-        newProductTalle
+        producto_tipo,
+        manga,
+        genero,
+        color,
+        cuello,
+        talle
       );
 
       append({
         variantKey,
+        codigo,
+        producto_tipo,
+        manga,
+        genero,
+        color,
+        cuello,
+        talle,
+        cantidad,
+        stockDisponible,
+        product_id,
+        price: price ?? 0,
+      });
+    }
+
+    if (resetManualForm) {
+      resetNewProductFields();
+    }
+    if (clearQuickAdd) {
+      setQuickAddSelection(null);
+      setQuickAddTalle("");
+      setQuickAddQuantity(1);
+    }
+  };
+
+  const addProduct = () => {
+    addProductWithValues(
+      {
         codigo: newProductCodigo,
         producto_tipo: newProductTipo,
         manga: newProductManga,
@@ -269,13 +421,34 @@ export default function Orders() {
         cuello: newProductCuello,
         talle: newProductTalle,
         cantidad: newProductCantidad,
-        stockDisponible,
         product_id: null,
         price: 0,
-      });
-    }
+      },
+      { resetManualForm: true, clearQuickAdd: false }
+    );
+  };
 
-    resetNewProductFields();
+  const addQuickPresetToOrder = () => {
+    if (!quickAddSelection) return;
+    if (!quickAddTalle) {
+      alert("Seleccioná el talle");
+      return;
+    }
+    addProductWithValues(
+      {
+        codigo: quickAddSelection.codigo,
+        producto_tipo: quickAddSelection.producto_tipo,
+        manga: quickAddSelection.manga,
+        genero: quickAddSelection.genero,
+        color: quickAddSelection.color,
+        cuello: quickAddSelection.cuello,
+        talle: quickAddTalle,
+        cantidad: quickAddQuantity,
+        product_id: quickAddSelection.product_id,
+        price: quickAddSelection.price,
+      },
+      { resetManualForm: false, clearQuickAdd: true }
+    );
   };
 
   const updateProductQuantity = (index, newQuantity) => {
@@ -285,6 +458,86 @@ export default function Orders() {
         cantidad: newQuantity,
       });
     }
+  };
+
+  const openEditProduct = (index) => {
+    const f = fields[index];
+    setEditProductDraft({
+      index,
+      codigo: f.codigo || "",
+      producto_tipo: f.producto_tipo || "",
+      manga: f.manga || "",
+      genero: f.genero || "",
+      color: f.color || "",
+      cuello: f.cuello || "",
+      talle: f.talle || "",
+      cantidad: f.cantidad,
+      product_id: f.product_id,
+      price: f.price ?? 0,
+    });
+  };
+
+  const saveEditProduct = () => {
+    if (!editProductDraft) return;
+    const { index, ...vals } = editProductDraft;
+    if (!vals.producto_tipo || !vals.talle) {
+      alert("Seleccioná producto y talle");
+      return;
+    }
+    const cantidad = Number(vals.cantidad);
+    if (!cantidad || cantidad <= 0) {
+      alert("La cantidad debe ser mayor a cero");
+      return;
+    }
+
+    const variantKey = buildProductVariantKey({
+      codigo: vals.codigo,
+      producto_tipo: vals.producto_tipo,
+      manga: vals.manga,
+      genero: vals.genero,
+      color: vals.color,
+      cuello: vals.cuello,
+      talle: vals.talle,
+    });
+
+    const dupIdx = fields.findIndex(
+      (f, i) => f.variantKey === variantKey && i !== index
+    );
+
+    const stockDisponible = getStockForVariant(
+      vals.producto_tipo,
+      vals.manga,
+      vals.genero,
+      vals.color,
+      vals.cuello,
+      vals.talle
+    );
+
+    if (dupIdx >= 0) {
+      update(dupIdx, {
+        ...fields[dupIdx],
+        cantidad: fields[dupIdx].cantidad + cantidad,
+      });
+      remove(index);
+    } else {
+      update(index, {
+        ...fields[index],
+        variantKey,
+        codigo: vals.codigo,
+        producto_tipo: vals.producto_tipo,
+        manga: vals.manga,
+        genero: vals.genero,
+        color: vals.color,
+        cuello: vals.cuello,
+        talle: vals.talle,
+        cantidad,
+        product_id: vals.product_id,
+        price: vals.price ?? 0,
+        stockDisponible,
+      });
+    }
+
+    setEditProductDraft(null);
   };
 
   const getProductDescription = (field) => {
@@ -417,6 +670,9 @@ export default function Orders() {
     setSelectedOrder(order);
     setFormSubmitted(false);
     setViewOnly(false);
+    setQuickAddSelection(null);
+    setQuickAddTalle("");
+    setQuickAddQuantity(1);
 
     const formData = {
       order_number: order?.order_number || "",
@@ -477,6 +733,9 @@ export default function Orders() {
     setSelectedOrder(order);
     setViewOnly(true);
     setFormSubmitted(false);
+    setQuickAddSelection(null);
+    setQuickAddTalle("");
+    setQuickAddQuantity(1);
 
     const formData = {
       order_number: order?.order_number || "",
@@ -536,6 +795,10 @@ export default function Orders() {
     setFormSubmitted(false);
     setClient(null);
     resetNewProductFields();
+    setQuickAddSelection(null);
+    setQuickAddTalle("");
+    setQuickAddQuantity(1);
+    setShowProductAddSection(true);
     reset({ 
       products: [],
       order_date: new Date().toISOString().split("T")[0],
@@ -554,6 +817,9 @@ export default function Orders() {
     setFormSubmitted(false);
     setClient(null);
     resetNewProductFields();
+    setQuickAddSelection(null);
+    setQuickAddTalle("");
+    setQuickAddQuantity(1);
     reset({ products: [] });
     setStage("LIST");
   };
@@ -640,10 +906,10 @@ export default function Orders() {
                         <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
                           Tipo
                         </th>
-                        <th className="border-b font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
+                        <th className="border-b font-medium px-2 py-3 pt-0 text-slate-400 text-left w-24 max-w-[6.5rem] whitespace-nowrap">
                           Status
                         </th>
-                        <th className="border-b font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
+                        <th className="border-b font-medium px-2 py-3 pt-0 pb-3 text-slate-400 text-left whitespace-nowrap">
                           Acciones
                         </th>
                       </tr>
@@ -704,10 +970,10 @@ export default function Orders() {
                                 <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
                                   {getOrderTypeName(order.order_type)}
                                 </td>
-                                <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                                <td className="!text-xs text-left border-b border-slate-100 px-2 py-2 text-slate-500 w-24 max-w-[6.5rem] align-middle">
                                   <span
                                     className={utils.cn(
-                                      "px-2 py-1 rounded text-xs font-medium",
+                                      "inline-block max-w-full truncate px-1.5 py-0.5 rounded text-[10px] font-semibold leading-tight",
                                       orderStatus === "ENTREGADO"
                                         ? "bg-green-100 text-green-700"
                                         : "bg-yellow-100 text-yellow-700"
@@ -716,24 +982,38 @@ export default function Orders() {
                                     {orderStatus}
                                   </span>
                                 </td>
-                                <td className="!text-xs text-left border-b border-slate-100 text-slate-500 w-10">
-                                  <div className="flex gap-2">
+                                <td className="!text-xs text-left border-b border-slate-100 px-2 py-2 text-slate-500 whitespace-nowrap align-middle">
+                                  <div className="inline-flex flex-nowrap items-center gap-0.5">
                                     <button
-                                      className="flex items-center justify-center w-8 h-8"
+                                      type="button"
+                                      className="flex items-center justify-center w-8 h-8 rounded hover:bg-slate-100 disabled:opacity-50"
+                                      title="Descargar Excel"
+                                      disabled={exportingOrderId === order.id}
+                                      onClick={() =>
+                                        handleDownloadOrderExcel(order.id, order.order_number)
+                                      }
+                                    >
+                                      <FileDown className="h-4 w-4 text-slate-600" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="flex items-center justify-center w-8 h-8 rounded hover:bg-slate-100"
                                       title="Ver detalle"
                                       onClick={() => onView(order.id)}
                                     >
                                       <EyeIcon />
                                     </button>
                                     <button
-                                      className="flex items-center justify-center w-8 h-8"
+                                      type="button"
+                                      className="flex items-center justify-center w-8 h-8 rounded hover:bg-slate-100"
                                       title="Editar"
                                       onClick={() => onEdit(order.id)}
                                     >
                                       <EditIcon />
                                     </button>
                                     <button
-                                      className="flex items-center justify-center w-8 h-8"
+                                      type="button"
+                                      className="flex items-center justify-center w-8 h-8 rounded hover:bg-slate-100"
                                       title="Eliminar"
                                       onClick={() => removeOrder(order.id)}
                                     >
@@ -1173,10 +1453,163 @@ export default function Orders() {
                               <label className="text-slate-500 font-bold">
                                 Productos:
                               </label>
+
+                              {!viewOnly && historicalProductSuggestions.length > 0 && (
+                                <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-4">
+                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                                    <p className="text-sm font-semibold text-slate-800">
+                                      Productos frecuentes
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setShowProductSuggestions((v) => !v)
+                                      }
+                                      className="shrink-0 text-xs font-medium text-indigo-700 underline decoration-indigo-300 hover:text-indigo-900 sm:text-sm"
+                                    >
+                                      {showProductSuggestions
+                                        ? "Ocultar sugerencias"
+                                        : "Mostrar sugerencias"}
+                                    </button>
+                                  </div>
+                                  {showProductSuggestions && (
+                                    <>
+                                  <p className="mt-1 text-xs text-slate-600">
+                                    Productos que ya aparecieron en pedidos. Elegí uno, luego el
+                                    talle y la cantidad.
+                                  </p>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {historicalProductSuggestions.map((preset) => {
+                                      const isSelected =
+                                        quickAddSelection?.suggestionKey === preset.suggestionKey;
+                                      return (
+                                        <button
+                                          key={preset.suggestionKey}
+                                          type="button"
+                                          onClick={() => {
+                                            setQuickAddSelection(preset);
+                                            setQuickAddTalle("");
+                                            setQuickAddQuantity(1);
+                                          }}
+                                          className={`inline-flex max-w-full items-center rounded-full border px-3 py-1.5 text-left text-xs transition-colors ${
+                                            isSelected
+                                              ? "border-indigo-600 bg-indigo-100 text-indigo-900"
+                                              : "border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-white"
+                                          }`}
+                                          title={formatProductSuggestionLabel(preset)}
+                                        >
+                                          <span className="truncate">
+                                            {formatProductSuggestionLabel(preset)}
+                                          </span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  {quickAddSelection && (
+                                    <div className="mt-4 flex flex-col gap-3 rounded-md border border-indigo-200 bg-white p-3">
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-medium text-slate-500">
+                                          Producto
+                                        </p>
+                                        <p className="mt-1 text-sm font-medium text-slate-800">
+                                          {formatProductSuggestionLabel(quickAddSelection)}
+                                        </p>
+                                      </div>
+                                      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                                        <div>
+                                          <label
+                                            htmlFor="quick-add-talle"
+                                            className="mb-1 block text-xs font-medium text-slate-600"
+                                          >
+                                            Talle *
+                                          </label>
+                                          <select
+                                            id="quick-add-talle"
+                                            value={quickAddTalle}
+                                            onChange={(e) => setQuickAddTalle(e.target.value)}
+                                            className="w-full min-w-[140px] rounded border border-slate-200 p-2 text-slate-700 sm:w-auto"
+                                          >
+                                            <option value="">Seleccionar...</option>
+                                            {utils.getProductTalles().map((talle) => (
+                                              <option key={talle} value={talle}>
+                                                {talle}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+                                        <div>
+                                          <label
+                                            htmlFor="quick-add-cantidad"
+                                            className="mb-1 block text-xs font-medium text-slate-600"
+                                          >
+                                            Cantidad *
+                                          </label>
+                                          <input
+                                            id="quick-add-cantidad"
+                                            type="text"
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
+                                            value={quickAddQuantity}
+                                            onChange={(e) => {
+                                              const value = e.target.value.replace(/\D/g, "");
+                                              setQuickAddQuantity(value ? parseInt(value, 10) : 0);
+                                            }}
+                                            className="w-full rounded border border-slate-200 p-2 text-center text-slate-700 [appearance:textfield] sm:w-24 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                            aria-label="Cantidad"
+                                          />
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2 pt-1 sm:pt-0">
+                                          <Button
+                                            type="button"
+                                            onClick={addQuickPresetToOrder}
+                                            disabled={
+                                              !quickAddTalle ||
+                                              !quickAddQuantity ||
+                                              quickAddQuantity <= 0
+                                            }
+                                          >
+                                            <Plus className="mr-2 h-4 w-4" />
+                                            Agregar
+                                          </Button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setQuickAddSelection(null);
+                                              setQuickAddTalle("");
+                                              setQuickAddQuantity(1);
+                                            }}
+                                            className="text-sm text-slate-600 underline hover:text-slate-900"
+                                          >
+                                            Cancelar
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                    </>
+                                  )}
+                                </div>
+                              )}
                               
                               {/* Formulario para agregar producto */}
                               {!viewOnly && (
                                 <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
+                                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4 mb-4">
+                                    <h3 className="text-base font-semibold text-slate-800">
+                                      Crear nuevo producto
+                                    </h3>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowNewProductForm((v) => !v)}
+                                      className="shrink-0 text-xs font-medium text-indigo-700 underline decoration-indigo-300 hover:text-indigo-900 sm:text-sm"
+                                    >
+                                      {showNewProductForm
+                                        ? "Ocultar formulario"
+                                        : "Mostrar formulario"}
+                                    </button>
+                                  </div>
+                                  {showNewProductForm && (
+                                  <>
                                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                                     {/* Código */}
                                     <div>
@@ -1385,6 +1818,8 @@ export default function Orders() {
                                     <Plus className="h-4 w-4 mr-2" />
                                     Agregar Producto
                                   </Button>
+                                  </>
+                                  )}
                                 </div>
                               )}
 
@@ -1495,15 +1930,28 @@ export default function Orders() {
                                               </td>
                                               {!viewOnly && (
                                                 <td className="p-3 text-center">
-                                                  <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => remove(index)}
-                                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                  >
-                                                    <Trash2 className="h-4 w-4" />
-                                                  </Button>
+                                                  <div className="inline-flex items-center justify-center gap-1">
+                                                    <Button
+                                                      type="button"
+                                                      variant="outline"
+                                                      size="sm"
+                                                      onClick={() => openEditProduct(index)}
+                                                      className="text-slate-700 hover:text-indigo-700 hover:bg-indigo-50"
+                                                      title="Editar producto"
+                                                    >
+                                                      <Pencil className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                      type="button"
+                                                      variant="outline"
+                                                      size="sm"
+                                                      onClick={() => remove(index)}
+                                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                      title="Quitar producto"
+                                                    >
+                                                      <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                  </div>
                                                 </td>
                                               )}
                                             </tr>
@@ -1612,6 +2060,267 @@ export default function Orders() {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={editProductDraft !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditProductDraft(null);
+        }}
+      >
+        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto p-6 md:p-8">
+          {editProductDraft && (
+            <>
+              <h2 className="text-lg font-semibold text-slate-800 mb-1">
+                Editar producto
+              </h2>
+              <p className="text-sm text-slate-500 mb-4">
+                Modificá los datos de la línea. Si coinciden con otra variante del pedido, las
+                cantidades se unifican en una sola fila.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="text-slate-600 text-sm font-medium mb-2 block">
+                    Código (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={editProductDraft.codigo}
+                    onChange={(e) =>
+                      setEditProductDraft((d) =>
+                        d ? { ...d, codigo: e.target.value } : d
+                      )
+                    }
+                    className="w-full rounded border border-slate-200 p-3 text-slate-700"
+                    placeholder="Código"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-600 text-sm font-medium mb-2 block">
+                    Producto *
+                  </label>
+                  <select
+                    value={editProductDraft.producto_tipo}
+                    onChange={(e) =>
+                      setEditProductDraft((d) =>
+                        d ? { ...d, producto_tipo: e.target.value } : d
+                      )
+                    }
+                    className="w-full rounded border border-slate-200 p-3 text-slate-700"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {utils.getProductTypes().map((tipo) => (
+                      <option key={tipo} value={tipo}>
+                        {tipo}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-600 text-sm font-medium mb-2 block">
+                    Manga
+                  </label>
+                  <select
+                    value={editProductDraft.manga}
+                    onChange={(e) =>
+                      setEditProductDraft((d) =>
+                        d ? { ...d, manga: e.target.value } : d
+                      )
+                    }
+                    className="w-full rounded border border-slate-200 p-3 text-slate-700"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {utils.getProductSleeves().map((manga) => (
+                      <option key={manga} value={manga}>
+                        {manga}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-600 text-sm font-medium mb-2 block">
+                    Género
+                  </label>
+                  <select
+                    value={editProductDraft.genero}
+                    onChange={(e) =>
+                      setEditProductDraft((d) =>
+                        d ? { ...d, genero: e.target.value } : d
+                      )
+                    }
+                    className="w-full rounded border border-slate-200 p-3 text-slate-700"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {utils.getProductGenres().map((genero) => (
+                      <option key={genero} value={genero}>
+                        {genero}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-600 text-sm font-medium mb-2 block">
+                    Color
+                  </label>
+                  <select
+                    value={editProductDraft.color}
+                    onChange={(e) =>
+                      setEditProductDraft((d) =>
+                        d ? { ...d, color: e.target.value } : d
+                      )
+                    }
+                    className="w-full rounded border border-slate-200 p-3 text-slate-700"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {utils.getProductColors().map((color) => (
+                      <option key={color} value={color}>
+                        {color}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-600 text-sm font-medium mb-2 block">
+                    Cuello
+                  </label>
+                  <select
+                    value={editProductDraft.cuello}
+                    onChange={(e) =>
+                      setEditProductDraft((d) =>
+                        d ? { ...d, cuello: e.target.value } : d
+                      )
+                    }
+                    className="w-full rounded border border-slate-200 p-3 text-slate-700"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {utils.getProductNecks().map((cuello) => (
+                      <option key={cuello} value={cuello}>
+                        {cuello}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-600 text-sm font-medium mb-2 block">
+                    Talle *
+                  </label>
+                  <select
+                    value={editProductDraft.talle}
+                    onChange={(e) =>
+                      setEditProductDraft((d) =>
+                        d ? { ...d, talle: e.target.value } : d
+                      )
+                    }
+                    className="w-full rounded border border-slate-200 p-3 text-slate-700"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {utils.getProductTalles().map((talle) => (
+                      <option key={talle} value={talle}>
+                        {talle}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-600 text-sm font-medium mb-2 block">
+                    Cantidad *
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={editProductDraft.cantidad}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\D/g, "");
+                      setEditProductDraft((d) =>
+                        d
+                          ? {
+                              ...d,
+                              cantidad: value ? parseInt(value, 10) : 0,
+                            }
+                          : d
+                      );
+                    }}
+                    className="w-full rounded border border-slate-200 p-3 text-slate-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              </div>
+
+              {editProductDraft.producto_tipo && editProductDraft.talle && (
+                <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="text-sm">
+                    <span className="font-medium">Stock existente: </span>
+                    {(() => {
+                      const stock = getStockForVariant(
+                        editProductDraft.producto_tipo,
+                        editProductDraft.manga,
+                        editProductDraft.genero,
+                        editProductDraft.color,
+                        editProductDraft.cuello,
+                        editProductDraft.talle
+                      );
+                      const cantidadSolicitada = editProductDraft.cantidad || 0;
+                      const aRetirar = Math.min(cantidadSolicitada, stock);
+                      const enDeposito = Math.max(0, stock - cantidadSolicitada);
+                      const faltantes = Math.max(0, cantidadSolicitada - stock);
+
+                      if (stock <= 0) {
+                        return (
+                          <span className="text-red-600">
+                            No hay stock disponible
+                            {cantidadSolicitada > 0 &&
+                              ` (${cantidadSolicitada} faltantes)`}
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <>
+                          <span className="text-green-600">{stock} en stock</span>
+                          {cantidadSolicitada > 0 && (
+                            <span className="text-slate-600">
+                              {" "}
+                              — {aRetirar} a retirar, {enDeposito} quedan en depósito
+                            </span>
+                          )}
+                          {faltantes > 0 && (
+                            <span className="text-red-600 font-semibold">
+                              {" "}
+                              — {faltantes} FALTANTES
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditProductDraft(null)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={saveEditProduct}
+                  disabled={
+                    !editProductDraft.producto_tipo ||
+                    !editProductDraft.talle ||
+                    !editProductDraft.cantidad ||
+                    editProductDraft.cantidad <= 0
+                  }
+                >
+                  Guardar cambios
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
