@@ -29,6 +29,6 @@
   "scripts": {
     "start-dev": "nodemon server.js",
     "start": "node server.js",
-    "heroku-postbuild": "cd client && npm install --production=false && npm run build"
+    "heroku-postbuild": "cd client && yarn install --ignore-engines --ignore-platform && yarn run build"
   }
 }
