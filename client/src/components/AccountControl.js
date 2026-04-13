@@ -308,7 +308,7 @@ export default function AccountControl() {
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Saldo actual (sin cheques)</p>
                 <p className={utils.cn(
-                  "text-2xl font-bold mt-1",
+                  "text-xl font-bold mt-1",
                   (summary?.balanceWithoutCheques ?? 0) >= 0 ? "text-green-600" : "text-red-600"
                 )}>
                   {utils.formatAmount(summary?.balanceWithoutCheques ?? 0)}
@@ -317,7 +317,7 @@ export default function AccountControl() {
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Saldo actual (con cheques)</p>
                 <p className={utils.cn(
-                  "text-2xl font-bold mt-1",
+                  "text-xl font-bold mt-1",
                   (summary?.balanceWithCheques ?? 0) >= 0 ? "text-green-600" : "text-red-600"
                 )}>
                   {utils.formatAmount(summary?.balanceWithCheques ?? 0)}
@@ -325,13 +325,13 @@ export default function AccountControl() {
               </div>
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Ingresos del mes</p>
-                <p className="text-2xl font-bold mt-1 text-green-600">
+                <p className="text-xl font-bold mt-1 text-green-600">
                   {utils.formatAmount(summary?.monthlyIncome ?? 0)}
                 </p>
               </div>
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Egresos del mes</p>
-                <p className="text-2xl font-bold mt-1 text-red-600">
+                <p className="text-xl font-bold mt-1 text-red-600">
                   {utils.formatAmount(summary?.monthlyExpense ?? 0)}
                 </p>
               </div>
