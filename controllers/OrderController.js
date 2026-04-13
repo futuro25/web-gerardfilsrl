@@ -530,30 +530,30 @@ self.exportOrderToExcel = async (req, res) => {
       }
     }
 
-    const rows = [];
-    rows.push(["DATOS DEL PEDIDO"]);
-    rows.push(["Campo", "Valor"]);
-    cabecera.forEach((r) => rows.push([r.Campo, r.Valor]));
-    rows.push([]);
-    rows.push(["PRODUCTOS"]);
+    const excelRows = [];
+    excelRows.push(["DATOS DEL PEDIDO"]);
+    excelRows.push(["Campo", "Valor"]);
+    cabecera.forEach((r) => excelRows.push([r.Campo, r.Valor]));
+    excelRows.push([]);
+    excelRows.push(["PRODUCTOS"]);
     if (productosRows.length === 0) {
-      rows.push(["Sin lineas de producto en este pedido"]);
+      excelRows.push(["Sin lineas de producto en este pedido"]);
     } else {
-      rows.push(PRODUCT_KEYS);
+      excelRows.push(PRODUCT_KEYS);
       productosRows.forEach((r) =>
-        rows.push(PRODUCT_KEYS.map((k) => r[k] ?? ""))
+        excelRows.push(PRODUCT_KEYS.map((k) => r[k] ?? ""))
       );
     }
     if (remitosRows.length > 0) {
-      rows.push([]);
-      rows.push(["REMITOS"]);
-      rows.push(REMITO_KEYS);
+      excelRows.push([]);
+      excelRows.push(["REMITOS"]);
+      excelRows.push(REMITO_KEYS);
       remitosRows.forEach((r) =>
-        rows.push(REMITO_KEYS.map((k) => r[k] ?? ""))
+        excelRows.push(REMITO_KEYS.map((k) => r[k] ?? ""))
       );
     }
 
-    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    const worksheet = XLSX.utils.aoa_to_sheet(excelRows);
     applyOrderSheetTitleStyles(
       worksheet,
       cabecera.length,
@@ -562,7 +562,7 @@ self.exportOrderToExcel = async (req, res) => {
     );
     const maxCols = Math.max(
       1,
-      ...rows.map((r) => (Array.isArray(r) ? r.length : 0))
+      ...excelRows.map((r) => (Array.isArray(r) ? r.length : 0))
     );
     const wchByIndex = [28, 42, 16, 16, 14, 14, 14, 12, 12, 12, 14, 14];
     worksheet["!cols"] = Array.from({ length: maxCols }, (_, i) => ({

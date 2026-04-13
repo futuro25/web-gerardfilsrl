@@ -58,20 +58,22 @@ export default function Paychecks() {
     }
   }, [createParam]);
 
-  const dataFilteredSearch =
-    data &&
-    data?.length > 0 &&
-    data?.filter((d) =>
-      search ? d.name.toLowerCase().includes(search.toLowerCase()) : d
+  const applySearch = (list) => {
+    if (!list || !search) return list || [];
+    const term = search.toLowerCase();
+    return list.filter((d) =>
+      (d.number && d.number.toLowerCase().includes(term)) ||
+      (d.bank && d.bank.toLowerCase().includes(term))
     );
+  };
 
   const dataToShow = data?.filter(
     (paycheck) =>
       paycheck.due_date &&
       DateTime.fromISO(paycheck.due_date) > DateTime.now().startOf("day")
-  );
+  ) || [];
 
-  const dataFiltered = viewAllPaychecks ? dataFilteredSearch : dataToShow;
+  const dataFiltered = applySearch(viewAllPaychecks ? data : dataToShow);
 
   if (error) console.log(error);
 
@@ -251,7 +253,7 @@ export default function Paychecks() {
             <div className="pl-1 pb-1 text-slate-500 flex justify-between items-center">
               <div>
                 Total de cheques{" "}
-                {viewAllPaychecks ? data.length : dataToShow.length}
+                {dataFiltered.length}
               </div>
               <div>
                 <Button
@@ -366,10 +368,11 @@ export default function Paychecks() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={6}
+                            colSpan={7}
                             className="border-b border-slate-100  p-4  text-slate-500 "
                           >
-                            No data
+                            No hay próximos cheques para mostrar. Si desea ver cheques anteriores puede hacer click en {" "}
+                            <span className="text-blue-500 underline cursor-pointer" onClick={() => setViewAllPaychecks(true)}>Ver todos los cheques</span>.
                           </td>
                         </tr>
                       )}

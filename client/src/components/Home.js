@@ -11,6 +11,7 @@ import {
   ShirtIcon,
   Banknote,
   FileDown,
+  Landmark,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { MoonLoader } from "react-spinners";
@@ -38,7 +39,12 @@ export default function Home() {
   if (sessionStorage.type === "ADMIN") {
     navItems.pop();
     navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios", order: 12 });
+    navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5 });
     navItems.push({ label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 });
+  }
+
+  if (sessionStorage.username === "caro") {
+    navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5 });
   }
 
   if (sessionStorage.username === "lcozza") {

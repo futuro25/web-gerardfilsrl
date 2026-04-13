@@ -15,6 +15,7 @@ const BooksController = require("../controllers/BooksController.js");
 const OrderController = require("../controllers/OrderController.js");
 const StockController = require("../controllers/StockController.js");
 const RetentionCertificatesController = require("../controllers/RetentionCertificatesController.js");
+const AccountMovementController = require("../controllers/AccountMovementController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -384,6 +385,32 @@ router.patch("/stock-entries/:stock_entry_id", (req, res, next) =>
 
 router.delete("/stock-entries/:stock_entry_id", (req, res, next) =>
   StockController.deleteStockEntryById(req, res, next)
+);
+
+// ACCOUNT MOVEMENTS
+
+router.get("/account-movements", (req, res, next) =>
+  AccountMovementController.getMovements(req, res, next)
+);
+
+router.get("/account-movements/summary", (req, res, next) =>
+  AccountMovementController.getSummary(req, res, next)
+);
+
+router.get("/account-movements/upcoming-cheques", (req, res, next) =>
+  AccountMovementController.getUpcomingCheques(req, res, next)
+);
+
+router.post("/account-movements", (req, res, next) =>
+  AccountMovementController.createMovement(req, res, next)
+);
+
+router.patch("/account-movements/:id", (req, res, next) =>
+  AccountMovementController.updateMovement(req, res, next)
+);
+
+router.delete("/account-movements/:id", (req, res, next) =>
+  AccountMovementController.deleteMovement(req, res, next)
 );
 
 // UTILS

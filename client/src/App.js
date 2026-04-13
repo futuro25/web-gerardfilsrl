@@ -36,6 +36,7 @@ import Logout from "./components/Logout";
 import RetentionCertificates from "./components/RetentionCertificates";
 import RetentionCalculator from "./components/RetentionCalculator";
 import FiscalExports from "./components/FiscalExports";
+import AccountControl from "./components/AccountControl";
 import _, { capitalize } from "lodash";
 import { useState } from "react";
 import { cn } from "./utils/utils";
@@ -105,6 +106,7 @@ export default function App() {
           <Route path="remito/:id" element={<DeliveryNoteView />} />
           <Route path="libros-selector" element={<BooksNavigation />} />
           <Route path="exportacion-fiscal" element={<FiscalExports />} />
+          <Route path="control" element={<AccountControl />} />
           <Route path="clientes" element={<Clients />} />
           <Route path="productos" element={<Products />} />
           <Route path="pedidos" element={<Orders />} />

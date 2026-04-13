@@ -27,3 +27,6 @@ export const queryStockEntriesKey = () => ["stock-entries"];
 export const queryRetentionPaymentsKey = () => ["retention-payments"];
 export const queryRetentionPaymentByIdKey = (id) => ["retention-payment", id];
 export const queryRetentionCertificateKey = (paymentId) => ["retention-certificate", paymentId];
+export const queryAccountMovementsKey = (params) => ["account-movements", params];
+export const queryAccountMovementsSummaryKey = (params) => ["account-movements-summary", params];
+export const queryUpcomingChequesKey = () => ["upcoming-cheques"];
