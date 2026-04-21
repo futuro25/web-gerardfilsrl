@@ -16,6 +16,7 @@ const OrderController = require("../controllers/OrderController.js");
 const StockController = require("../controllers/StockController.js");
 const RetentionCertificatesController = require("../controllers/RetentionCertificatesController.js");
 const AccountMovementController = require("../controllers/AccountMovementController.js");
+const AporteController = require("../controllers/AporteController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -416,6 +417,12 @@ router.patch("/account-movements/:id", (req, res, next) =>
 router.delete("/account-movements/:id", (req, res, next) =>
   AccountMovementController.deleteMovement(req, res, next)
 );
+
+// APORTES
+router.get("/aportes", (req, res, next) => AporteController.getAportes(req, res, next));
+router.post("/aportes", (req, res, next) => AporteController.createAporte(req, res, next));
+router.patch("/aportes/:id", (req, res, next) => AporteController.updateAporte(req, res, next));
+router.delete("/aportes/:id", (req, res, next) => AporteController.deleteAporte(req, res, next));
 
 // UTILS
 router.post("/utils/send-whatsapp", (req, res, next) =>

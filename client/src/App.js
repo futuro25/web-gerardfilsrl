@@ -37,6 +37,7 @@ import RetentionCertificates from "./components/RetentionCertificates";
 import RetentionCalculator from "./components/RetentionCalculator";
 import FiscalExports from "./components/FiscalExports";
 import AccountControl from "./components/AccountControl";
+import Aportes from "./components/Aportes";
 import _, { capitalize } from "lodash";
 import { useState } from "react";
 import { cn } from "./utils/utils";
@@ -107,6 +108,9 @@ export default function App() {
           <Route path="libros-selector" element={<BooksNavigation />} />
           <Route path="exportacion-fiscal" element={<FiscalExports />} />
           <Route path="control" element={<AccountControl />} />
+          {(sessionStorage.username === "caro" || sessionStorage.type === "ADMIN") && (
+            <Route path="aportes" element={<Aportes />} />
+          )}
           <Route path="clientes" element={<Clients />} />
           <Route path="productos" element={<Products />} />
           <Route path="pedidos" element={<Orders />} />

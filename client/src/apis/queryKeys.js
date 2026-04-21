@@ -31,3 +31,4 @@ export const queryAccountMovementsKey = (params) => ["account-movements", params
 export const queryAccountMovementsSummaryKey = (params) => ["account-movements-summary", params];
 export const queryUpcomingChequesKey = () => ["upcoming-cheques"];
 export const queryAccountFutureBalancesKey = () => ["account-movements-future-balances"];
+export const queryAportesKey = () => ["aportes"];

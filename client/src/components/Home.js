@@ -12,6 +12,7 @@ import {
   Banknote,
   FileDown,
   Landmark,
+  PiggyBank,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { MoonLoader } from "react-spinners";
@@ -45,6 +46,10 @@ export default function Home() {
 
   if (sessionStorage.username === "caro") {
     navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5 });
+  }
+
+  if (sessionStorage.username === "caro" || sessionStorage.type === "ADMIN") {
+    navItems.push({ label: "Aportes", icon: PiggyBank, path: "/aportes", order: 7.55 });
   }
 
   if (sessionStorage.username === "lcozza") {
