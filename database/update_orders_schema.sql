@@ -17,6 +17,7 @@ ALTER TABLE orders_products ADD COLUMN IF NOT EXISTS color VARCHAR(50);
 ALTER TABLE orders_products ADD COLUMN IF NOT EXISTS cuello VARCHAR(30);
 ALTER TABLE orders_products ADD COLUMN IF NOT EXISTS talle VARCHAR(10);
 ALTER TABLE orders_products ADD COLUMN IF NOT EXISTS fuerza VARCHAR(100);
+ALTER TABLE orders_products ADD COLUMN IF NOT EXISTS renglon VARCHAR(5);
 ALTER TABLE orders_products ADD COLUMN IF NOT EXISTS quantity_delivered INTEGER DEFAULT 0;
 
 -- Índices para mejorar el rendimiento
@@ -33,3 +34,4 @@ COMMENT ON COLUMN orders_products.genero IS 'Género (MASCULINO, FEMENINO)';
 COMMENT ON COLUMN orders_products.color IS 'Color del producto';
 COMMENT ON COLUMN orders_products.cuello IS 'Tipo de cuello (SOLAPA, CORBATA, MAO)';
 COMMENT ON COLUMN orders_products.talle IS 'Talle del producto';
+COMMENT ON COLUMN orders_products.renglon IS 'Renglón numérico (hasta 5 dígitos, opcional)';

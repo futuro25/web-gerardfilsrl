@@ -39,17 +39,26 @@ import { useProductsQuery } from "../apis/api.products.js";
 
 const HISTORICAL_PRESETS_MAX = 30;
 
-function buildProductVariantKey(v) {
-  return `${v.codigo || ""}-${v.producto_tipo || ""}-${v.manga || ""}-${v.genero || ""}-${v.color || ""}-${v.cuello || ""}-${v.talle || ""}`;
+/** Solo dígitos, máximo 5 (opcional). */
+function normalizeRenglonDigits(value) {
+  return String(value ?? "").replace(/\D/g, "").slice(0, 5);
 }
 
-/** Agrupa sugerencias históricas sin talle (solo “el producto”). */
+function buildProductVariantKey(v) {
+  const renglon = normalizeRenglonDigits(v.renglon);
+  return `${renglon}-${v.codigo || ""}-${v.producto_tipo || ""}-${v.manga || ""}-${v.genero || ""}-${v.color || ""}-${v.cuello || ""}-${v.talle || ""}`;
+}
+
+/** Agrupa sugerencias históricas sin talle (producto + renglón si aplica). */
 function buildProductSuggestionKey(v) {
-  return `${v.codigo || ""}-${v.producto_tipo || ""}-${v.manga || ""}-${v.genero || ""}-${v.color || ""}-${v.cuello || ""}`;
+  const renglon = normalizeRenglonDigits(v.renglon);
+  return `${renglon}-${v.codigo || ""}-${v.producto_tipo || ""}-${v.manga || ""}-${v.genero || ""}-${v.color || ""}-${v.cuello || ""}`;
 }
 
 function formatProductSuggestionLabel(p) {
   const parts = [];
+  const r = normalizeRenglonDigits(p.renglon);
+  if (r) parts.push(`Renglón ${r}`);
   if (p.codigo) parts.push(p.codigo);
   if (p.producto_tipo) parts.push(p.producto_tipo);
   if (p.manga) parts.push(p.manga);
@@ -73,6 +82,7 @@ export default function Orders() {
   const [formSubmitted, setFormSubmitted] = useState(false);
 
   // States for new product line
+  const [newProductRenglon, setNewProductRenglon] = useState("");
   const [newProductCodigo, setNewProductCodigo] = useState("");
   const [newProductTipo, setNewProductTipo] = useState("");
   const [newProductManga, setNewProductManga] = useState("");
@@ -90,7 +100,7 @@ export default function Orders() {
   const [showNewProductForm, setShowNewProductForm] = useState(true);
   const [exportingOrderId, setExportingOrderId] = useState(null);
 
-  /** null | { index, codigo, producto_tipo, manga, genero, color, cuello, talle, cantidad, product_id, price } */
+  /** null | { index, renglon, codigo, producto_tipo, manga, genero, color, cuello, talle, cantidad, product_id, price } */
   const [editProductDraft, setEditProductDraft] = useState(null);
 
   const {
@@ -163,6 +173,7 @@ export default function Orders() {
       if (!order.orders_products?.length) continue;
       for (const op of order.orders_products) {
         const row = {
+          renglon: normalizeRenglonDigits(op.renglon || ""),
           codigo: op.codigo || "",
           producto_tipo: op.producto_tipo || "",
           manga: op.manga || "",
@@ -325,6 +336,7 @@ export default function Orders() {
   };
 
   const resetNewProductFields = () => {
+    setNewProductRenglon("");
     setNewProductCodigo("");
     setNewProductTipo("");
     setNewProductManga("");
@@ -337,6 +349,7 @@ export default function Orders() {
 
   const addProductWithValues = (
     {
+      renglon = "",
       codigo = "",
       producto_tipo,
       manga = "",
@@ -355,7 +368,10 @@ export default function Orders() {
       return;
     }
 
+    const renglonNorm = normalizeRenglonDigits(renglon);
+
     const variantKey = buildProductVariantKey({
+      renglon: renglonNorm,
       codigo,
       producto_tipo,
       manga,
@@ -386,6 +402,7 @@ export default function Orders() {
 
       append({
         variantKey,
+        renglon: renglonNorm || "",
         codigo,
         producto_tipo,
         manga,
@@ -413,6 +430,7 @@ export default function Orders() {
   const addProduct = () => {
     addProductWithValues(
       {
+        renglon: newProductRenglon,
         codigo: newProductCodigo,
         producto_tipo: newProductTipo,
         manga: newProductManga,
@@ -436,6 +454,7 @@ export default function Orders() {
     }
     addProductWithValues(
       {
+        renglon: quickAddSelection.renglon || "",
         codigo: quickAddSelection.codigo,
         producto_tipo: quickAddSelection.producto_tipo,
         manga: quickAddSelection.manga,
@@ -464,6 +483,7 @@ export default function Orders() {
     const f = fields[index];
     setEditProductDraft({
       index,
+      renglon: normalizeRenglonDigits(f.renglon || ""),
       codigo: f.codigo || "",
       producto_tipo: f.producto_tipo || "",
       manga: f.manga || "",
@@ -490,7 +510,10 @@ export default function Orders() {
       return;
     }
 
+    const renglonNorm = normalizeRenglonDigits(vals.renglon);
+
     const variantKey = buildProductVariantKey({
+      renglon: renglonNorm,
       codigo: vals.codigo,
       producto_tipo: vals.producto_tipo,
       manga: vals.manga,
@@ -523,6 +546,7 @@ export default function Orders() {
       update(index, {
         ...fields[index],
         variantKey,
+        renglon: renglonNorm || "",
         codigo: vals.codigo,
         producto_tipo: vals.producto_tipo,
         manga: vals.manga,
@@ -542,6 +566,7 @@ export default function Orders() {
 
   const getProductDescription = (field) => {
     const parts = [];
+    if (field.renglon) parts.push(`Renglón: ${field.renglon}`);
     if (field.producto_tipo) parts.push(field.producto_tipo);
     if (field.manga) parts.push(`Manga: ${field.manga}`);
     if (field.genero) parts.push(`Género: ${field.genero}`);
@@ -609,6 +634,7 @@ export default function Orders() {
           product_id: field.product_id || null,
           quantity: field.cantidad,
           price: field.price || 0,
+          renglon: normalizeRenglonDigits(field.renglon) || null,
           codigo: field.codigo || null,
           producto_tipo: field.producto_tipo || null,
           manga: field.manga || null,
@@ -708,8 +734,18 @@ export default function Orders() {
         );
         
         return {
-          variantKey: `${op.codigo || ""}-${op.producto_tipo || ""}-${op.manga || ""}-${op.genero || ""}-${op.color || ""}-${op.cuello || ""}-${op.talle || ""}`,
+          variantKey: buildProductVariantKey({
+            renglon: op.renglon || "",
+            codigo: op.codigo || "",
+            producto_tipo: op.producto_tipo || "",
+            manga: op.manga || "",
+            genero: op.genero || "",
+            color: op.color || "",
+            cuello: op.cuello || "",
+            talle: op.talle || "",
+          }),
           product_id: op.product_id,
+          renglon: normalizeRenglonDigits(op.renglon || ""),
           codigo: op.codigo || "",
           producto_tipo: op.producto_tipo || "",
           manga: op.manga || "",
@@ -770,8 +806,18 @@ export default function Orders() {
         );
         
         return {
-          variantKey: `${op.codigo || ""}-${op.producto_tipo || ""}-${op.manga || ""}-${op.genero || ""}-${op.color || ""}-${op.cuello || ""}-${op.talle || ""}`,
+          variantKey: buildProductVariantKey({
+            renglon: op.renglon || "",
+            codigo: op.codigo || "",
+            producto_tipo: op.producto_tipo || "",
+            manga: op.manga || "",
+            genero: op.genero || "",
+            color: op.color || "",
+            cuello: op.cuello || "",
+            talle: op.talle || "",
+          }),
           product_id: op.product_id,
+          renglon: normalizeRenglonDigits(op.renglon || ""),
           codigo: op.codigo || "",
           producto_tipo: op.producto_tipo || "",
           manga: op.manga || "",
@@ -798,7 +844,7 @@ export default function Orders() {
     setQuickAddSelection(null);
     setQuickAddTalle("");
     setQuickAddQuantity(1);
-    setShowProductAddSection(true);
+    setShowNewProductForm(true);
     reset({ 
       products: [],
       order_date: new Date().toISOString().split("T")[0],
@@ -1039,6 +1085,9 @@ export default function Orders() {
                                             <thead className="bg-slate-100">
                                               <tr>
                                                 <th className="text-left p-2 text-slate-600 font-medium text-xs">
+                                                  Renglón
+                                                </th>
+                                                <th className="text-left p-2 text-slate-600 font-medium text-xs">
                                                   Código
                                                 </th>
                                                 <th className="text-left p-2 text-slate-600 font-medium text-xs">
@@ -1098,6 +1147,9 @@ export default function Orders() {
                                                         estaCompleto && "bg-green-50"
                                                       )}
                                                     >
+                                                      <td className="p-2 text-slate-700 text-xs max-w-[140px] truncate" title={orderProduct.renglon || ""}>
+                                                        {orderProduct.renglon || "-"}
+                                                      </td>
                                                       <td className="p-2 text-slate-700 text-xs">
                                                         {orderProduct.codigo || "-"}
                                                       </td>
@@ -1475,8 +1527,8 @@ export default function Orders() {
                                   {showProductSuggestions && (
                                     <>
                                   <p className="mt-1 text-xs text-slate-600">
-                                    Productos que ya aparecieron en pedidos. Elegí uno, luego el
-                                    talle y la cantidad.
+                                    Productos que ya aparecieron en pedidos (incluye renglón si lo tenían).
+                                    Elegí uno, luego el talle y la cantidad.
                                   </p>
                                   <div className="mt-3 flex flex-wrap gap-2">
                                     {historicalProductSuggestions.map((preset) => {
@@ -1611,6 +1663,26 @@ export default function Orders() {
                                   {showNewProductForm && (
                                   <>
                                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                                    {/* Renglón */}
+                                    <div className="md:col-span-4">
+                                      <label className="text-slate-600 text-sm font-medium mb-2 block">
+                                        Renglón (opcional, hasta 5 dígitos)
+                                      </label>
+                                      <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={newProductRenglon}
+                                        onChange={(e) =>
+                                          setNewProductRenglon(
+                                            normalizeRenglonDigits(e.target.value)
+                                          )
+                                        }
+                                        maxLength={5}
+                                        className="w-full rounded border border-slate-200 p-3 text-slate-700 max-w-[10rem]"
+                                        placeholder="Ej: 12"
+                                      />
+                                    </div>
+
                                     {/* Código */}
                                     <div>
                                       <label className="text-slate-600 text-sm font-medium mb-2 block">
@@ -1835,6 +1907,9 @@ export default function Orders() {
                                       <thead className="bg-slate-100">
                                         <tr>
                                           <th className="text-left p-3 text-slate-600 font-medium">
+                                            Renglón
+                                          </th>
+                                          <th className="text-left p-3 text-slate-600 font-medium">
                                             Código
                                           </th>
                                           <th className="text-left p-3 text-slate-600 font-medium">
@@ -1873,6 +1948,9 @@ export default function Orders() {
                                           const stockInfo = getStockInfo(field);
                                           return (
                                             <tr key={field.id} className="border-t border-slate-200">
+                                              <td className="p-3 text-slate-700 text-sm max-w-[140px] truncate" title={field.renglon || ""}>
+                                                {field.renglon || "-"}
+                                              </td>
                                               <td className="p-3 text-slate-700 text-sm">
                                                 {field.codigo || "-"}
                                               </td>
@@ -2079,6 +2157,29 @@ export default function Orders() {
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div className="sm:col-span-2">
+                  <label className="text-slate-600 text-sm font-medium mb-2 block">
+                    Renglón (opcional, hasta 5 dígitos)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={editProductDraft.renglon}
+                    onChange={(e) =>
+                      setEditProductDraft((d) =>
+                        d
+                          ? {
+                              ...d,
+                              renglon: normalizeRenglonDigits(e.target.value),
+                            }
+                          : d
+                      )
+                    }
+                    maxLength={5}
+                    className="w-full rounded border border-slate-200 p-3 text-slate-700 max-w-[10rem]"
+                    placeholder="Ej: 12"
+                  />
+                </div>
                 <div>
                   <label className="text-slate-600 text-sm font-medium mb-2 block">
                     Código (opcional)

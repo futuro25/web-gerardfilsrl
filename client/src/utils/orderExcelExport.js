@@ -28,6 +28,7 @@ function clientFantasyName(order) {
 }
 
 const PRODUCT_KEYS = [
+  "Renglon",
   "Codigo",
   "Producto",
   "Manga",
@@ -116,6 +117,7 @@ function applyOrderSheetColumnWidths(worksheet, rows) {
     ...rows.map((r) => (Array.isArray(r) ? r.length : 0))
   );
   const wchByIndex = [
+    22, // Renglón
     28, // A: títulos, códigos, IDs
     42, // B: valores largos, cliente, producto
     16,
@@ -150,6 +152,7 @@ export function buildOrderExcelBlob(order) {
   ];
 
   const productosRows = (order.orders_products || []).map((op) => ({
+    Renglon: excelCell(op.renglon),
     Codigo: excelCell(op.codigo),
     Producto: excelCell(op.producto_tipo),
     Manga: excelCell(op.manga),

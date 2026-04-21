@@ -3,6 +3,12 @@ const supabase = require("./db");
 const _ = require("lodash");
 const XLSX = require("xlsx-js-style");
 
+/** Renglón: solo dígitos, máximo 5; vacío → null */
+function normalizeRenglonDb(v) {
+  const s = String(v ?? "").replace(/\D/g, "").slice(0, 5);
+  return s || null;
+}
+
 self.getOrders = async (req, res) => {
   try {
     const { data: orders, error } = await supabase
@@ -209,6 +215,7 @@ self.createOrder = async (req, res) => {
       quantity: product.quantity,
       quantity_delivered: 0,
       price: product.price,
+      renglon: normalizeRenglonDb(product.renglon),
       codigo: product.codigo || null,
       producto_tipo: product.producto_tipo || null,
       manga: product.manga || null,
@@ -261,6 +268,7 @@ self.getOrderByIdAndUpdate = async (req, res) => {
         quantity: product.quantity,
         quantity_delivered: 0,
         price: product.price,
+        renglon: normalizeRenglonDb(product.renglon),
         codigo: product.codigo || null,
         producto_tipo: product.producto_tipo || null,
         manga: product.manga || null,
@@ -406,6 +414,7 @@ self.exportOrderToExcel = async (req, res) => {
     ];
 
     const productosRows = ordersProductsEnriched.map((op) => ({
+      Renglon: excelCell(op.renglon),
       Codigo: excelCell(op.codigo),
       Producto: excelCell(op.producto_tipo),
       Manga: excelCell(op.manga),
@@ -451,6 +460,7 @@ self.exportOrderToExcel = async (req, res) => {
     });
 
     const PRODUCT_KEYS = [
+      "Renglon",
       "Codigo",
       "Producto",
       "Manga",
@@ -564,7 +574,7 @@ self.exportOrderToExcel = async (req, res) => {
       1,
       ...excelRows.map((r) => (Array.isArray(r) ? r.length : 0))
     );
-    const wchByIndex = [28, 42, 16, 16, 14, 14, 14, 12, 12, 12, 14, 14];
+    const wchByIndex = [22, 28, 42, 16, 16, 14, 14, 14, 12, 12, 12, 14, 14];
     worksheet["!cols"] = Array.from({ length: maxCols }, (_, i) => ({
       wch: wchByIndex[i] ?? 12,
     }));
