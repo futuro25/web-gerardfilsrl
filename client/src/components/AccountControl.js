@@ -6,6 +6,7 @@ import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
 import Spinner from "./common/Spinner";
+import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import * as utils from "../utils/utils";
 
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -13,6 +14,7 @@ import {
   fetchAccountMovements,
   fetchAccountMovementsSummary,
   fetchUpcomingCheques,
+  fetchFutureBalances,
   createAccountMovement,
   updateAccountMovement,
   deleteAccountMovement,
@@ -21,10 +23,21 @@ import {
   queryAccountMovementsKey,
   queryAccountMovementsSummaryKey,
   queryUpcomingChequesKey,
+  queryAccountFutureBalancesKey,
   queryPaychecksKey,
 } from "../apis/queryKeys";
 
-const RESPONSIBLES = ["Jose", "Carolina", "Walter", "Sin especificar"];
+const MOVEMENT_KIND_OPTIONS = [
+  { value: "UNICA VEZ", label: "Única vez" },
+  { value: "FIJO", label: "Fijo" },
+  { value: "PENDIENTE", label: "Pendiente" },
+];
+
+function movementKindLabel(kind) {
+  const k = kind || "UNICA VEZ";
+  return MOVEMENT_KIND_OPTIONS.find((o) => o.value === k)?.label ?? "Única vez";
+}
+
 const MONTHS = [
   { value: 1, label: "Enero" },
   { value: 2, label: "Febrero" },
@@ -54,6 +67,9 @@ export default function AccountControl() {
   const [movementType, setMovementType] = useState("INGRESO");
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState(null);
+  const [detailSearch, setDetailSearch] = useState("");
+  const [kindListFilter, setKindListFilter] = useState("");
+  const [futureDialogOpen, setFutureDialogOpen] = useState(false);
 
   const {
     register,
@@ -62,7 +78,7 @@ export default function AccountControl() {
     formState: { errors },
   } = useForm({
     defaultValues: {
-      responsible: "Sin especificar",
+      movement_kind: "UNICA VEZ",
       date: DateTime.now().toFormat("yyyy-MM-dd"),
     },
   });
@@ -103,9 +119,15 @@ export default function AccountControl() {
     queryFn: fetchUpcomingCheques,
   });
 
+  const { data: futureBalancesRes, isLoading: futureBalancesLoading } = useQuery({
+    queryKey: queryAccountFutureBalancesKey(),
+    queryFn: fetchFutureBalances,
+    enabled: futureDialogOpen,
+  });
+
   const movements = allData;
 
-  // Calculate running balance for displayed movements
+  // Calculate running balance for displayed movements (optional filters: detalle, clasificación)
   const movementsWithBalance = useMemo(() => {
     if (!movements || movements.length === 0) return [];
 
@@ -113,20 +135,36 @@ export default function AccountControl() {
       return (a.created_at || "").localeCompare(b.created_at || "");
     });
 
+    const q = detailSearch.trim().toLowerCase();
+    const filtered = sorted.filter((m) => {
+      if (kindListFilter && (m.movement_kind || "UNICA VEZ") !== kindListFilter) return false;
+      if (q) {
+        const desc = (m.description || "").toLowerCase();
+        const chequeBits = [
+          m.cheque_number ? String(m.cheque_number).toLowerCase() : "",
+          (m.cheque_bank || "").toLowerCase(),
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const haystack = `${desc} ${chequeBits}`.trim();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+
     let runningBalance = 0;
-    const withBalance = sorted.map((m) => {
+    return filtered.map((m) => {
       const amount = parseFloat(m.amount);
       runningBalance += m.type === "INGRESO" ? amount : -amount;
       return { ...m, balance: runningBalance };
     });
-
-    return withBalance;
-  }, [allData]);
+  }, [allData, detailSearch, kindListFilter]);
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ["account-movements"] });
     queryClient.invalidateQueries({ queryKey: ["account-movements-summary"] });
     queryClient.invalidateQueries({ queryKey: ["upcoming-cheques"] });
+    queryClient.invalidateQueries({ queryKey: queryAccountFutureBalancesKey() });
     queryClient.invalidateQueries({ queryKey: queryPaychecksKey() });
   };
 
@@ -150,7 +188,7 @@ export default function AccountControl() {
       setIsLoadingSubmit(true);
       const body = {
         type: movementType,
-        responsible: data.responsible,
+        movement_kind: data.movement_kind,
         date: data.date,
         amount: parseFloat(data.amount),
         description: data.description,
@@ -172,8 +210,13 @@ export default function AccountControl() {
       setPage(1);
       setAllData([]);
       reset({
-        responsible: "Sin especificar",
+        movement_kind: "UNICA VEZ",
         date: DateTime.now().toFormat("yyyy-MM-dd"),
+        amount: "",
+        description: "",
+        cheque_number: "",
+        cheque_bank: "",
+        cheque_due_date: "",
       });
       setStage("LIST");
     } catch (e) {
@@ -187,7 +230,7 @@ export default function AccountControl() {
     setMovementType(movement.type);
     setIsCheque(movement.is_cheque || false);
     reset({
-      responsible: movement.responsible,
+      movement_kind: movement.movement_kind || "UNICA VEZ",
       date: movement.date ? DateTime.fromISO(movement.date).toFormat("yyyy-MM-dd") : "",
       amount: movement.amount,
       description: movement.description || "",
@@ -214,8 +257,13 @@ export default function AccountControl() {
     setIsLoadingSubmit(false);
     setSelectedMovement(null);
     reset({
-      responsible: "Sin especificar",
+      movement_kind: "UNICA VEZ",
       date: DateTime.now().toFormat("yyyy-MM-dd"),
+      amount: "",
+      description: "",
+      cheque_number: "",
+      cheque_bank: "",
+      cheque_due_date: "",
     });
     setStage("LIST");
   };
@@ -246,6 +294,7 @@ export default function AccountControl() {
   };
 
   const hasMore = movementsRes?.total > movements.length;
+  const listFiltersActive = Boolean(detailSearch.trim() || kindListFilter);
 
   const redirectNavigation = () => {
     if (stage === "LIST") {
@@ -283,7 +332,7 @@ export default function AccountControl() {
                 setMovementType("INGRESO");
                 setIsCheque(false);
                 reset({
-                  responsible: "Sin especificar",
+                  movement_kind: "UNICA VEZ",
                   date: DateTime.now().toFormat("yyyy-MM-dd"),
                   amount: "",
                   description: "",
@@ -391,14 +440,106 @@ export default function AccountControl() {
                   <option key={y} value={y}>{y}</option>
                 ))}
               </select>
+              <select
+                className="border rounded px-2 py-1.5 text-sm bg-white min-w-[10rem]"
+                value={kindListFilter}
+                onChange={(e) => setKindListFilter(e.target.value)}
+              >
+                <option value="">Todas las clasificaciones</option>
+                {MOVEMENT_KIND_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <input
+                type="search"
+                placeholder="Buscar en detalle…"
+                value={detailSearch}
+                onChange={(e) => setDetailSearch(e.target.value)}
+                className="border rounded px-2 py-1.5 text-sm bg-white flex-1 min-w-[10rem] max-w-md"
+              />
+              <Button
+                type="button"
+                variant="outlined"
+                size="sm"
+                className="shrink-0"
+                onClick={() => setFutureDialogOpen(true)}
+              >
+                Saldos futuros
+              </Button>
               <Button
                 variant={viewAll ? "alternative" : "outlined"}
                 size="sm"
                 onClick={viewAll ? handleViewMonth : handleViewAll}
+                className="shrink-0"
               >
                 {viewAll ? "Filtrar por mes" : "Ver todo"}
               </Button>
             </div>
+
+            <Dialog open={futureDialogOpen} onOpenChange={setFutureDialogOpen}>
+              <DialogContent className="w-[95vw] max-w-lg max-h-[85vh] overflow-hidden flex flex-col p-6 gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <DialogTitle className="text-lg font-semibold text-slate-800 pr-6">
+                    Saldos futuros
+                  </DialogTitle>
+                  <button
+                    type="button"
+                    className="text-slate-400 hover:text-slate-600 text-sm shrink-0"
+                    onClick={() => setFutureDialogOpen(false)}
+                  >
+                    Cerrar
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Próximos 3 meses (día a día desde mañana). Saldo al cierre de cada día según fechas efectivas (incluye cheques en su fecha de vencimiento).
+                </p>
+                <div className="flex-1 min-h-0 overflow-y-auto border border-slate-200 rounded-lg bg-white">
+                  {futureBalancesLoading && (
+                    <div className="p-8 flex justify-center">
+                      <Spinner />
+                    </div>
+                  )}
+                  {!futureBalancesLoading && futureBalancesRes?.error && (
+                    <p className="p-4 text-sm text-red-600">{String(futureBalancesRes.error)}</p>
+                  )}
+                  {!futureBalancesLoading && !futureBalancesRes?.error && (
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="sticky top-0 bg-slate-100 z-10">
+                        <tr>
+                          <th className="text-left font-medium p-3 text-slate-600 border-b border-slate-200">Fecha</th>
+                          <th className="text-right font-medium p-3 text-slate-600 border-b border-slate-200">Saldo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(futureBalancesRes?.data || []).length === 0 ? (
+                          <tr>
+                            <td colSpan={2} className="p-4 text-center text-slate-500">
+                              No hay movimientos proyectados después de hoy.
+                            </td>
+                          </tr>
+                        ) : (
+                          (futureBalancesRes.data || []).map((row) => (
+                            <tr key={row.date} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
+                              <td className="p-3 text-slate-700">
+                                {utils.formatDate(row.date)}
+                              </td>
+                              <td
+                                className={utils.cn(
+                                  "p-3 text-right font-medium tabular-nums",
+                                  row.balance >= 0 ? "text-green-700" : "text-red-600"
+                                )}
+                              >
+                                {utils.formatAmount(row.balance)}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
 
             {/* Loading */}
             {isLoading && <Spinner />}
@@ -408,6 +549,12 @@ export default function AccountControl() {
               <div className="mb-4">
                 <div className="pl-1 pb-1 text-slate-500 text-sm">
                   Total de movimientos: {movementsRes?.total ?? 0}
+                  {listFiltersActive && (
+                    <span className="text-slate-400">
+                      {" "}
+                      · Mostrando {movementsWithBalance.length} con el filtro actual
+                    </span>
+                  )}
                 </div>
                 <div className="not-prose relative bg-slate-50 rounded-xl overflow-hidden">
                   <div className="relative rounded-xl overflow-auto">
@@ -417,7 +564,7 @@ export default function AccountControl() {
                           <tr>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Fecha</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Tipo</th>
-                            <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Responsable</th>
+                            <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Clasificación</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Detalle</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-right">Monto</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-right">Saldo</th>
@@ -428,13 +575,19 @@ export default function AccountControl() {
                           {movementsWithBalance.length > 0 ? (
                             movementsWithBalance.map((m, index) => {
                               const effectiveDate = m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date;
+                              const kind = m.movement_kind || "UNICA VEZ";
+                              const rowKindBg =
+                                kind === "PENDIENTE"
+                                  ? "bg-yellow-100 hover:bg-yellow-200/80"
+                                  : kind === "FIJO"
+                                    ? "bg-sky-100 hover:bg-sky-200/80"
+                                    : index % 2 === 0
+                                      ? "bg-gray-50 hover:bg-gray-100"
+                                      : "bg-white hover:bg-gray-100";
                               return (
                                 <tr
                                   key={m.id}
-                                  className={utils.cn(
-                                    "border-b last:border-b-0 hover:bg-gray-100",
-                                    index % 2 === 0 && "bg-gray-50"
-                                  )}
+                                  className={utils.cn("border-b last:border-b-0", rowKindBg)}
                                 >
                                   <td className="!text-xs text-left border-b border-slate-100 p-3 text-slate-500">
                                     <div className="flex items-center gap-1">
@@ -454,8 +607,8 @@ export default function AccountControl() {
                                       {m.type === "INGRESO" ? "Ingreso" : "Egreso"}
                                     </span>
                                   </td>
-                                  <td className="!text-xs text-left border-b border-slate-100 p-3 text-slate-500">
-                                    {m.responsible}
+                                  <td className="!text-xs text-left border-b border-slate-100 p-3 text-slate-600">
+                                    {movementKindLabel(m.movement_kind)}
                                   </td>
                                   <td className="!text-xs text-left border-b border-slate-100 p-3 text-slate-500 max-w-[200px] truncate">
                                     {m.description || "-"}
@@ -505,7 +658,9 @@ export default function AccountControl() {
                           ) : (
                             <tr>
                               <td colSpan={7} className="border-b border-slate-100 p-4 text-slate-500 text-center">
-                                No hay movimientos
+                                {movements.length > 0 && listFiltersActive
+                                  ? "Ningún movimiento coincide con el filtro"
+                                  : "No hay movimientos"}
                               </td>
                             </tr>
                           )}
@@ -563,21 +718,17 @@ export default function AccountControl() {
                 </div>
               </div>
 
-              {/* Responsible */}
+              {/* Clasificación: Fijo / Pendiente / Única vez */}
               <div>
-                <label className="text-xs font-sans text-gray-900 mb-2 block">Responsable</label>
+                <label className="text-xs font-sans text-gray-900 mb-2 block">Clasificación</label>
                 <select
                   className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"
-                  {...register("responsible", { required: "Seleccione un responsable" })}
+                  {...register("movement_kind", { required: true })}
                 >
-                  <option value="">Seleccionar...</option>
-                  {RESPONSIBLES.map((r) => (
-                    <option key={r} value={r}>{r}</option>
+                  {MOVEMENT_KIND_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
-                {errors.responsible && (
-                  <p className="text-sm text-red-500 pt-1">{errors.responsible.message}</p>
-                )}
               </div>
 
               {/* Date */}

@@ -4,6 +4,13 @@ const self = {};
 const supabase = require("./db");
 const { DateTime } = require("luxon");
 
+const MOVEMENT_KINDS = new Set(["FIJO", "PENDIENTE", "UNICA VEZ"]);
+
+function normalizeMovementKind(value) {
+  const v = String(value || "").trim();
+  return MOVEMENT_KINDS.has(v) ? v : "UNICA VEZ";
+}
+
 self.getMovements = async (req, res) => {
   try {
     const { month, year, page = 1, limit = 50 } = req.query;
@@ -88,6 +95,61 @@ self.getSummary = async (req, res) => {
   }
 };
 
+self.getFutureBalances = async (req, res) => {
+  try {
+    const today = DateTime.now().toISODate();
+
+    const { data: rows, error } = await supabase
+      .from("account_movements")
+      .select("type, amount, date, is_cheque, cheque_due_date, created_at")
+      .is("deleted_at", null);
+
+    if (error) throw error;
+
+    const withEff = (rows || []).map((m) => ({
+      eff: m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date,
+      created_at: m.created_at || "",
+      delta: m.type === "INGRESO" ? parseFloat(m.amount) : -parseFloat(m.amount),
+    }));
+
+    withEff.sort((a, b) => {
+      if (a.eff !== b.eff) return a.eff.localeCompare(b.eff);
+      return String(a.created_at).localeCompare(String(b.created_at));
+    });
+
+    let balanceThroughToday = 0;
+    for (const ev of withEff) {
+      if (ev.eff > today) break;
+      balanceThroughToday += ev.delta;
+    }
+
+    const deltasByDate = new Map();
+    for (const ev of withEff) {
+      if (ev.eff <= today) continue;
+      if (!deltasByDate.has(ev.eff)) deltasByDate.set(ev.eff, []);
+      deltasByDate.get(ev.eff).push(ev.delta);
+    }
+
+    // Próximos 3 meses (día a día desde mañana hasta hoy + 3 meses inclusive)
+    const out = [];
+    let current = balanceThroughToday;
+    let d = DateTime.fromISO(today).plus({ days: 1 });
+    const endD = DateTime.fromISO(today).plus({ months: 3 });
+    while (d <= endD) {
+      const iso = d.toISODate();
+      const deltas = deltasByDate.get(iso) || [];
+      for (const del of deltas) current += del;
+      out.push({ date: iso, balance: current });
+      d = d.plus({ days: 1 });
+    }
+
+    res.json({ data: out });
+  } catch (e) {
+    console.error("getFutureBalances error:", e.message);
+    res.json({ error: e.message, data: [] });
+  }
+};
+
 self.getUpcomingCheques = async (req, res) => {
   try {
     const today = DateTime.now().toISODate();
@@ -118,7 +180,8 @@ self.createMovement = async (req, res) => {
   try {
     const movement = {
       type: req.body.type,
-      responsible: req.body.responsible,
+      responsible: "Sin especificar",
+      movement_kind: normalizeMovementKind(req.body.movement_kind),
       date: req.body.date,
       amount: req.body.amount,
       description: req.body.description || null,
@@ -200,7 +263,8 @@ self.updateMovement = async (req, res) => {
 
     const update = {
       type: req.body.type,
-      responsible: req.body.responsible,
+      responsible: "Sin especificar",
+      movement_kind: normalizeMovementKind(req.body.movement_kind),
       date: req.body.date,
       amount: req.body.amount,
       description: req.body.description || null,

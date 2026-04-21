@@ -37,6 +37,15 @@ export const fetchUpcomingCheques = async () => {
   return res.json();
 };
 
+export const fetchFutureBalances = async () => {
+  const res = await fetch(`${BASE_URL}/future-balances`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error("Error en la petición");
+  return res.json();
+};
+
 export const createAccountMovement = async (body) => {
   const res = await fetch(BASE_URL, {
     method: "POST",

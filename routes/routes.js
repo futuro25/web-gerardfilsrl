@@ -401,6 +401,10 @@ router.get("/account-movements/upcoming-cheques", (req, res, next) =>
   AccountMovementController.getUpcomingCheques(req, res, next)
 );
 
+router.get("/account-movements/future-balances", (req, res, next) =>
+  AccountMovementController.getFutureBalances(req, res, next)
+);
+
 router.post("/account-movements", (req, res, next) =>
   AccountMovementController.createMovement(req, res, next)
 );
