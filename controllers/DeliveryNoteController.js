@@ -216,25 +216,53 @@ self.createDeliveryNote = async (req, res) => {
 self.getDeliveryNoteByIdAndUpdate = async (req, res) => {
   try {
     const deliverynote_id = req.params.deliverynote_id;
-    const update = req.body;
+    const update = { ...req.body };
 
     if (update.id) {
       delete update.id;
     }
 
-    const deliverynoteUpdate = {
-      client_id: update.client_id,
-      order_id: update.order_id || null,
-      description: update.description,
-      amount: update.amount,
-      number: update.number,
-    };
+    const allowed = [
+      "client_id",
+      "order_id",
+      "description",
+      "amount",
+      "number",
+      "order_number_text",
+      "remito_number",
+    ];
+
+    const deliverynoteUpdate = {};
+    for (const k of allowed) {
+      if (Object.prototype.hasOwnProperty.call(update, k)) {
+        if (k === "order_id") {
+          deliverynoteUpdate[k] =
+            update[k] === undefined || update[k] === null || update[k] === "" ? null : update[k];
+        } else if (k === "order_number_text" || k === "remito_number") {
+          const v = update[k];
+          if (v === null || v === undefined) {
+            deliverynoteUpdate[k] = null;
+          } else {
+            const t = String(v).trim();
+            deliverynoteUpdate[k] = t === "" ? null : t;
+          }
+        } else {
+          deliverynoteUpdate[k] = update[k];
+        }
+      }
+    }
+
+    if (Object.keys(deliverynoteUpdate).length === 0) {
+      return res.json({ error: "Nada para actualizar" });
+    }
 
     const { data: updatedDeliveryNote, error } = await supabase
       .from("deliverynotes")
       .update(deliverynoteUpdate)
       .eq("id", deliverynote_id)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .select()
+      .single();
 
     if (error) throw error;
 

@@ -157,8 +157,9 @@ export function getProductFuerzas() {
   ];
 }
 
+/** Talles de ropa: enteros de 30 a 64 (incluidos). */
 export function getProductTalles() {
-  return ["30", "32", "34", "36", "38", "40", "42", "44", "46", "48", "50", "52", "54", "56", "58", "60", "62", "64"];
+  return Array.from({ length: 64 - 30 + 1 }, (_, i) => String(30 + i));
 }
 
 export function getPaycheckString() {

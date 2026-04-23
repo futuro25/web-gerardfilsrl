@@ -2,13 +2,14 @@
 
 import { useNavigate } from "react-router-dom";
 import React, { useState } from "react";
-import { Trash2, Plus, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { Trash2, Plus, ChevronDown, ChevronRight, Copy, Pencil } from "lucide-react";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { TrashIcon, EyeIcon, CloseIcon } from "./icons";
 import * as utils from "../utils/utils";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
+import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import Spinner from "./common/Spinner";
 import SelectComboBox from "./common/SelectComboBox";
 import { sortBy } from "lodash";
@@ -18,6 +19,7 @@ import {
   useDeliveryNotesQuery,
   useCreateDeliveryNoteMutation,
   useDeleteDeliveryNoteMutation,
+  useUpdateDeliveryNoteMutation,
 } from "../apis/api.deliverynotes.js";
 import { useActiveOrdersQuery } from "../apis/api.orders.js";
 import { queryDeliveryNotesKey, queryOrdersKey } from "../apis/queryKeys";
@@ -29,6 +31,8 @@ export default function DeliveryNotes() {
   const [viewOnly, setViewOnly] = useState(false);
   const [selectedDeliveryNote, setSelectedDeliveryNote] = useState(null);
   const [expandedRows, setExpandedRows] = useState({});
+  const [editTarget, setEditTarget] = useState(null);
+  const [editForm, setEditForm] = useState({ order_number_text: "", remito_number: "" });
   const [selectedOrder, setSelectedOrder] = useState(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -110,10 +114,54 @@ export default function DeliveryNotes() {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: useUpdateDeliveryNoteMutation,
+    onSuccess: (data) => {
+      if (data?.error) {
+        alert(data.error);
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: queryDeliveryNotesKey() });
+      if (data && !data.error && editTarget && selectedDeliveryNote?.id === editTarget.id) {
+        setSelectedDeliveryNote((prev) => (prev && prev.id === editTarget.id ? { ...prev, ...data } : prev));
+      }
+      setEditTarget(null);
+    },
+    onError: (error) => {
+      console.error("Error al actualizar egreso:", error);
+      alert(error.message || "Error al actualizar el egreso");
+    },
+  });
+
+  const openEditDialog = (entry) => {
+    setEditTarget(entry);
+    setEditForm({
+      order_number_text: String(
+        entry.order_number_text != null && entry.order_number_text !== ""
+          ? entry.order_number_text
+          : entry.order_number ?? ""
+      ),
+      remito_number: String(
+        entry.remito_number != null && entry.remito_number !== "" ? entry.remito_number : entry.number ?? ""
+      ),
+    });
+  };
+
+  const submitEdit = async (e) => {
+    e.preventDefault();
+    if (!editTarget) return;
+    await updateMutation.mutateAsync({
+      id: editTarget.id,
+      order_number_text: editForm.order_number_text.trim() || null,
+      remito_number: editForm.remito_number.trim() || null,
+    });
+  };
+
   const removeDeliveryNote = async (deliverynoteId) => {
     if (window.confirm("¿Está seguro que desea eliminar este egreso? Esta acción no se puede deshacer.")) {
       try {
         await deleteMutation.mutateAsync(deliverynoteId);
+        if (editTarget?.id === deliverynoteId) setEditTarget(null);
         setStage("LIST");
       } catch (e) {
         console.log(e);
@@ -485,6 +533,7 @@ export default function DeliveryNotes() {
                                   <td className="!text-xs text-left border-b border-slate-100 text-slate-500 w-10">
                                     <div className="flex gap-2">
                                       <button
+                                        type="button"
                                         className="flex items-center justify-center w-8 h-8"
                                         title="Ver detalle"
                                         onClick={() => onView(entry.id)}
@@ -492,6 +541,15 @@ export default function DeliveryNotes() {
                                         <EyeIcon />
                                       </button>
                                       <button
+                                        type="button"
+                                        className="flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-900"
+                                        title="Editar"
+                                        onClick={() => openEditDialog(entry)}
+                                      >
+                                        <Pencil className="h-4 w-4" strokeWidth={2} />
+                                      </button>
+                                      <button
+                                        type="button"
                                         className="flex items-center justify-center w-8 h-8"
                                         title="Eliminar"
                                         onClick={() => removeDeliveryNote(entry.id)}
@@ -588,7 +646,17 @@ export default function DeliveryNotes() {
         {stage === "VIEW" && selectedDeliveryNote && (
           <div className="my-4">
             <div className="bg-white rounded-lg p-6 shadow">
-              <h3 className="text-lg font-bold mb-4">Detalle del Egreso #{selectedDeliveryNote.id}</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h3 className="text-lg font-bold">Detalle del Egreso #{selectedDeliveryNote.id}</h3>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-200 text-slate-700 text-sm hover:bg-slate-50"
+                  onClick={() => openEditDialog(selectedDeliveryNote)}
+                >
+                  <Pencil className="h-4 w-4" strokeWidth={2} />
+                  Editar
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="text-slate-500 font-medium">Nro. Pedido:</label>
@@ -967,6 +1035,44 @@ export default function DeliveryNotes() {
           </div>
         )}
       </div>
+
+      <Dialog open={Boolean(editTarget)} onOpenChange={(open) => !open && setEditTarget(null)}>
+        <DialogContent className="w-[95vw] max-w-md p-6 flex flex-col gap-4">
+          <DialogTitle className="text-lg font-semibold text-slate-800">Editar egreso</DialogTitle>
+          <form onSubmit={submitEdit} className="flex flex-col gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-600 block mb-1">Nro. pedido</label>
+              <input
+                type="text"
+                value={editForm.order_number_text}
+                onChange={(e) => setEditForm((f) => ({ ...f, order_number_text: e.target.value }))}
+                className="w-full rounded border border-slate-200 p-2 text-sm text-slate-700"
+                placeholder="Número o referencia de pedido"
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 block mb-1">Nro. remito</label>
+              <input
+                type="text"
+                value={editForm.remito_number}
+                onChange={(e) => setEditForm((f) => ({ ...f, remito_number: e.target.value }))}
+                className="w-full rounded border border-slate-200 p-2 text-sm text-slate-700"
+                placeholder="Número de remito"
+                autoComplete="off"
+              />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button type="submit" variant="default" className="flex-1" disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? "Guardando…" : "Guardar"}
+              </Button>
+              <Button type="button" variant="outlined" onClick={() => setEditTarget(null)} className="flex-1">
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
