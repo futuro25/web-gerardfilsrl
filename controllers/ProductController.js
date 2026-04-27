@@ -27,6 +27,8 @@ self.getProducts = async (req, res) => {
             neck,
             fuerza,
             talle,
+            renglon,
+            codigo,
             stock_entry_id,
             stock_entries!inner(id, entry_date, remito_number, deleted_at)
           `
@@ -42,13 +44,15 @@ self.getProducts = async (req, res) => {
           return { ...product, stock_variants: [] };
         }
 
-        // Group variants by color, genre, sleeve, neck, fuerza, talle and sum quantities
+        // Group variants (incl. renglón/código) y sumar cantidades
         const groupedVariants = {};
         if (stockVariants) {
           stockVariants.forEach((variant) => {
-            const key = `${variant.color || ""}-${variant.genre || ""}-${variant.sleeve || ""}-${variant.neck || ""}-${variant.fuerza || ""}-${variant.talle || ""}`;
+            const key = `${variant.renglon || ""}-${variant.codigo || ""}-${variant.color || ""}-${variant.genre || ""}-${variant.sleeve || ""}-${variant.neck || ""}-${variant.fuerza || ""}-${variant.talle || ""}`;
             if (!groupedVariants[key]) {
               groupedVariants[key] = {
+                renglon: variant.renglon || "",
+                codigo: variant.codigo || "",
                 color: variant.color || "",
                 genre: variant.genre || "",
                 sleeve: variant.sleeve || "",
@@ -107,7 +111,7 @@ self.getProductById = async (req, res) => {
       .from("stock_entries_products")
       .select(
         `
-        id,
+            id,
         quantity,
         color,
         genre,
@@ -115,6 +119,8 @@ self.getProductById = async (req, res) => {
         neck,
         fuerza,
         talle,
+        renglon,
+        codigo,
         stock_entry_id,
         stock_entries!inner(id, entry_date, remito_number, deleted_at)
       `
@@ -130,13 +136,15 @@ self.getProductById = async (req, res) => {
       return res.json({ ...product, stock_variants: [] });
     }
 
-    // Group variants by color, genre, sleeve, neck, fuerza, talle and sum quantities
+    // Group variants (incl. renglón/código) y sumar cantidades
     const groupedVariants = {};
     if (stockVariants) {
       stockVariants.forEach((variant) => {
-        const key = `${variant.color || ""}-${variant.genre || ""}-${variant.sleeve || ""}-${variant.neck || ""}-${variant.fuerza || ""}-${variant.talle || ""}`;
+        const key = `${variant.renglon || ""}-${variant.codigo || ""}-${variant.color || ""}-${variant.genre || ""}-${variant.sleeve || ""}-${variant.neck || ""}-${variant.fuerza || ""}-${variant.talle || ""}`;
         if (!groupedVariants[key]) {
           groupedVariants[key] = {
+            renglon: variant.renglon || "",
+            codigo: variant.codigo || "",
             color: variant.color || "",
             genre: variant.genre || "",
             sleeve: variant.sleeve || "",

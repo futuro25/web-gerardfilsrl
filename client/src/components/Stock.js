@@ -1,10 +1,12 @@
 import { useNavigate } from "react-router-dom";
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
+import { Plus, Pencil } from "lucide-react";
 import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { ArrowLeftIcon, PlusIcon, ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/24/solid";
-import { TrashIcon, CloseIcon } from "./icons";
+import { TrashIcon, CloseIcon, EyeIcon } from "./icons";
 import * as utils from "../utils/utils";
 import Button from "./common/Button";
+import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import Spinner from "./common/Spinner";
 import { Input } from "./common/Input";
 import SelectComboBox from "./common/SelectComboBox";
@@ -15,15 +17,63 @@ import {
   useCreateStockEntryMutation,
   useStockEntriesQuery,
   useDeleteStockEntryMutation,
+  useUpdateStockEntryMutation,
 } from "../apis/api.stock";
 import { useSuppliersQuery } from "../apis/api.suppliers";
 import { useDeliveryNotesQuery } from "../apis/api.deliverynotes";
+import { useOrdersQuery } from "../apis/api.orders";
 import {
   queryStockEntriesKey,
   querySuppliersKey,
   queryProductsKey,
   queryDeliveryNotesKey,
+  queryOrdersKey,
 } from "../apis/queryKeys";
+
+const HISTORICAL_PRESETS_MAX = 30;
+
+function normalizeRenglonDigits(value) {
+  return String(value ?? "").replace(/\D/g, "").slice(0, 5);
+}
+
+function buildStockProductSuggestionKey(v) {
+  const renglon = normalizeRenglonDigits(v.renglon);
+  return `${renglon}-${v.codigo || ""}-${v.producto_tipo || ""}-${v.manga || ""}-${v.genero || ""}-${v.color || ""}-${v.cuello || ""}-${v.fuerza || ""}`;
+}
+
+function buildStockLineMergeKey(p) {
+  return buildStockProductSuggestionKey(p) + "|" + (p.talle || "");
+}
+
+function formatStockProductSuggestionLabel(p) {
+  const parts = [];
+  const r = normalizeRenglonDigits(p.renglon);
+  if (r) parts.push(`Renglón ${r}`);
+  if (p.codigo) parts.push(p.codigo);
+  if (p.fuerza) parts.push(p.fuerza);
+  if (p.producto_tipo) parts.push(p.producto_tipo);
+  if (p.manga) parts.push(p.manga);
+  if (p.genero) parts.push(p.genero);
+  if (p.color) parts.push(p.color);
+  if (p.cuello) parts.push(p.cuello);
+  return parts.length ? parts.join(" · ") : "Producto";
+}
+
+function emptyEditStockLine() {
+  return {
+    renglon: "",
+    codigo: "",
+    fuerza: "",
+    producto_tipo: "",
+    manga: "",
+    genero: "",
+    color: "",
+    cuello: "",
+    talle: "",
+    quantity: "",
+    product_id: null,
+  };
+}
 
 export default function Stock({}) {
   const [stage, setStage] = useState("LIST");
@@ -32,10 +82,27 @@ export default function Stock({}) {
   const [supplier, setSupplier] = useState(null);
   const [isConfeccionPropia, setIsConfeccionPropia] = useState(false);
   const [expandedRows, setExpandedRows] = useState({});
+  const [quickAddSelection, setQuickAddSelection] = useState(null);
+  const [quickAddTalle, setQuickAddTalle] = useState("");
+  const [quickAddQuantity, setQuickAddQuantity] = useState(1);
+  const [showProductSuggestions, setShowProductSuggestions] = useState(true);
+  const [selectedStockEntry, setSelectedStockEntry] = useState(null);
+  const [editTarget, setEditTarget] = useState(null);
+
+  const [editForm, setEditForm] = useState({
+    remito_number: "",
+    entry_date: "",
+    description: "",
+    isConfeccion: false,
+    supplier: null,
+    products: [],
+  });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const defaultProductRow = {
+    renglon: "",
+    codigo: "",
     fuerza: "",
     producto_tipo: "",
     manga: "",
@@ -65,7 +132,7 @@ export default function Stock({}) {
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, update } = useFieldArray({
     control,
     name: "products",
   });
@@ -84,6 +151,61 @@ export default function Stock({}) {
     queryKey: queryDeliveryNotesKey(),
     queryFn: useDeliveryNotesQuery,
   });
+
+  const { data: ordersData } = useQuery({
+    queryKey: queryOrdersKey(),
+    queryFn: useOrdersQuery,
+  });
+
+  const historicalProductSuggestions = useMemo(() => {
+    if (!ordersData || !Array.isArray(ordersData)) return [];
+    const map = new Map();
+    for (const order of ordersData) {
+      if (!order.orders_products?.length) continue;
+      for (const op of order.orders_products) {
+        const row = {
+          renglon: normalizeRenglonDigits(op.renglon || ""),
+          codigo: op.codigo || "",
+          producto_tipo: op.producto_tipo || "",
+          manga: op.manga || "",
+          genero: op.genero || "",
+          color: op.color || "",
+          cuello: op.cuello || "",
+          fuerza: op.fuerza || "",
+          product_id: op.product_id ?? null,
+          price: op.price ?? 0,
+        };
+        const suggestionKey = buildStockProductSuggestionKey(row);
+        const prev = map.get(suggestionKey);
+        if (prev) {
+          prev.count += 1;
+          if (prev.product_id == null && row.product_id != null) {
+            prev.product_id = row.product_id;
+          }
+        } else {
+          map.set(suggestionKey, {
+            suggestionKey,
+            count: 1,
+            ...row,
+          });
+        }
+      }
+    }
+    return Array.from(map.values())
+      .filter((p) => p.producto_tipo)
+      .sort((a, b) => {
+        const ca = (a.codigo || "").trim().toLocaleLowerCase();
+        const cb = (b.codigo || "").trim().toLocaleLowerCase();
+        if (ca !== cb) {
+          return ca.localeCompare(cb, "es", { numeric: true, sensitivity: "base" });
+        }
+        return (a.suggestionKey || "").localeCompare(b.suggestionKey || "", "es", {
+          numeric: true,
+          sensitivity: "base",
+        });
+      })
+      .slice(0, HISTORICAL_PRESETS_MAX);
+  }, [ordersData]);
 
   // Calcular resumen de stock actual
   const getStockSummary = () => {
@@ -166,6 +288,142 @@ export default function Stock({}) {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: useUpdateStockEntryMutation,
+    onSuccess: (data) => {
+      if (data?.error) {
+        alert(data.error);
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: queryStockEntriesKey() });
+      queryClient.invalidateQueries({ queryKey: queryProductsKey() });
+      if (data && !data.error && data.id) {
+        setSelectedStockEntry((prev) =>
+          prev && prev.id === data.id
+            ? {
+                ...prev,
+                ...data,
+                suppliers: data.suppliers ?? prev.suppliers,
+                stock_entries_products: data.stock_entries_products ?? prev.stock_entries_products,
+              }
+            : prev
+        );
+      }
+      setEditTarget(null);
+    },
+    onError: (error) => {
+      console.error("Error al actualizar ingreso:", error);
+      alert(error.message || "Error al actualizar el ingreso");
+    },
+  });
+
+  const openView = (entry) => {
+    setSelectedStockEntry(entry);
+    setStage("VIEW");
+  };
+
+  const openEditDialog = (entry) => {
+    setEditTarget(entry);
+    const lines =
+      entry.stock_entries_products && entry.stock_entries_products.length > 0
+        ? entry.stock_entries_products.map((p) => ({
+            renglon: normalizeRenglonDigits(p.renglon || ""),
+            codigo: p.codigo || "",
+            fuerza: p.fuerza || "",
+            producto_tipo: p.producto_tipo || "",
+            manga: p.sleeve || "",
+            genero: p.genre || "",
+            color: p.color || "",
+            cuello: p.neck || "",
+            talle: p.talle || "",
+            quantity: String(p.quantity ?? ""),
+            product_id: p.product_id ?? null,
+          }))
+        : [emptyEditStockLine()];
+    setEditForm({
+      remito_number: entry.remito_number || "",
+      entry_date: entry.entry_date ? String(entry.entry_date).split("T")[0] : "",
+      description: entry.description || "",
+      isConfeccion: !entry.supplier_id,
+      supplier:
+        entry.supplier_id && entry.suppliers
+          ? {
+              id: entry.supplier_id,
+              name: entry.suppliers.fantasy_name,
+              label: entry.suppliers.fantasy_name,
+            }
+          : null,
+      products: lines,
+    });
+  };
+
+  const setEditLine = (index, field, value) => {
+    setEditForm((f) => {
+      const next = [...(f.products || [])];
+      next[index] = { ...next[index], [field]: value };
+      return { ...f, products: next };
+    });
+  };
+
+  const addEditProductLine = () => {
+    setEditForm((f) => ({
+      ...f,
+      products: [...(f.products || []), emptyEditStockLine()],
+    }));
+  };
+
+  const removeEditProductLine = (index) => {
+    setEditForm((f) => {
+      const next = (f.products || []).filter((_, i) => i !== index);
+      return { ...f, products: next.length ? next : [emptyEditStockLine()] };
+    });
+  };
+
+  const submitEdit = async (e) => {
+    e.preventDefault();
+    if (!editTarget) return;
+    if (!editForm.isConfeccion && !editForm.supplier?.id) {
+      alert("Seleccioná un proveedor o marcá Confección propia");
+      return;
+    }
+    if (!editForm.entry_date) {
+      alert("Indicá la fecha de ingreso");
+      return;
+    }
+    const validProducts = (editForm.products || []).filter(
+      (p) =>
+        p.producto_tipo &&
+        p.quantity &&
+        parseInt(String(p.quantity).replace(/\D/g, ""), 10) > 0 &&
+        p.fuerza &&
+        p.talle
+    );
+    if (validProducts.length === 0) {
+      alert("Debe quedar al menos un producto válido con Fuerza, producto, talle y cantidad");
+      return;
+    }
+    await updateMutation.mutateAsync({
+      id: editTarget.id,
+      supplier_id: editForm.isConfeccion ? null : editForm.supplier.id,
+      remito_number: editForm.remito_number.trim() || null,
+      entry_date: editForm.entry_date,
+      description: editForm.description.trim() || null,
+      products: validProducts.map((p) => ({
+        product_id: p.product_id || null,
+        quantity: parseInt(String(p.quantity).replace(/\D/g, ""), 10),
+        fuerza: p.fuerza,
+        producto_tipo: p.producto_tipo,
+        color: p.color || null,
+        genre: p.genero || null,
+        sleeve: p.manga || null,
+        neck: p.cuello || null,
+        talle: p.talle,
+        renglon: normalizeRenglonDigits(p.renglon) || null,
+        codigo: (p.codigo && String(p.codigo).trim()) || null,
+      })),
+    });
+  };
+
   const removeStockEntry = async (stockEntryId) => {
     if (
       window.confirm(
@@ -174,6 +432,8 @@ export default function Stock({}) {
     ) {
       try {
         await deleteMutation.mutate(stockEntryId);
+        if (selectedStockEntry?.id === stockEntryId) setSelectedStockEntry(null);
+        if (editTarget?.id === stockEntryId) setEditTarget(null);
         setStage("LIST");
       } catch (e) {
         console.log(e);
@@ -220,7 +480,7 @@ export default function Stock({}) {
         is_confeccion_propia: isConfeccionPropia,
         products: validProducts.map((product) => ({
           product_id: null,
-          quantity: parseInt(product.quantity),
+          quantity: parseInt(product.quantity, 10),
           fuerza: product.fuerza,
           producto_tipo: product.producto_tipo,
           color: product.color || null,
@@ -228,6 +488,8 @@ export default function Stock({}) {
           sleeve: product.manga || null,
           neck: product.cuello || null,
           talle: product.talle,
+          renglon: normalizeRenglonDigits(product.renglon) || null,
+          codigo: (product.codigo && String(product.codigo).trim()) || null,
         })),
       };
 
@@ -241,7 +503,10 @@ export default function Stock({}) {
 
       queryClient.invalidateQueries({ queryKey: queryStockEntriesKey() });
       queryClient.invalidateQueries({ queryKey: queryProductsKey() });
-      
+      setQuickAddSelection(null);
+      setQuickAddTalle("");
+      setQuickAddQuantity(1);
+
       reset({
         supplier_id: null,
         remito_number: "",
@@ -264,6 +529,9 @@ export default function Stock({}) {
   const onCreate = () => {
     setSupplier(null);
     setIsConfeccionPropia(false);
+    setQuickAddSelection(null);
+    setQuickAddTalle("");
+    setQuickAddQuantity(1);
     reset({
       supplier_id: null,
       remito_number: "",
@@ -277,6 +545,9 @@ export default function Stock({}) {
   const onCancel = () => {
     setSupplier(null);
     setIsConfeccionPropia(false);
+    setQuickAddSelection(null);
+    setQuickAddTalle("");
+    setQuickAddQuantity(1);
     reset({
       supplier_id: null,
       remito_number: "",
@@ -291,13 +562,134 @@ export default function Stock({}) {
     append({ ...defaultProductRow });
   };
 
+  const addQuickPresetToStock = () => {
+    if (!quickAddSelection) return;
+    if (!quickAddTalle) {
+      alert("Seleccioná el talle");
+      return;
+    }
+    if (!quickAddQuantity || quickAddQuantity <= 0) {
+      alert("Indicá una cantidad válida");
+      return;
+    }
+    const renglonNorm = normalizeRenglonDigits(quickAddSelection.renglon || "");
+    const newLine = {
+      ...defaultProductRow,
+      renglon: renglonNorm,
+      codigo: quickAddSelection.codigo || "",
+      producto_tipo: quickAddSelection.producto_tipo,
+      manga: quickAddSelection.manga || "",
+      genero: quickAddSelection.genero || "",
+      color: quickAddSelection.color || "",
+      cuello: quickAddSelection.cuello || "",
+      talle: quickAddTalle,
+      fuerza: quickAddSelection.fuerza || "",
+      quantity: String(quickAddQuantity),
+    };
+    const mergeKey = buildStockLineMergeKey(newLine);
+    const current = watch("products");
+    const existingIndex = current.findIndex((row) => buildStockLineMergeKey(row) === mergeKey);
+    if (existingIndex >= 0) {
+      const prevQ = parseInt(String(current[existingIndex].quantity).replace(/\D/g, ""), 10) || 0;
+      update(existingIndex, {
+        ...current[existingIndex],
+        quantity: String(prevQ + quickAddQuantity),
+      });
+    } else {
+      append(newLine);
+    }
+    setQuickAddSelection(null);
+    setQuickAddTalle("");
+    setQuickAddQuantity(1);
+  };
+
   const redirectNavigation = () => {
     if (stage === "LIST") {
       navigate("/home");
     } else {
+      setSelectedStockEntry(null);
       setStage("LIST");
     }
   };
+
+  const renderIngresoDetalleContent = (entry) => (
+    <>
+      {entry.stock_entries_products?.length > 0 ? (
+        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-100">
+              <tr>
+                <th className="text-left p-2 text-slate-600 font-medium text-xs">Renglón</th>
+                <th className="text-left p-2 text-slate-600 font-medium text-xs">Código</th>
+                <th className="text-left p-2 text-slate-600 font-medium text-xs">Fuerza</th>
+                <th className="text-left p-2 text-slate-600 font-medium text-xs">Producto</th>
+                <th className="text-left p-2 text-slate-600 font-medium text-xs">Manga</th>
+                <th className="text-left p-2 text-slate-600 font-medium text-xs">Género</th>
+                <th className="text-left p-2 text-slate-600 font-medium text-xs">Color</th>
+                <th className="text-left p-2 text-slate-600 font-medium text-xs">Cuello</th>
+                <th className="text-left p-2 text-slate-600 font-medium text-xs">Talle</th>
+                <th className="text-center p-2 text-slate-600 font-medium text-xs">Cantidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entry.stock_entries_products.map((product, idx) => (
+                <tr key={product.id || idx} className="border-t border-slate-200 hover:bg-slate-50">
+                  <td className="p-2 text-slate-700 text-xs">{product.renglon || "-"}</td>
+                  <td className="p-2 text-slate-700 text-xs">{product.codigo || "-"}</td>
+                  <td className="p-2 text-slate-700 text-xs">{product.fuerza || "-"}</td>
+                  <td className="p-2 text-slate-700 text-xs font-medium">
+                    {product.producto_tipo || product.products?.name || "-"}
+                  </td>
+                  <td className="p-2 text-slate-700 text-xs">{product.sleeve || "-"}</td>
+                  <td className="p-2 text-slate-700 text-xs">{product.genre || "-"}</td>
+                  <td className="p-2 text-slate-700 text-xs">
+                    {product.color ? (
+                      <span className="inline-flex items-center gap-1">
+                        <span
+                          className="w-3 h-3 rounded-full border border-slate-300"
+                          style={{
+                            backgroundColor:
+                              product.color === "BLANCO"
+                                ? "#ffffff"
+                                : product.color === "NEGRO"
+                                  ? "#1a1a1a"
+                                  : product.color === "GRIS"
+                                    ? "#6b7280"
+                                    : product.color === "CELESTE"
+                                      ? "#7dd3fc"
+                                      : product.color === "ARENA"
+                                        ? "#d4a574"
+                                        : "#e5e7eb",
+                          }}
+                        />
+                        {product.color}
+                      </span>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                  <td className="p-2 text-slate-700 text-xs">{product.neck || product.cuello || "-"}</td>
+                  <td className="p-2 text-slate-700 text-xs">{product.talle || "-"}</td>
+                  <td className="p-2 text-center text-slate-700 text-xs font-semibold">
+                    {product.quantity || 0}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-slate-500 text-center py-4 bg-white rounded border border-slate-200">
+          No hay productos en este ingreso
+        </div>
+      )}
+      {entry.description && (
+        <div className="mt-3 text-xs text-slate-600">
+          <span className="font-medium">Descripción:</span> {entry.description}
+        </div>
+      )}
+    </>
+  );
 
   const getSupplierName = (stockEntry) => {
     if (stockEntry.description?.includes("Confección Propia")) {
@@ -529,9 +921,32 @@ export default function Stock({}) {
                                   <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500 font-semibold">
                                     {getTotalQuantity(entry)}
                                   </td>
-                                  <td className="!text-xs text-left border-b border-slate-100 text-slate-500 w-10">
-                                    <div className="flex gap-2">
+                                  <td className="!text-xs text-left border-b border-slate-100 text-slate-500 min-w-[7rem]">
+                                    <div className="flex gap-1">
                                       <button
+                                        type="button"
+                                        className="flex items-center justify-center w-8 h-8"
+                                        title="Ver detalle"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openView(entry);
+                                        }}
+                                      >
+                                        <EyeIcon />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-900"
+                                        title="Editar"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openEditDialog(entry);
+                                        }}
+                                      >
+                                        <Pencil className="h-4 w-4" strokeWidth={2} />
+                                      </button>
+                                      <button
+                                        type="button"
                                         className="flex items-center justify-center w-8 h-8"
                                         title="Eliminar"
                                         onClick={(e) => {
@@ -551,65 +966,7 @@ export default function Stock({}) {
                                         <h4 className="font-semibold text-slate-700 mb-3 text-sm">
                                           Detalle de Productos
                                         </h4>
-                                        {entry.stock_entries_products?.length > 0 ? (
-                                          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-                                            <table className="w-full text-sm">
-                                              <thead className="bg-slate-100">
-                                                <tr>
-                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Fuerza</th>
-                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Producto</th>
-                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Manga</th>
-                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Género</th>
-                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Color</th>
-                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Cuello</th>
-                                                  <th className="text-left p-2 text-slate-600 font-medium text-xs">Talle</th>
-                                                  <th className="text-center p-2 text-slate-600 font-medium text-xs">Cantidad</th>
-                                                </tr>
-                                              </thead>
-                                              <tbody>
-                                                {entry.stock_entries_products.map((product, idx) => (
-                                                  <tr key={product.id || idx} className="border-t border-slate-200 hover:bg-slate-50">
-                                                    <td className="p-2 text-slate-700 text-xs">{product.fuerza || "-"}</td>
-                                                    <td className="p-2 text-slate-700 text-xs font-medium">{product.producto_tipo || product.products?.name || "-"}</td>
-                                                    <td className="p-2 text-slate-700 text-xs">{product.sleeve || "-"}</td>
-                                                    <td className="p-2 text-slate-700 text-xs">{product.genre || "-"}</td>
-                                                    <td className="p-2 text-slate-700 text-xs">
-                                                      {product.color ? (
-                                                        <span className="inline-flex items-center gap-1">
-                                                          <span 
-                                                            className="w-3 h-3 rounded-full border border-slate-300"
-                                                            style={{ 
-                                                              backgroundColor: 
-                                                                product.color === "BLANCO" ? "#ffffff" :
-                                                                product.color === "NEGRO" ? "#1a1a1a" :
-                                                                product.color === "GRIS" ? "#6b7280" :
-                                                                product.color === "CELESTE" ? "#7dd3fc" :
-                                                                product.color === "ARENA" ? "#d4a574" :
-                                                                "#e5e7eb"
-                                                            }}
-                                                          />
-                                                          {product.color}
-                                                        </span>
-                                                      ) : "-"}
-                                                    </td>
-                                                    <td className="p-2 text-slate-700 text-xs">{product.neck || product.cuello || "-"}</td>
-                                                    <td className="p-2 text-slate-700 text-xs">{product.talle || "-"}</td>
-                                                    <td className="p-2 text-center text-slate-700 text-xs font-semibold">{product.quantity || 0}</td>
-                                                  </tr>
-                                                ))}
-                                              </tbody>
-                                            </table>
-                                          </div>
-                                        ) : (
-                                          <div className="text-slate-500 text-center py-4 bg-white rounded border border-slate-200">
-                                            No hay productos en este ingreso
-                                          </div>
-                                        )}
-                                        {entry.description && (
-                                          <div className="mt-3 text-xs text-slate-600">
-                                            <span className="font-medium">Descripción:</span> {entry.description}
-                                          </div>
-                                        )}
+                                        {renderIngresoDetalleContent(entry)}
                                       </div>
                                     </td>
                                   </tr>
@@ -635,6 +992,56 @@ export default function Stock({}) {
               </div>
             )}
           </>
+        )}
+
+        {stage === "VIEW" && selectedStockEntry && (
+          <div className="my-4 mb-28">
+            <div className="bg-white rounded-lg p-6 shadow border border-slate-200">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h3 className="text-lg font-bold text-slate-800">Ingreso #{selectedStockEntry.id}</h3>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="alternative"
+                    size="sm"
+                    onClick={() => openEditDialog(selectedStockEntry)}
+                  >
+                    <Pencil className="h-4 w-4 mr-1.5" strokeWidth={2} />
+                    Editar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedStockEntry(null);
+                      setStage("LIST");
+                    }}
+                  >
+                    Volver al listado
+                  </Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6 text-sm">
+                <div>
+                  <span className="text-slate-500 font-medium">Fecha: </span>
+                  <span className="text-slate-800">
+                    {new Date(selectedStockEntry.entry_date).toLocaleDateString("es-AR")}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">Origen: </span>
+                  <span className="text-slate-800">{getSupplierName(selectedStockEntry)}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium">Nro. remito: </span>
+                  <span className="text-slate-800">{selectedStockEntry.remito_number || "—"}</span>
+                </div>
+              </div>
+              <h4 className="font-semibold text-slate-700 mb-3">Productos</h4>
+              {renderIngresoDetalleContent(selectedStockEntry)}
+            </div>
+          </div>
         )}
 
         {stage === "CREATE" && (
@@ -757,6 +1164,141 @@ export default function Stock({}) {
                         />
                       </div>
 
+                      {historicalProductSuggestions.length > 0 && (
+                        <div className="p-4">
+                          <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-4">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                              <p className="text-sm font-semibold text-slate-800">
+                                Productos frecuentes
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setShowProductSuggestions((v) => !v)}
+                                className="shrink-0 text-xs font-medium text-indigo-700 underline decoration-indigo-300 hover:text-indigo-900 sm:text-sm"
+                              >
+                                {showProductSuggestions
+                                  ? "Ocultar sugerencias"
+                                  : "Mostrar sugerencias"}
+                              </button>
+                            </div>
+                            {showProductSuggestions && (
+                              <>
+                                <p className="mt-1 text-xs text-slate-600">
+                                  Combinaciones que ya aparecieron en pedidos (incluye renglón, fuerza y código si
+                                  existían). Elegí una, luego talle y cantidad.
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {historicalProductSuggestions.map((preset) => {
+                                    const isSelected =
+                                      quickAddSelection?.suggestionKey === preset.suggestionKey;
+                                    return (
+                                      <button
+                                        key={preset.suggestionKey}
+                                        type="button"
+                                        onClick={() => {
+                                          setQuickAddSelection(preset);
+                                          setQuickAddTalle("");
+                                          setQuickAddQuantity(1);
+                                        }}
+                                        className={`inline-flex max-w-full items-center rounded-full border px-3 py-1.5 text-left text-xs transition-colors ${
+                                          isSelected
+                                            ? "border-indigo-600 bg-indigo-100 text-indigo-900"
+                                            : "border-slate-200 bg-white text-slate-700 hover:border-indigo-300 hover:bg-white"
+                                        }`}
+                                        title={formatStockProductSuggestionLabel(preset)}
+                                      >
+                                        <span className="truncate">
+                                          {formatStockProductSuggestionLabel(preset)}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                {quickAddSelection && (
+                                  <div className="mt-4 flex flex-col gap-3 rounded-md border border-indigo-200 bg-white p-3">
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-medium text-slate-500">Producto</p>
+                                      <p className="mt-1 text-sm font-medium text-slate-800">
+                                        {formatStockProductSuggestionLabel(quickAddSelection)}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                                      <div>
+                                        <label
+                                          htmlFor="stock-quick-add-talle"
+                                          className="mb-1 block text-xs font-medium text-slate-600"
+                                        >
+                                          Talle *
+                                        </label>
+                                        <select
+                                          id="stock-quick-add-talle"
+                                          value={quickAddTalle}
+                                          onChange={(e) => setQuickAddTalle(e.target.value)}
+                                          className="w-full min-w-[140px] rounded border border-slate-200 p-2 text-slate-700 sm:w-auto"
+                                        >
+                                          <option value="">Seleccionar...</option>
+                                          {utils.getProductTalles().map((talle) => (
+                                            <option key={talle} value={talle}>
+                                              {talle}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label
+                                          htmlFor="stock-quick-add-cantidad"
+                                          className="mb-1 block text-xs font-medium text-slate-600"
+                                        >
+                                          Cantidad *
+                                        </label>
+                                        <input
+                                          id="stock-quick-add-cantidad"
+                                          type="text"
+                                          inputMode="numeric"
+                                          pattern="[0-9]*"
+                                          value={quickAddQuantity}
+                                          onChange={(e) => {
+                                            const value = e.target.value.replace(/\D/g, "");
+                                            setQuickAddQuantity(value ? parseInt(value, 10) : 0);
+                                          }}
+                                          className="w-full rounded border border-slate-200 p-2 text-center text-slate-700 [appearance:textfield] sm:w-24 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                          aria-label="Cantidad"
+                                        />
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-2 pt-1 sm:pt-0">
+                                        <Button
+                                          type="button"
+                                          onClick={addQuickPresetToStock}
+                                          disabled={
+                                            !quickAddTalle ||
+                                            !quickAddQuantity ||
+                                            quickAddQuantity <= 0
+                                          }
+                                        >
+                                          <Plus className="mr-2 h-4 w-4" />
+                                          Agregar
+                                        </Button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setQuickAddSelection(null);
+                                            setQuickAddTalle("");
+                                            setQuickAddQuantity(1);
+                                          }}
+                                          className="text-sm text-slate-600 underline hover:text-slate-900"
+                                        >
+                                          Cancelar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Productos */}
                       <div className="p-4">
                         <div className="flex items-center justify-between mb-4">
@@ -777,6 +1319,9 @@ export default function Stock({}) {
                           <table className="w-full border-collapse">
                             <thead>
                               <tr className="bg-gray-100">
+                                <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">
+                                  Renglón
+                                </th>
                                 <th className="border border-slate-200 p-2 text-left text-xs text-slate-600">
                                   Fuerza *
                                 </th>
@@ -809,6 +1354,20 @@ export default function Stock({}) {
                             <tbody>
                               {fields.map((field, index) => (
                                 <tr key={field.id}>
+                                  <td className="border border-slate-200 p-2">
+                                    <input type="hidden" {...register(`products.${index}.codigo`)} />
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      maxLength={5}
+                                      className="w-full min-w-[3.25rem] max-w-[4.5rem] rounded border border-slate-200 p-1.5 text-xs text-slate-500"
+                                      title="Hasta 5 dígitos (opcional)"
+                                      placeholder="—"
+                                      {...register(`products.${index}.renglon`, {
+                                        setValueAs: (v) => normalizeRenglonDigits(v ?? ""),
+                                      })}
+                                    />
+                                  </td>
                                   {/* Fuerza */}
                                   <td className="border border-slate-200 p-2">
                                     <select
@@ -972,6 +1531,295 @@ export default function Stock({}) {
           </div>
         )}
       </div>
+
+      <Dialog open={Boolean(editTarget)} onOpenChange={(open) => !open && setEditTarget(null)}>
+        <DialogContent className="w-[95vw] max-w-6xl p-4 sm:p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
+          <DialogTitle className="text-lg font-semibold text-slate-800 pr-6">
+            Editar ingreso de stock
+            {editTarget ? ` #${editTarget.id}` : ""}
+          </DialogTitle>
+          <form onSubmit={submitEdit} className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex items-center gap-2 sm:col-span-2">
+                <input
+                  id="edit-stock-confeccion"
+                  type="checkbox"
+                  checked={editForm.isConfeccion}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setEditForm((f) => ({
+                      ...f,
+                      isConfeccion: checked,
+                      supplier: checked ? null : f.supplier,
+                    }));
+                  }}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600"
+                />
+                <label htmlFor="edit-stock-confeccion" className="text-sm text-slate-700">
+                  Confección propia (sin proveedor)
+                </label>
+              </div>
+              {!editForm.isConfeccion && (
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Proveedor *</label>
+                  <SelectComboBox
+                    options={sortBy(suppliers || [], "fantasy_name").map((s) => ({
+                      id: s.id,
+                      name: s.fantasy_name,
+                      label: s.fantasy_name,
+                    }))}
+                    value={editForm.supplier}
+                    onChange={(opt) => setEditForm((f) => ({ ...f, supplier: opt || null }))}
+                    placeholder="Buscar proveedor…"
+                  />
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-medium text-slate-600 block mb-1">Fecha de ingreso *</label>
+                <input
+                  type="date"
+                  required
+                  className="w-full rounded border border-slate-200 p-2 text-sm text-slate-700"
+                  value={editForm.entry_date}
+                  onChange={(e) => setEditForm((f) => ({ ...f, entry_date: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-600 block mb-1">Nro. de remito</label>
+                <input
+                  type="text"
+                  className="w-full rounded border border-slate-200 p-2 text-sm text-slate-700"
+                  value={editForm.remito_number}
+                  onChange={(e) => setEditForm((f) => ({ ...f, remito_number: e.target.value }))}
+                  placeholder="Opcional"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-xs font-medium text-slate-600 block mb-1">Descripción</label>
+                <textarea
+                  rows={2}
+                  className="w-full rounded border border-slate-200 p-2 text-sm text-slate-700"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Opcional"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-sm font-bold text-slate-700">Productos *</span>
+                <button
+                  type="button"
+                  onClick={addEditProductLine}
+                  className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                  <Plus className="h-4 w-4" />
+                  Agregar fila
+                </button>
+              </div>
+              <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                <table className="w-full border-collapse min-w-[880px]">
+                  <thead>
+                    <tr className="bg-slate-100 text-left text-xs text-slate-600">
+                      <th className="border-b border-slate-200 p-2 font-medium">Renglón</th>
+                      <th className="border-b border-slate-200 p-2 font-medium">Fuerza *</th>
+                      <th className="border-b border-slate-200 p-2 font-medium">Producto *</th>
+                      <th className="border-b border-slate-200 p-2 font-medium">Manga</th>
+                      <th className="border-b border-slate-200 p-2 font-medium">Género</th>
+                      <th className="border-b border-slate-200 p-2 font-medium">Color</th>
+                      <th className="border-b border-slate-200 p-2 font-medium">Cuello</th>
+                      <th className="border-b border-slate-200 p-2 font-medium">Talle *</th>
+                      <th className="border-b border-slate-200 p-2 font-medium">Cant. *</th>
+                      <th className="border-b border-slate-200 p-2 font-medium w-12" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(editForm.products || []).map((line, index) => (
+                      <tr key={`edit-line-${index}`}>
+                        <td className="border-b border-slate-100 p-1.5">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={5}
+                            className="w-14 min-w-0 rounded border border-slate-200 p-1.5 text-xs"
+                            value={line.renglon}
+                            onChange={(e) =>
+                              setEditLine(index, "renglon", normalizeRenglonDigits(e.target.value))
+                            }
+                            title="Hasta 5 dígitos"
+                            placeholder="—"
+                          />
+                          <input
+                            type="text"
+                            className="mt-1 w-full max-w-[6rem] rounded border border-slate-100 p-1 text-xs text-slate-500"
+                            value={line.codigo || ""}
+                            onChange={(e) => setEditLine(index, "codigo", e.target.value)}
+                            placeholder="Código"
+                          />
+                        </td>
+                        <td className="border-b border-slate-100 p-1.5">
+                          <select
+                            className="w-full min-w-[6rem] rounded border border-slate-200 p-1.5 text-xs"
+                            value={line.fuerza}
+                            onChange={(e) => setEditLine(index, "fuerza", e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {utils.getProductFuerzas().map((f) => (
+                              <option key={f} value={f}>
+                                {f}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="border-b border-slate-100 p-1.5">
+                          <select
+                            className="w-full min-w-[5rem] rounded border border-slate-200 p-1.5 text-xs"
+                            value={line.producto_tipo}
+                            onChange={(e) => setEditLine(index, "producto_tipo", e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {utils.getProductTypes().map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="border-b border-slate-100 p-1.5">
+                          {line.producto_tipo === "CAMISA" ? (
+                            <select
+                              className="w-full rounded border border-slate-200 p-1.5 text-xs"
+                              value={line.manga}
+                              onChange={(e) => setEditLine(index, "manga", e.target.value)}
+                            >
+                              <option value="">—</option>
+                              {utils.getProductSleeves().map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-slate-400 px-1">N/A</span>
+                          )}
+                        </td>
+                        <td className="border-b border-slate-100 p-1.5">
+                          <select
+                            className="w-full rounded border border-slate-200 p-1.5 text-xs"
+                            value={line.genero}
+                            onChange={(e) => setEditLine(index, "genero", e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {utils.getProductGenres().map((g) => (
+                              <option key={g} value={g}>
+                                {g}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="border-b border-slate-100 p-1.5">
+                          <select
+                            className="w-full min-w-[5.5rem] rounded border border-slate-200 p-1.5 text-xs"
+                            value={line.color}
+                            onChange={(e) => setEditLine(index, "color", e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {utils.getProductColors().map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="border-b border-slate-100 p-1.5">
+                          {line.producto_tipo === "CAMISA" ? (
+                            <select
+                              className="w-full min-w-[5.5rem] rounded border border-slate-200 p-1.5 text-xs"
+                              value={line.cuello}
+                              onChange={(e) => setEditLine(index, "cuello", e.target.value)}
+                            >
+                              <option value="">—</option>
+                              {utils.getProductNecks().map((n) => (
+                                <option key={n} value={n}>
+                                  {n}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-slate-400 px-1">N/A</span>
+                          )}
+                        </td>
+                        <td className="border-b border-slate-100 p-1.5">
+                          <select
+                            className="w-full min-w-[3.5rem] rounded border border-slate-200 p-1.5 text-xs"
+                            value={line.talle}
+                            onChange={(e) => setEditLine(index, "talle", e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {utils.getProductTalles().map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="border-b border-slate-100 p-1.5">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            className="w-16 rounded border border-slate-200 p-1.5 text-xs text-center"
+                            value={line.quantity}
+                            onChange={(e) => {
+                              const v = e.target.value.replace(/\D/g, "");
+                              setEditLine(index, "quantity", v);
+                            }}
+                          />
+                        </td>
+                        <td className="border-b border-slate-100 p-1 text-center">
+                          {(editForm.products || []).length > 1 && (
+                            <button
+                              type="button"
+                              className="text-red-500 hover:text-red-700 text-lg font-bold"
+                              onClick={() => removeEditProductLine(index)}
+                              title="Quitar fila"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Podés modificar o agregar líneas. Los cambios reemplazan todo el detalle de productos del
+                ingreso.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-2">
+              <Button
+                type="submit"
+                variant="default"
+                className="min-w-[7rem]"
+                disabled={updateMutation.isPending}
+              >
+                {updateMutation.isPending ? "Guardando…" : "Guardar"}
+              </Button>
+              <Button
+                type="button"
+                variant="outlined"
+                onClick={() => setEditTarget(null)}
+                disabled={updateMutation.isPending}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

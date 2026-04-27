@@ -42,12 +42,13 @@ export const useCreateStockEntryMutation = async (body) => {
 };
 
 export const useUpdateStockEntryMutation = async (body) => {
-  const res = await fetch(`${BASE_URL}/${body.id}`, {
+  const { id, ...rest } = body;
+  const res = await fetch(`${BASE_URL}/${id}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ id, ...rest }),
   });
   if (!res.ok) {
     throw new Error("Error en la petición");
