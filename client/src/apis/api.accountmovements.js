@@ -1,7 +1,17 @@
 const BASE_URL = "/api/account-movements";
 
-export const fetchAccountMovements = async ({ month, year, page = 1, limit = 50 }) => {
-  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+export const fetchAccountMovements = async ({
+  month,
+  year,
+  page = 1,
+  limit = 50,
+  dateOrder = "asc",
+}) => {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+    dateOrder: dateOrder === "desc" ? "desc" : "asc",
+  });
   if (month && year) {
     params.set("month", String(month));
     params.set("year", String(year));

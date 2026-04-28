@@ -13,14 +13,16 @@ function normalizeMovementKind(value) {
 
 self.getMovements = async (req, res) => {
   try {
-    const { month, year, page = 1, limit = 50 } = req.query;
+    const { month, year, page = 1, limit = 50, dateOrder: dateOrderParam } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
+    const ascending = String(dateOrderParam || "asc").toLowerCase() !== "desc";
 
     let query = supabase
       .from("account_movements")
       .select("*", { count: "exact" })
       .is("deleted_at", null)
-      .order("created_at", { ascending: true })
+      .order("date", { ascending })
+      .order("id", { ascending })
       .range(offset, offset + parseInt(limit) - 1);
 
     if (month && year) {

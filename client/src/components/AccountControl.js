@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { DateTime } from "luxon";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
 import Spinner from "./common/Spinner";
@@ -38,6 +39,10 @@ function movementKindLabel(kind) {
   return MOVEMENT_KIND_OPTIONS.find((o) => o.value === k)?.label ?? "Única vez";
 }
 
+function effectiveMovementDate(m) {
+  return m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date;
+}
+
 const MONTHS = [
   { value: 1, label: "Enero" },
   { value: 2, label: "Febrero" },
@@ -70,6 +75,8 @@ export default function AccountControl() {
   const [detailSearch, setDetailSearch] = useState("");
   const [kindListFilter, setKindListFilter] = useState("");
   const [futureDialogOpen, setFutureDialogOpen] = useState(false);
+  /** Orden de listado por fecha: coincide con el API; default asc (más antiguas primero). */
+  const [dateOrder, setDateOrder] = useState("asc");
 
   const {
     register,
@@ -84,8 +91,8 @@ export default function AccountControl() {
   });
 
   const filterParams = viewAll
-    ? { page, limit: 50 }
-    : { month: selectedMonth, year: selectedYear, page, limit: 50 };
+    ? { page, limit: 50, dateOrder }
+    : { month: selectedMonth, year: selectedYear, page, limit: 50, dateOrder };
 
   const { data: movementsRes, isLoading } = useQuery({
     queryKey: queryAccountMovementsKey(filterParams),
@@ -127,16 +134,12 @@ export default function AccountControl() {
 
   const movements = allData;
 
-  // Calculate running balance for displayed movements (optional filters: detalle, clasificación)
+  // Saldo: siempre acumulado en orden cronológico; la vista puede invertirse (dateOrder === "desc")
   const movementsWithBalance = useMemo(() => {
     if (!movements || movements.length === 0) return [];
 
-    const sorted = [...movements].sort((a, b) => {
-      return (a.created_at || "").localeCompare(b.created_at || "");
-    });
-
     const q = detailSearch.trim().toLowerCase();
-    const filtered = sorted.filter((m) => {
+    const filtered = movements.filter((m) => {
       if (kindListFilter && (m.movement_kind || "UNICA VEZ") !== kindListFilter) return false;
       if (q) {
         const desc = (m.description || "").toLowerCase();
@@ -152,13 +155,26 @@ export default function AccountControl() {
       return true;
     });
 
+    const chrono = [...filtered].sort((a, b) => {
+      const da = String(effectiveMovementDate(a) || "");
+      const db = String(effectiveMovementDate(b) || "");
+      const c = da.localeCompare(db);
+      if (c !== 0) return c;
+      return (a.id || 0) - (b.id || 0);
+    });
+
     let runningBalance = 0;
-    return filtered.map((m) => {
+    const withBal = chrono.map((m) => {
       const amount = parseFloat(m.amount);
       runningBalance += m.type === "INGRESO" ? amount : -amount;
       return { ...m, balance: runningBalance };
     });
-  }, [allData, detailSearch, kindListFilter]);
+
+    if (dateOrder === "desc") {
+      return [...withBal].reverse();
+    }
+    return withBal;
+  }, [allData, detailSearch, kindListFilter, dateOrder]);
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ["account-movements"] });
@@ -284,6 +300,12 @@ export default function AccountControl() {
 
   const handleViewMonth = () => {
     setViewAll(false);
+    setPage(1);
+    setAllData([]);
+  };
+
+  const toggleDateOrder = () => {
+    setDateOrder((o) => (o === "asc" ? "desc" : "asc"));
     setPage(1);
     setAllData([]);
   };
@@ -562,7 +584,27 @@ export default function AccountControl() {
                       <table className="border-collapse table-auto w-full text-sm">
                         <thead>
                           <tr>
-                            <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Fecha</th>
+                            <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">
+                              <button
+                                type="button"
+                                onClick={toggleDateOrder}
+                                className="inline-flex items-center gap-1.5 font-medium text-slate-500 hover:text-slate-800 transition-colors"
+                                title={
+                                  dateOrder === "asc"
+                                    ? "Fechas más antiguas primero. Clic para ordenar por más recientes."
+                                    : "Fechas más recientes primero. Clic para ordenar por más antiguas."
+                                }
+                                aria-label={`Ordenar fechas, actualmente ${dateOrder === "asc" ? "ascendente" : "descendente"}`}
+                                aria-sort={dateOrder === "asc" ? "ascending" : "descending"}
+                              >
+                                Fecha
+                                {dateOrder === "asc" ? (
+                                  <ArrowUpNarrowWide className="h-4 w-4 text-slate-500 shrink-0" aria-hidden />
+                                ) : (
+                                  <ArrowDownWideNarrow className="h-4 w-4 text-slate-500 shrink-0" aria-hidden />
+                                )}
+                              </button>
+                            </th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Tipo</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Clasificación</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Detalle</th>
