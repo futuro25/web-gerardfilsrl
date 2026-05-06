@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { DateTime } from "luxon";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { EditIcon, TrashIcon, EyeIcon, CloseIcon } from "./icons";
+import { EditIcon, TrashIcon, CloseIcon } from "./icons";
 import * as utils from "../utils/utils";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
@@ -17,9 +17,8 @@ import {
   useDeletePaycheckMutation,
 } from "../apis/api.paychecks";
 import { queryPaychecksKey } from "../apis/queryKeys";
-import config from "../config";
-
 export default function Paychecks() {
+  const canManagePaychecks = sessionStorage.username === "lgedeon";
   const [stage, setStage] = useState("LIST");
   const [search, setSearch] = useState("");
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
@@ -47,7 +46,7 @@ export default function Paychecks() {
   });
 
   useEffect(() => {
-    if (createParam) {
+    if (createParam && canManagePaychecks) {
       setStage("CREATE");
       setSelectedPaycheck(null);
       setViewOnly(false);
@@ -56,7 +55,30 @@ export default function Paychecks() {
       setSelectedPaycheck(null);
       setViewOnly(false);
     }
-  }, [createParam]);
+  }, [createParam, canManagePaychecks]);
+
+  useEffect(() => {
+    if (stage === "CREATE" && selectedPaycheck && canManagePaychecks) {
+      reset({
+        number: selectedPaycheck.number ?? "",
+        bank: selectedPaycheck.bank ?? "",
+        amount: selectedPaycheck.amount ?? "",
+        due_date: selectedPaycheck.due_date
+          ? DateTime.fromISO(selectedPaycheck.due_date).toFormat("yyyy-MM-dd")
+          : "",
+        type: selectedPaycheck.type ?? "OUT",
+      });
+    }
+    if (stage === "CREATE" && !selectedPaycheck && createParam && canManagePaychecks) {
+      reset({
+        number: "",
+        bank: "",
+        amount: "",
+        due_date: DateTime.now().toFormat("yyyy-MM-dd"),
+        type: "OUT",
+      });
+    }
+  }, [stage, selectedPaycheck, createParam, reset, canManagePaychecks]);
 
   const applySearch = (list) => {
     if (!list || !search) return list || [];
@@ -111,9 +133,10 @@ export default function Paychecks() {
   });
 
   const removeUser = async (paycheckId) => {
+    if (!canManagePaychecks) return;
     if (window.confirm("Seguro desea eliminar este Cheque?")) {
       try {
-        await deleteMutation.mutate(paycheckId);
+        await deleteMutation.mutateAsync(paycheckId);
         setStage("LIST");
       } catch (e) {
         console.log(e);
@@ -122,19 +145,33 @@ export default function Paychecks() {
   };
 
   const onSubmit = async (data) => {
+    if (!canManagePaychecks) return;
     try {
       setIsLoadingSubmit(true);
-      let body = data;
-
-      body = {
-        ...data,
-      };
 
       if (selectedPaycheck) {
-        updateMutation.mutate({ ...body, id: selectedPaycheck.id });
+        await updateMutation.mutateAsync({
+          id: selectedPaycheck.id,
+          number: data.number,
+          bank: data.bank,
+          amount: Number(data.amount),
+          due_date: data.due_date,
+          type: data.type,
+          client_id: selectedPaycheck.client_id,
+          movement_id: selectedPaycheck.movement_id,
+        });
       } else {
-        createMutation.mutate(body);
+        await createMutation.mutateAsync({
+          number: data.number,
+          bank: data.bank,
+          amount: Number(data.amount),
+          due_date: data.due_date,
+          type: data.type,
+          client_id: data.client_id || null,
+          movement_id: data.movement_id || null,
+        });
       }
+
       setIsLoadingSubmit(false);
       setStage("LIST");
 
@@ -144,15 +181,19 @@ export default function Paychecks() {
         window.history.pushState({}, "", url);
       }
       reset();
+      setSelectedPaycheck(null);
     } catch (e) {
+      setIsLoadingSubmit(false);
       console.log(e);
     }
   };
 
-  const onEdit = (user_id) => {
+  const onEdit = (paycheckId) => {
+    if (!canManagePaychecks) return;
     reset();
-    const user = data.find((user) => user.id === user_id) || null;
-    setSelectedPaycheck(user);
+    const paycheck =
+      data.find((row) => row.id === paycheckId) || null;
+    setSelectedPaycheck(paycheck);
     setStage("CREATE");
   };
 
@@ -174,6 +215,11 @@ export default function Paychecks() {
     setIsLoadingSubmit(false);
     reset();
     setStage("LIST");
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("create")) {
+      url.searchParams.delete("create");
+      window.history.pushState({}, "", url);
+    }
   };
 
   const fantasyNameValidation = (username) => {
@@ -196,7 +242,7 @@ export default function Paychecks() {
     if (stage === "LIST") {
       navigate("/home");
     } else {
-      setStage("LIST");
+      onCancel();
     }
   };
 
@@ -248,6 +294,88 @@ export default function Paychecks() {
           </div>
         )}
         {error && <div className="text-red-500">{/* ERROR... */}</div>}
+        {stage === "CREATE" && canManagePaychecks && (
+          <div className="my-4 mb-28 not-prose relative bg-slate-50 rounded-xl overflow-hidden ">
+            <div
+              className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,#fff,rgba(255,255,255,0.6))] "
+              style={{ backgroundPosition: "10px 10px" }}
+            ></div>
+            <div className="relative rounded-xl overflow-auto px-4 py-8">
+              <form
+                onSubmit={handleSubmit(onSubmit)}
+                className="max-w-xl flex flex-col gap-4 bg-white p-6 rounded-lg shadow-sm border border-slate-100"
+              >
+                <div className="text-lg font-semibold text-slate-700 pb-2">
+                  {selectedPaycheck ? "Editar cheque" : "Nuevo cheque"}
+                </div>
+                <Input
+                  label="Número"
+                  {...register("number", { required: true })}
+                  id="number"
+                  placeholder="Ej. 12345678"
+                />
+                {errors.number && (
+                  <p className="text-xs text-red-500">Requerido</p>
+                )}
+                <Input
+                  label="Banco"
+                  {...register("bank", { required: true })}
+                  id="bank"
+                />
+                {errors.bank && (
+                  <p className="text-xs text-red-500">Requerido</p>
+                )}
+                <Input
+                  label="Importe"
+                  type="number"
+                  step="0.01"
+                  {...register("amount", { required: true })}
+                  id="amount"
+                />
+                {errors.amount && (
+                  <p className="text-xs text-red-500">Requerido</p>
+                )}
+                <Input
+                  label="Fecha de pago"
+                  type="date"
+                  {...register("due_date", { required: true })}
+                  id="due_date"
+                />
+                {errors.due_date && (
+                  <p className="text-xs text-red-500">Requerido</p>
+                )}
+                <div className="w-full">
+                  <label
+                    htmlFor="type"
+                    className="text-xs-special font-sans text-gray-900 mb-2 block"
+                  >
+                    Movimiento
+                  </label>
+                  <select
+                    id="type"
+                    className="w-full px-2 block text-sm-special font-sans border box-border rounded h-12 border-gray-100"
+                    {...register("type")}
+                  >
+                    <option value="IN">Ingreso</option>
+                    <option value="OUT">Egreso</option>
+                  </select>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <Button type="submit" disabled={isLoadingSubmit}>
+                    {isLoadingSubmit ? "Guardando..." : "Guardar"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="alternative"
+                    onClick={onCancel}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
         {stage === "LIST" && data && (
           <div className="my-4 mb-28">
             <div className="pl-1 pb-1 text-slate-500 flex justify-between items-center">
@@ -299,6 +427,11 @@ export default function Paychecks() {
                         <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
                           Estado
                         </th>
+                        {canManagePaychecks && (
+                          <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left whitespace-nowrap">
+                            Acciones
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="bg-white ">
@@ -363,12 +496,34 @@ export default function Paychecks() {
                                 )}
                               </span>
                             </td>
+                            {canManagePaychecks && (
+                              <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500 whitespace-nowrap">
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    className="flex items-center justify-center w-8 h-8"
+                                    title="Editar cheque"
+                                    onClick={() => onEdit(paycheck.id)}
+                                  >
+                                    <EditIcon />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="flex items-center justify-center w-8 h-8"
+                                    title="Eliminar cheque"
+                                    onClick={() => removeUser(paycheck.id)}
+                                  >
+                                    <TrashIcon />
+                                  </button>
+                                </div>
+                              </td>
+                            )}
                           </tr>
                         ))
                       ) : (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={canManagePaychecks ? 8 : 7}
                             className="border-b border-slate-100  p-4  text-slate-500 "
                           >
                             No hay próximos cheques para mostrar. Si desea ver cheques anteriores puede hacer click en {" "}
