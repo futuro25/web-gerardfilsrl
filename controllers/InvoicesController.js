@@ -4,6 +4,39 @@ const self = {};
 const supabase = require("./db");
 const _ = require("lodash");
 
+async function fetchTaxesByInvoiceIds(invoiceIds) {
+  if (!invoiceIds.length) return {};
+  const { data, error } = await supabase
+    .from("taxes")
+    .select("id, invoice_id, name, amount")
+    .in("invoice_id", invoiceIds);
+  if (error) throw error;
+
+  const map = {};
+  (data || []).forEach((t) => {
+    if (!map[t.invoice_id]) map[t.invoice_id] = [];
+    map[t.invoice_id].push({ id: t.id, name: t.name, amount: t.amount });
+  });
+  return map;
+}
+
+async function attachTaxesToInvoices(invoices) {
+  if (!invoices?.length) return invoices || [];
+  const taxesByInvoiceId = await fetchTaxesByInvoiceIds(
+    invoices.map((inv) => inv.id)
+  );
+  return invoices.map((inv) => ({
+    ...inv,
+    taxes: taxesByInvoiceId[inv.id] || [],
+  }));
+}
+
+async function attachTaxesToInvoice(invoice) {
+  if (!invoice) return invoice;
+  const [withTaxes] = await attachTaxesToInvoices([invoice]);
+  return withTaxes;
+}
+
 self.getInvoices = async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -14,11 +47,6 @@ self.getInvoices = async (req, res) => {
         supplier:suppliers (
           id,
           fantasy_name
-        ),
-        taxes:taxes (
-          id,
-          name,
-          amount
         )
       `
       )
@@ -26,7 +54,7 @@ self.getInvoices = async (req, res) => {
 
     if (error) throw error;
 
-    res.json(data);
+    res.json(await attachTaxesToInvoices(data || []));
   } catch (e) {
     res.json({ error: e.message });
   }
@@ -61,11 +89,6 @@ self.getInvoiceByAccountMovement = async (req, res) => {
           id,
           fantasy_name,
           name
-        ),
-        taxes:taxes (
-          id,
-          name,
-          amount
         )
       `
       )
@@ -75,7 +98,7 @@ self.getInvoiceByAccountMovement = async (req, res) => {
 
     if (error) throw error;
 
-    res.json(data || null);
+    res.json(await attachTaxesToInvoice(data));
   } catch (e) {
     res.json({ error: e.message });
   }

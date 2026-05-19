@@ -13,6 +13,23 @@ function effectiveDate(row) {
   return row.date || row.due_date || row.created_at?.slice?.(0, 10) || "";
 }
 
+/** taxes.invoice_id apunta a invoices o cashflow sin FK en Supabase; cargar aparte. */
+async function fetchTaxesByInvoiceIds(invoiceIds) {
+  if (!invoiceIds.length) return {};
+  const { data, error } = await supabase
+    .from("taxes")
+    .select("id, invoice_id, name, amount")
+    .in("invoice_id", invoiceIds);
+  if (error) throw error;
+
+  const map = {};
+  (data || []).forEach((t) => {
+    if (!map[t.invoice_id]) map[t.invoice_id] = [];
+    map[t.invoice_id].push({ id: t.id, name: t.name, amount: t.amount });
+  });
+  return map;
+}
+
 self.getSupplierAccount = async (req, res) => {
   try {
     const supplierId = parseInt(req.params.supplier_id, 10);
@@ -44,18 +61,17 @@ self.getSupplierAccount = async (req, res) => {
         description,
         due_date,
         account_movement_id,
-        created_at,
-        taxes:taxes (
-          id,
-          name,
-          amount
-        )
+        created_at
       `
       )
       .eq("supplier_id", supplierId)
       .is("deleted_at", null);
 
     if (invoicesError) throw invoicesError;
+
+    const taxesByInvoiceId = await fetchTaxesByInvoiceIds(
+      (invoices || []).map((inv) => inv.id)
+    );
 
     const { data: cashflowRows, error: cashflowError } = await supabase
       .from("cashflow")
@@ -82,7 +98,7 @@ self.getSupplierAccount = async (req, res) => {
         invoice_number: inv.invoice_number,
         amount: total,
         signed_amount: total,
-        taxes: inv.taxes || [],
+        taxes: taxesByInvoiceId[inv.id] || [],
         account_movement_id: inv.account_movement_id,
       });
     });
