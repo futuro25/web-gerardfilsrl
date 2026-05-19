@@ -13,13 +13,13 @@ import SupplierQuickCreateDialog from "./SupplierQuickCreateDialog";
 import * as utils from "../utils/utils";
 import { useSuppliersQuery } from "../apis/api.suppliers";
 import {
-  fetchInvoiceByAccountMovement,
-  useCreateInvoiceMutation,
-  useUpdateInvoiceMutation,
-} from "../apis/api.invoices";
+  fetchSupplierInvoiceByAccountMovement,
+  createSupplierInvoice,
+  updateSupplierInvoice,
+} from "../apis/api.supplierinvoices";
 import {
-  queryInvoicesKey,
-  queryInvoiceByMovementKey,
+  querySupplierAccountsListKey,
+  querySupplierInvoiceByMovementKey,
   querySuppliersKey,
   querySupplierAccountKey,
 } from "../apis/queryKeys";
@@ -80,13 +80,13 @@ export default function InvoiceDataDialog({
   });
 
   const { data: linkedInvoice, isLoading: invoiceLoading } = useQuery({
-    queryKey: queryInvoiceByMovementKey(movementId),
-    queryFn: () => fetchInvoiceByAccountMovement(movementId),
+    queryKey: querySupplierInvoiceByMovementKey(movementId),
+    queryFn: () => fetchSupplierInvoiceByAccountMovement(movementId),
     enabled: open && Boolean(movementId),
   });
 
-  const createMutation = useMutation({ mutationFn: useCreateInvoiceMutation });
-  const updateMutation = useMutation({ mutationFn: useUpdateInvoiceMutation });
+  const createMutation = useMutation({ mutationFn: createSupplierInvoice });
+  const updateMutation = useMutation({ mutationFn: updateSupplierInvoice });
 
   const watchedAmount = watch("amount");
 
@@ -188,9 +188,11 @@ export default function InvoiceDataDialog({
         await createMutation.mutateAsync(body);
       }
 
-      queryClient.invalidateQueries({ queryKey: queryInvoicesKey() });
       queryClient.invalidateQueries({
-        queryKey: queryInvoiceByMovementKey(movementId),
+        queryKey: querySupplierAccountsListKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: querySupplierInvoiceByMovementKey(movementId),
       });
       if (data.supplier?.id) {
         queryClient.invalidateQueries({

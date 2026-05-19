@@ -77,33 +77,6 @@ self.getInvoiceById = async (req, res) => {
   }
 };
 
-self.getInvoiceByAccountMovement = async (req, res) => {
-  const account_movement_id = req.params.account_movement_id;
-  try {
-    const { data, error } = await supabase
-      .from("invoices")
-      .select(
-        `
-        *,
-        supplier:suppliers (
-          id,
-          fantasy_name,
-          name
-        )
-      `
-      )
-      .eq("account_movement_id", account_movement_id)
-      .is("deleted_at", null)
-      .maybeSingle();
-
-    if (error) throw error;
-
-    res.json(await attachTaxesToInvoice(data));
-  } catch (e) {
-    res.json({ error: e.message });
-  }
-};
-
 self.createInvoice = async (req, res) => {
   try {
     const invoice = {
@@ -113,7 +86,6 @@ self.createInvoice = async (req, res) => {
       description: req.body.description,
       due_date: req.body.due_date,
       total: req.body.total,
-      account_movement_id: req.body.account_movement_id || null,
     };
 
     const { data: newInvoice, error } = await supabase

@@ -26,16 +26,16 @@ import {
   queryUpcomingChequesKey,
   queryAccountFutureBalancesKey,
   queryPaychecksKey,
-  queryInvoicesKey,
-  queryInvoiceByMovementKey,
+  querySupplierAccountsListKey,
+  querySupplierInvoiceByMovementKey,
   querySupplierAccountKey,
 } from "../apis/queryKeys";
 import InvoiceDataDialog from "./InvoiceDataDialog";
 import InvoiceDataFields from "./InvoiceDataFields";
 import {
-  useCreateInvoiceMutation,
-  useUpdateInvoiceMutation,
-} from "../apis/api.invoices";
+  createSupplierInvoice,
+  updateSupplierInvoice,
+} from "../apis/api.supplierinvoices";
 
 const MOVEMENT_KIND_OPTIONS = [
   { value: "UNICA VEZ", label: "Única vez" },
@@ -196,7 +196,9 @@ export default function AccountControl() {
     queryClient.invalidateQueries({ queryKey: ["upcoming-cheques"] });
     queryClient.invalidateQueries({ queryKey: queryAccountFutureBalancesKey() });
     queryClient.invalidateQueries({ queryKey: queryPaychecksKey() });
-    queryClient.invalidateQueries({ queryKey: queryInvoicesKey() });
+    queryClient.invalidateQueries({
+      queryKey: querySupplierAccountsListKey(),
+    });
   };
 
   const openInvoiceDialog = (movement) => {
@@ -220,11 +222,11 @@ export default function AccountControl() {
   });
 
   const createInvoiceMutation = useMutation({
-    mutationFn: useCreateInvoiceMutation,
+    mutationFn: createSupplierInvoice,
   });
 
   const updateInvoiceMutation = useMutation({
-    mutationFn: useUpdateInvoiceMutation,
+    mutationFn: updateSupplierInvoice,
   });
 
   const watchedDate = watch("date");
@@ -250,7 +252,7 @@ export default function AccountControl() {
     }
 
     queryClient.invalidateQueries({
-      queryKey: queryInvoiceByMovementKey(movementId),
+      queryKey: querySupplierInvoiceByMovementKey(movementId),
     });
     if (payload.supplier_id) {
       queryClient.invalidateQueries({
@@ -297,7 +299,9 @@ export default function AccountControl() {
 
       if (movementType === "EGRESO" && movementId) {
         await saveInvoiceForMovement(movementId);
-        queryClient.invalidateQueries({ queryKey: queryInvoicesKey() });
+        queryClient.invalidateQueries({
+          queryKey: querySupplierAccountsListKey(),
+        });
       }
 
       setIsLoadingSubmit(false);

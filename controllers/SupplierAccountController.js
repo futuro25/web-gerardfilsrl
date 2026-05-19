@@ -9,17 +9,17 @@ function parseAmount(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function effectiveDate(row) {
-  return row.date || row.due_date || row.created_at?.slice?.(0, 10) || "";
+function effectiveInvoiceDate(row) {
+  return row.due_date || row.created_at?.slice?.(0, 10) || "";
 }
 
-/** taxes.invoice_id apunta a invoices o cashflow sin FK en Supabase; cargar aparte. */
-async function fetchTaxesByInvoiceIds(invoiceIds) {
-  if (!invoiceIds.length) return {};
+/** Impuestos en cashflow: taxes.invoice_id = cashflow.id */
+async function fetchTaxesByCashflowIds(cashflowIds) {
+  if (!cashflowIds.length) return {};
   const { data, error } = await supabase
     .from("taxes")
     .select("id, invoice_id, name, amount")
-    .in("invoice_id", invoiceIds);
+    .in("invoice_id", cashflowIds);
   if (error) throw error;
 
   const map = {};
@@ -29,6 +29,219 @@ async function fetchTaxesByInvoiceIds(invoiceIds) {
   });
   return map;
 }
+
+/** Impuestos en facturas de proveedor (Control): taxes.supplier_invoice_id */
+async function fetchTaxesBySupplierInvoiceIds(supplierInvoiceIds) {
+  if (!supplierInvoiceIds.length) return {};
+  const { data, error } = await supabase
+    .from("taxes")
+    .select("id, supplier_invoice_id, name, amount")
+    .in("supplier_invoice_id", supplierInvoiceIds);
+  if (error) throw error;
+
+  const map = {};
+  (data || []).forEach((t) => {
+    if (!map[t.supplier_invoice_id]) map[t.supplier_invoice_id] = [];
+    map[t.supplier_invoice_id].push({
+      id: t.id,
+      name: t.name,
+      amount: t.amount,
+    });
+  });
+  return map;
+}
+
+function cashflowMovementItems(cashflowRows, taxesByCashflowId) {
+  return (cashflowRows || []).map((cf) => {
+    const abs = Math.abs(parseAmount(cf.amount));
+    const signed = cf.type === "INGRESO" ? abs : -abs;
+    const reference = cf.reference ? String(cf.reference).trim() : "";
+
+    return {
+      id: `cashflow-${cf.id}`,
+      source: "cashflow",
+      source_id: cf.id,
+      movement_type: cf.type,
+      category:
+        cf.type === "INGRESO"
+          ? "INGRESO"
+          : reference
+            ? "FACTURA"
+            : "EGRESO",
+      date: cf.date,
+      description:
+        cf.description ||
+        (reference
+          ? `Factura ${reference}`
+          : cf.type === "INGRESO"
+            ? "Ingreso"
+            : "Egreso"),
+      invoice_number: reference || null,
+      amount: abs,
+      signed_amount: signed,
+      payment_method: cf.payment_method,
+      taxes: taxesByCashflowId[cf.id] || [],
+    };
+  });
+}
+
+function supplierInvoiceMovementItems(supplierInvoices, taxesBySupplierInvoiceId) {
+  return (supplierInvoices || []).map((inv) => {
+    const total = parseAmount(inv.total ?? inv.amount);
+    return {
+      id: `supplier-invoice-${inv.id}`,
+      source: "control",
+      source_id: inv.id,
+      movement_type: "EGRESO",
+      category: "FACTURA_CONTROL",
+      date: effectiveInvoiceDate(inv),
+      description:
+        inv.description ||
+        (inv.invoice_number
+          ? `Factura ${inv.invoice_number}`
+          : "Factura (Control)"),
+      invoice_number: inv.invoice_number || null,
+      amount: total,
+      signed_amount: total,
+      taxes: taxesBySupplierInvoiceId[inv.id] || [],
+      account_movement_id: inv.account_movement_id,
+    };
+  });
+}
+
+function sortAndApplyBalance(movements) {
+  const sorted = [...movements].sort((a, b) => {
+    const da = String(a.date || "");
+    const db = String(b.date || "");
+    const c = da.localeCompare(db);
+    if (c !== 0) return c;
+    return String(a.id).localeCompare(String(b.id));
+  });
+
+  let runningBalance = 0;
+  return sorted.map((m) => {
+    runningBalance += m.signed_amount;
+    return { ...m, balance: runningBalance };
+  });
+}
+
+function computeSummary(cashflowRows, supplierInvoices) {
+  const cf = cashflowRows || [];
+  const inv = supplierInvoices || [];
+
+  const totalCashflowEgresos = cf
+    .filter((r) => r.type === "EGRESO")
+    .reduce((acc, r) => acc + Math.abs(parseAmount(r.amount)), 0);
+  const totalCashflowIngresos = cf
+    .filter((r) => r.type === "INGRESO")
+    .reduce((acc, r) => acc + Math.abs(parseAmount(r.amount)), 0);
+  const totalControlInvoices = inv.reduce(
+    (acc, r) => acc + parseAmount(r.total ?? r.amount),
+    0
+  );
+
+  let balance = 0;
+  cf.forEach((r) => {
+    const abs = Math.abs(parseAmount(r.amount));
+    balance += r.type === "INGRESO" ? abs : -abs;
+  });
+  balance += totalControlInvoices;
+
+  return {
+    totalCashflowEgresos,
+    totalCashflowIngresos,
+    totalControlInvoices,
+    totalInvoices: totalCashflowEgresos + totalControlInvoices,
+    totalPayments: totalCashflowEgresos,
+    totalCredits: totalCashflowIngresos,
+    balance,
+  };
+}
+
+async function buildMergedAccountData(cashflowRows, supplierInvoices) {
+  const taxesByCashflowId = await fetchTaxesByCashflowIds(
+    (cashflowRows || []).map((cf) => cf.id)
+  );
+  const taxesBySupplierInvoiceId = await fetchTaxesBySupplierInvoiceIds(
+    (supplierInvoices || []).map((inv) => inv.id)
+  );
+
+  const movements = sortAndApplyBalance([
+    ...cashflowMovementItems(cashflowRows, taxesByCashflowId),
+    ...supplierInvoiceMovementItems(supplierInvoices, taxesBySupplierInvoiceId),
+  ]);
+
+  const summary = computeSummary(cashflowRows, supplierInvoices);
+
+  return { movements, summary };
+}
+
+self.getAllSupplierAccounts = async (req, res) => {
+  try {
+    const { data: suppliers, error: suppliersError } = await supabase
+      .from("suppliers")
+      .select("id, name, last_name, fantasy_name, cuit")
+      .is("deleted_at", null)
+      .order("fantasy_name", { ascending: true });
+
+    if (suppliersError) throw suppliersError;
+
+    const { data: cashflowRows, error: cashflowError } = await supabase
+      .from("cashflow")
+      .select("id, provider, type, amount, reference, date")
+      .is("deleted_at", null)
+      .not("provider", "is", null);
+
+    if (cashflowError) throw cashflowError;
+
+    const { data: supplierInvoices, error: supplierInvoicesError } =
+      await supabase
+        .from("supplier_invoices")
+        .select("id, supplier_id, amount, total, due_date, created_at")
+        .is("deleted_at", null);
+
+    if (supplierInvoicesError) throw supplierInvoicesError;
+
+    const cashflowByProvider = {};
+    (cashflowRows || []).forEach((cf) => {
+      const pid = cf.provider;
+      if (!cashflowByProvider[pid]) cashflowByProvider[pid] = [];
+      cashflowByProvider[pid].push(cf);
+    });
+
+    const invoicesBySupplier = {};
+    (supplierInvoices || []).forEach((inv) => {
+      if (!invoicesBySupplier[inv.supplier_id]) {
+        invoicesBySupplier[inv.supplier_id] = [];
+      }
+      invoicesBySupplier[inv.supplier_id].push(inv);
+    });
+
+    const list = (suppliers || []).map((supplier) => {
+      const supplierCashflow = cashflowByProvider[supplier.id] || [];
+      const supplierControlInvoices = invoicesBySupplier[supplier.id] || [];
+      const summary = computeSummary(supplierCashflow, supplierControlInvoices);
+
+      return {
+        supplier,
+        summary,
+        movement_count:
+          supplierCashflow.length + supplierControlInvoices.length,
+      };
+    });
+
+    list.sort((a, b) => {
+      const nameA = (a.supplier.fantasy_name || a.supplier.name || "").toLowerCase();
+      const nameB = (b.supplier.fantasy_name || b.supplier.name || "").toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+
+    return res.json(list);
+  } catch (e) {
+    console.error("getAllSupplierAccounts", e);
+    return res.status(500).json({ error: e.message || "Error interno" });
+  }
+};
 
 self.getSupplierAccount = async (req, res) => {
   try {
@@ -49,10 +262,21 @@ self.getSupplierAccount = async (req, res) => {
       return res.status(404).json({ error: "Proveedor no encontrado" });
     }
 
-    const { data: invoices, error: invoicesError } = await supabase
-      .from("invoices")
+    const { data: cashflowRows, error: cashflowError } = await supabase
+      .from("cashflow")
       .select(
-        `
+        "id, type, amount, net_amount, date, description, reference, payment_method"
+      )
+      .eq("provider", supplierId)
+      .is("deleted_at", null);
+
+    if (cashflowError) throw cashflowError;
+
+    const { data: supplierInvoices, error: supplierInvoicesError } =
+      await supabase
+        .from("supplier_invoices")
+        .select(
+          `
         id,
         supplier_id,
         amount,
@@ -63,99 +287,21 @@ self.getSupplierAccount = async (req, res) => {
         account_movement_id,
         created_at
       `
-      )
-      .eq("supplier_id", supplierId)
-      .is("deleted_at", null);
+        )
+        .eq("supplier_id", supplierId)
+        .is("deleted_at", null);
 
-    if (invoicesError) throw invoicesError;
+    if (supplierInvoicesError) throw supplierInvoicesError;
 
-    const taxesByInvoiceId = await fetchTaxesByInvoiceIds(
-      (invoices || []).map((inv) => inv.id)
+    const { movements, summary } = await buildMergedAccountData(
+      cashflowRows,
+      supplierInvoices
     );
-
-    const { data: cashflowRows, error: cashflowError } = await supabase
-      .from("cashflow")
-      .select("id, type, amount, net_amount, date, description, reference, payment_method")
-      .eq("provider", supplierId)
-      .is("deleted_at", null);
-
-    if (cashflowError) throw cashflowError;
-
-    const movements = [];
-
-    (invoices || []).forEach((inv) => {
-      const total = parseAmount(inv.total ?? inv.amount);
-      movements.push({
-        id: `invoice-${inv.id}`,
-        source: "invoice",
-        source_id: inv.id,
-        movement_type: "EGRESO",
-        category: "FACTURA",
-        date: effectiveDate(inv),
-        description:
-          inv.description ||
-          (inv.invoice_number ? `Factura ${inv.invoice_number}` : "Factura"),
-        invoice_number: inv.invoice_number,
-        amount: total,
-        signed_amount: total,
-        taxes: taxesByInvoiceId[inv.id] || [],
-        account_movement_id: inv.account_movement_id,
-      });
-    });
-
-    (cashflowRows || []).forEach((cf) => {
-      const raw = parseAmount(cf.amount);
-      const signed = cf.type === "INGRESO" ? Math.abs(raw) : -Math.abs(raw);
-      movements.push({
-        id: `cashflow-${cf.id}`,
-        source: "cashflow",
-        source_id: cf.id,
-        movement_type: cf.type,
-        category: cf.type === "INGRESO" ? "INGRESO" : "PAGO",
-        date: cf.date,
-        description: cf.description || cf.reference || "Movimiento cashflow",
-        invoice_number: cf.reference || null,
-        amount: Math.abs(raw),
-        signed_amount: signed,
-        payment_method: cf.payment_method,
-        taxes: [],
-      });
-    });
-
-    movements.sort((a, b) => {
-      const da = String(a.date || "");
-      const db = String(b.date || "");
-      const c = da.localeCompare(db);
-      if (c !== 0) return c;
-      return String(a.id).localeCompare(String(b.id));
-    });
-
-    let runningBalance = 0;
-    const withBalance = movements.map((m) => {
-      runningBalance += m.signed_amount;
-      return { ...m, balance: runningBalance };
-    });
-
-    const totalInvoices = (invoices || []).reduce(
-      (acc, inv) => acc + parseAmount(inv.total ?? inv.amount),
-      0
-    );
-    const totalPayments = (cashflowRows || [])
-      .filter((cf) => cf.type === "EGRESO")
-      .reduce((acc, cf) => acc + Math.abs(parseAmount(cf.amount)), 0);
-    const totalCredits = (cashflowRows || [])
-      .filter((cf) => cf.type === "INGRESO")
-      .reduce((acc, cf) => acc + Math.abs(parseAmount(cf.amount)), 0);
 
     return res.json({
       supplier,
-      movements: withBalance,
-      summary: {
-        totalInvoices,
-        totalPayments,
-        totalCredits,
-        balance: runningBalance,
-      },
+      movements,
+      summary,
     });
   } catch (e) {
     console.error("getSupplierAccount", e);

@@ -18,6 +18,7 @@ const RetentionCertificatesController = require("../controllers/RetentionCertifi
 const AccountMovementController = require("../controllers/AccountMovementController.js");
 const AporteController = require("../controllers/AporteController.js");
 const SupplierAccountController = require("../controllers/SupplierAccountController.js");
+const SupplierInvoiceController = require("../controllers/SupplierInvoiceController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -262,10 +263,6 @@ router.get("/invoices", (req, res, next) =>
   InvoicesController.getInvoices(req, res, next)
 );
 
-router.get("/invoices/by-movement/:account_movement_id", (req, res, next) =>
-  InvoicesController.getInvoiceByAccountMovement(req, res, next)
-);
-
 router.get("/invoices/:invoice_id", (req, res, next) =>
   InvoicesController.getInvoiceById(req, res, next)
 );
@@ -423,7 +420,30 @@ router.delete("/account-movements/:id", (req, res, next) =>
   AccountMovementController.deleteMovement(req, res, next)
 );
 
+// SUPPLIER INVOICES (facturas de compra / proveedores)
+router.get(
+  "/supplier-invoices/by-movement/:account_movement_id",
+  (req, res, next) =>
+    SupplierInvoiceController.getSupplierInvoiceByAccountMovement(
+      req,
+      res,
+      next
+    )
+);
+
+router.post("/supplier-invoices", (req, res, next) =>
+  SupplierInvoiceController.createSupplierInvoice(req, res, next)
+);
+
+router.patch("/supplier-invoices/:id", (req, res, next) =>
+  SupplierInvoiceController.updateSupplierInvoice(req, res, next)
+);
+
 // SUPPLIER ACCOUNTS (cuentas corrientes)
+router.get("/supplier-accounts", (req, res, next) =>
+  SupplierAccountController.getAllSupplierAccounts(req, res, next)
+);
+
 router.get("/supplier-accounts/:supplier_id", (req, res, next) =>
   SupplierAccountController.getSupplierAccount(req, res, next)
 );

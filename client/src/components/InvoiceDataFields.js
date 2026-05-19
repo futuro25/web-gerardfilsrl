@@ -16,8 +16,11 @@ import Spinner from "./common/Spinner";
 import SupplierQuickCreateDialog from "./SupplierQuickCreateDialog";
 import * as utils from "../utils/utils";
 import { useSuppliersQuery } from "../apis/api.suppliers";
-import { fetchInvoiceByAccountMovement } from "../apis/api.invoices";
-import { queryInvoiceByMovementKey, querySuppliersKey } from "../apis/queryKeys";
+import { fetchSupplierInvoiceByAccountMovement } from "../apis/api.supplierinvoices";
+import {
+  querySupplierInvoiceByMovementKey,
+  querySuppliersKey,
+} from "../apis/queryKeys";
 
 export function getInvoiceTotalAmount(taxes, amount) {
   const totalTaxes = taxes?.reduce((acc, tax) => {
@@ -77,8 +80,8 @@ const InvoiceDataFields = forwardRef(function InvoiceDataFields(
   });
 
   const { data: linkedInvoice, isLoading: invoiceLoading } = useQuery({
-    queryKey: queryInvoiceByMovementKey(movementId),
-    queryFn: () => fetchInvoiceByAccountMovement(movementId),
+    queryKey: querySupplierInvoiceByMovementKey(movementId),
+    queryFn: () => fetchSupplierInvoiceByAccountMovement(movementId),
     enabled: enabled && Boolean(movementId),
   });
 
