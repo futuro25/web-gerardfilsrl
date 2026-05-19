@@ -49,6 +49,38 @@ self.getInvoiceById = async (req, res) => {
   }
 };
 
+self.getInvoiceByAccountMovement = async (req, res) => {
+  const account_movement_id = req.params.account_movement_id;
+  try {
+    const { data, error } = await supabase
+      .from("invoices")
+      .select(
+        `
+        *,
+        supplier:suppliers (
+          id,
+          fantasy_name,
+          name
+        ),
+        taxes:taxes (
+          id,
+          name,
+          amount
+        )
+      `
+      )
+      .eq("account_movement_id", account_movement_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (error) throw error;
+
+    res.json(data || null);
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+};
+
 self.createInvoice = async (req, res) => {
   try {
     const invoice = {
@@ -58,6 +90,7 @@ self.createInvoice = async (req, res) => {
       description: req.body.description,
       due_date: req.body.due_date,
       total: req.body.total,
+      account_movement_id: req.body.account_movement_id || null,
     };
 
     const { data: newInvoice, error } = await supabase
@@ -109,13 +142,12 @@ self.createInvoice = async (req, res) => {
 self.getInvoiceByIdAndUpdate = async (req, res) => {
   try {
     const invoice_id = req.params.invoice_id;
-    const update = req.body;
+    const update = { ...req.body };
 
     if (update.id) {
       delete update.id;
     }
 
-    // Sacar taxes del update si viene
     const taxes = update.taxes || [];
     delete update.taxes;
 
@@ -123,25 +155,24 @@ self.getInvoiceByIdAndUpdate = async (req, res) => {
       .from("invoices")
       .update(update)
       .eq("id", invoice_id)
-      .is("deleted_at", null);
+      .is("deleted_at", null)
+      .select();
 
     if (error) throw error;
 
-    // Eliminar impuestos anteriores
-    await supabase.from("invoice_taxes").delete().eq("invoice_id", delivery_id);
+    await supabase.from("taxes").delete().eq("invoice_id", invoice_id);
 
-    // Insertar nuevos impuestos
     let newTaxes = [];
 
     if (Array.isArray(taxes) && taxes.length > 0) {
       const mappedTaxes = taxes.map((t) => ({
-        invoice_id: delivery_id,
+        invoice_id: parseInt(invoice_id, 10),
         name: t.type || t.name,
-        amount: parseFloat(t.value),
+        amount: parseFloat(t.value ?? t.amount),
       }));
 
       const { data: insertedTaxes, error: insertError } = await supabase
-        .from("invoice_taxes")
+        .from("taxes")
         .insert(mappedTaxes)
         .select();
 
@@ -150,11 +181,11 @@ self.getInvoiceByIdAndUpdate = async (req, res) => {
     }
 
     return res.status(200).json({
-      delivery: updatedDelivery?.[0] || null,
+      invoice: updatedInvoice?.[0] || null,
       taxes: newTaxes,
     });
   } catch (e) {
-    console.error("delete invoice by id", e.message);
+    console.error("update invoice by id", e.message);
     res.json({ error: e.message });
   }
 };

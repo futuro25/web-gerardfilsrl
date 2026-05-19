@@ -17,6 +17,7 @@ const StockController = require("../controllers/StockController.js");
 const RetentionCertificatesController = require("../controllers/RetentionCertificatesController.js");
 const AccountMovementController = require("../controllers/AccountMovementController.js");
 const AporteController = require("../controllers/AporteController.js");
+const SupplierAccountController = require("../controllers/SupplierAccountController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -261,6 +262,10 @@ router.get("/invoices", (req, res, next) =>
   InvoicesController.getInvoices(req, res, next)
 );
 
+router.get("/invoices/by-movement/:account_movement_id", (req, res, next) =>
+  InvoicesController.getInvoiceByAccountMovement(req, res, next)
+);
+
 router.get("/invoices/:invoice_id", (req, res, next) =>
   InvoicesController.getInvoiceById(req, res, next)
 );
@@ -416,6 +421,11 @@ router.patch("/account-movements/:id", (req, res, next) =>
 
 router.delete("/account-movements/:id", (req, res, next) =>
   AccountMovementController.deleteMovement(req, res, next)
+);
+
+// SUPPLIER ACCOUNTS (cuentas corrientes)
+router.get("/supplier-accounts/:supplier_id", (req, res, next) =>
+  SupplierAccountController.getSupplierAccount(req, res, next)
 );
 
 // APORTES

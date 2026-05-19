@@ -1,5 +1,19 @@
 const BASE_URL = "/api/invoices";
 
+export const fetchInvoiceByAccountMovement = async (accountMovementId) => {
+  const res = await fetch(
+    `${BASE_URL}/by-movement/${accountMovementId}`,
+    {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    }
+  );
+  if (!res.ok) {
+    throw new Error("Error en la petición");
+  }
+  return res.json();
+};
+
 export const useInvoicesQuery = async () => {
   const res = await fetch(`${BASE_URL}`, {
     method: "GET",

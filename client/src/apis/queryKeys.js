@@ -32,3 +32,5 @@ export const queryAccountMovementsSummaryKey = (params) => ["account-movements-s
 export const queryUpcomingChequesKey = () => ["upcoming-cheques"];
 export const queryAccountFutureBalancesKey = () => ["account-movements-future-balances"];
 export const queryAportesKey = () => ["aportes"];
+export const querySupplierAccountKey = (supplierId) => ["supplier-account", supplierId];
+export const queryInvoiceByMovementKey = (movementId) => ["invoice-by-movement", movementId];

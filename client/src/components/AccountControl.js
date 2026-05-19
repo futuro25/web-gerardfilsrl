@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { DateTime } from "luxon";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -26,7 +26,16 @@ import {
   queryUpcomingChequesKey,
   queryAccountFutureBalancesKey,
   queryPaychecksKey,
+  queryInvoicesKey,
+  queryInvoiceByMovementKey,
+  querySupplierAccountKey,
 } from "../apis/queryKeys";
+import InvoiceDataDialog from "./InvoiceDataDialog";
+import InvoiceDataFields from "./InvoiceDataFields";
+import {
+  useCreateInvoiceMutation,
+  useUpdateInvoiceMutation,
+} from "../apis/api.invoices";
 
 const MOVEMENT_KIND_OPTIONS = [
   { value: "UNICA VEZ", label: "Única vez" },
@@ -75,6 +84,10 @@ export default function AccountControl() {
   const [detailSearch, setDetailSearch] = useState("");
   const [kindListFilter, setKindListFilter] = useState("");
   const [futureDialogOpen, setFutureDialogOpen] = useState(false);
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [invoiceMovement, setInvoiceMovement] = useState(null);
+  const [invoiceShowErrors, setInvoiceShowErrors] = useState(false);
+  const invoiceFieldsRef = useRef(null);
   /** Orden de listado por fecha: coincide con el API; default asc (más antiguas primero). */
   const [dateOrder, setDateOrder] = useState("asc");
 
@@ -82,6 +95,7 @@ export default function AccountControl() {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm({
     defaultValues: {
@@ -182,6 +196,12 @@ export default function AccountControl() {
     queryClient.invalidateQueries({ queryKey: ["upcoming-cheques"] });
     queryClient.invalidateQueries({ queryKey: queryAccountFutureBalancesKey() });
     queryClient.invalidateQueries({ queryKey: queryPaychecksKey() });
+    queryClient.invalidateQueries({ queryKey: queryInvoicesKey() });
+  };
+
+  const openInvoiceDialog = (movement) => {
+    setInvoiceMovement(movement);
+    setInvoiceDialogOpen(true);
   };
 
   const createMutation = useMutation({
@@ -199,9 +219,61 @@ export default function AccountControl() {
     onSuccess: invalidateAll,
   });
 
+  const createInvoiceMutation = useMutation({
+    mutationFn: useCreateInvoiceMutation,
+  });
+
+  const updateInvoiceMutation = useMutation({
+    mutationFn: useUpdateInvoiceMutation,
+  });
+
+  const watchedDate = watch("date");
+  const watchedAmount = watch("amount");
+  const watchedDescription = watch("description");
+
+  const saveInvoiceForMovement = async (movementId) => {
+    if (!invoiceFieldsRef.current?.isActive()) return;
+
+    const validation = invoiceFieldsRef.current.validate();
+    if (!validation.ok) {
+      setInvoiceShowErrors(true);
+      throw new Error(validation.message || "Revise los datos de la factura");
+    }
+
+    const payload = invoiceFieldsRef.current.buildPayload(movementId);
+    const existingId = invoiceFieldsRef.current.getExistingInvoiceId();
+
+    if (existingId) {
+      await updateInvoiceMutation.mutateAsync({ ...payload, id: existingId });
+    } else {
+      await createInvoiceMutation.mutateAsync(payload);
+    }
+
+    queryClient.invalidateQueries({
+      queryKey: queryInvoiceByMovementKey(movementId),
+    });
+    if (payload.supplier_id) {
+      queryClient.invalidateQueries({
+        queryKey: querySupplierAccountKey(payload.supplier_id),
+      });
+    }
+  };
+
   const onSubmit = async (data) => {
     try {
       setIsLoadingSubmit(true);
+      setInvoiceShowErrors(false);
+
+      if (movementType === "EGRESO" && invoiceFieldsRef.current?.isActive()) {
+        const validation = invoiceFieldsRef.current.validate();
+        if (!validation.ok) {
+          setInvoiceShowErrors(true);
+          setIsLoadingSubmit(false);
+          window.alert(validation.message || "Revise los datos de la factura");
+          return;
+        }
+      }
+
       const body = {
         type: movementType,
         movement_kind: data.movement_kind,
@@ -214,15 +286,26 @@ export default function AccountControl() {
         cheque_due_date: isCheque ? data.cheque_due_date : null,
       };
 
+      let movementId;
       if (selectedMovement) {
         await updateMutation.mutateAsync({ ...body, id: selectedMovement.id });
+        movementId = selectedMovement.id;
       } else {
-        await createMutation.mutateAsync(body);
+        const created = await createMutation.mutateAsync(body);
+        movementId = Array.isArray(created) ? created[0]?.id : created?.id;
       }
+
+      if (movementType === "EGRESO" && movementId) {
+        await saveInvoiceForMovement(movementId);
+        queryClient.invalidateQueries({ queryKey: queryInvoicesKey() });
+      }
+
       setIsLoadingSubmit(false);
       setIsCheque(false);
       setMovementType("INGRESO");
       setSelectedMovement(null);
+      setInvoiceShowErrors(false);
+      invoiceFieldsRef.current?.reset();
       setPage(1);
       setAllData([]);
       reset({
@@ -238,6 +321,7 @@ export default function AccountControl() {
     } catch (e) {
       console.error(e);
       setIsLoadingSubmit(false);
+      if (e?.message) window.alert(e.message);
     }
   };
 
@@ -272,6 +356,8 @@ export default function AccountControl() {
     setMovementType("INGRESO");
     setIsLoadingSubmit(false);
     setSelectedMovement(null);
+    setInvoiceShowErrors(false);
+    invoiceFieldsRef.current?.reset();
     reset({
       movement_kind: "UNICA VEZ",
       date: DateTime.now().toFormat("yyyy-MM-dd"),
@@ -351,8 +437,10 @@ export default function AccountControl() {
               size="sm"
               onClick={() => {
                 setSelectedMovement(null);
-                setMovementType("INGRESO");
+                setMovementType("EGRESO");
                 setIsCheque(false);
+                setInvoiceShowErrors(false);
+                invoiceFieldsRef.current?.reset();
                 reset({
                   movement_kind: "UNICA VEZ",
                   date: DateTime.now().toFormat("yyyy-MM-dd"),
@@ -673,7 +761,17 @@ export default function AccountControl() {
                                     {utils.formatAmount(m.balance)}
                                   </td>
                                   <td className="!text-xs text-center border-b border-slate-100 p-3">
-                                    <div className="flex items-center justify-center gap-2">
+                                    <div className="flex items-center justify-center gap-1 flex-wrap">
+                                      {m.type === "EGRESO" && (
+                                        <button
+                                          type="button"
+                                          className="text-amber-600 hover:text-amber-800 text-[10px] font-semibold px-1"
+                                          onClick={() => openInvoiceDialog(m)}
+                                          title="Ingresar datos de factura"
+                                        >
+                                          Factura
+                                        </button>
+                                      )}
                                       <button
                                         className="text-blue-400 hover:text-blue-600"
                                         onClick={() => onEdit(m)}
@@ -727,7 +825,12 @@ export default function AccountControl() {
 
         {/* CREATE stage */}
         {stage === "CREATE" && (
-          <div className="max-w-lg mx-auto mt-4">
+          <div
+            className={utils.cn(
+              "mx-auto mt-4",
+              movementType === "EGRESO" ? "max-w-2xl" : "max-w-lg"
+            )}
+          >
             <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
               {/* Type toggle */}
               <div>
@@ -758,6 +861,11 @@ export default function AccountControl() {
                     Egreso
                   </button>
                 </div>
+                {movementType !== "EGRESO" && (
+                  <p className="text-xs text-slate-500 mt-2">
+                    Seleccioná <strong>Egreso</strong> para cargar proveedor, factura e impuestos.
+                  </p>
+                )}
               </div>
 
               {/* Clasificación: Fijo / Pendiente / Única vez */}
@@ -866,6 +974,18 @@ export default function AccountControl() {
                 </div>
               )}
 
+              {movementType === "EGRESO" && (
+                <InvoiceDataFields
+                  ref={invoiceFieldsRef}
+                  accountMovement={selectedMovement}
+                  movementDate={watchedDate}
+                  movementAmount={watchedAmount}
+                  movementDescription={watchedDescription}
+                  enabled={movementType === "EGRESO"}
+                  showErrors={invoiceShowErrors}
+                />
+              )}
+
               {/* Actions */}
               <div className="flex gap-2 mt-2">
                 <Button
@@ -889,6 +1009,13 @@ export default function AccountControl() {
           </div>
         )}
       </div>
+
+      <InvoiceDataDialog
+        open={invoiceDialogOpen}
+        onOpenChange={setInvoiceDialogOpen}
+        accountMovement={invoiceMovement}
+        onSaved={() => invalidateAll()}
+      />
     </>
   );
 }

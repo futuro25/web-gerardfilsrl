@@ -13,6 +13,7 @@ import {
   FileDown,
   Landmark,
   PiggyBank,
+  Wallet,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { MoonLoader } from "react-spinners";
@@ -41,11 +42,23 @@ export default function Home() {
     navItems.pop();
     navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios", order: 12 });
     navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5 });
+    navItems.push({
+      label: "Cuentas Corrientes",
+      icon: Wallet,
+      path: "/cuentas-corrientes",
+      order: 7.52,
+    });
     navItems.push({ label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 });
   }
 
   if (sessionStorage.username === "caro") {
     navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5 });
+    navItems.push({
+      label: "Cuentas Corrientes",
+      icon: Wallet,
+      path: "/cuentas-corrientes",
+      order: 7.52,
+    });
   }
 
   if (sessionStorage.username === "caro" || sessionStorage.type === "ADMIN") {
