@@ -51,7 +51,7 @@ export default function Home() {
     navItems.push({ label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 });
   }
 
-  if (sessionStorage.username === "caro") {
+  if (sessionStorage.username === "caro" || sessionStorage.username === "lcozza") {
     navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5 });
     navItems.push({
       label: "Cuentas Corrientes",

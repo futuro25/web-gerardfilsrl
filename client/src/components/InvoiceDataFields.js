@@ -156,13 +156,21 @@ const InvoiceDataFields = forwardRef(function InvoiceDataFields(
     if (inv) setActive(true);
   }, [enabled, linkedInvoice, movementId, suppliers]);
 
+  const hasSavedInvoice =
+    linkedInvoice && !linkedInvoice.error && linkedInvoice.id;
+
   useEffect(() => {
-    if (!enabled || movementId) return;
-    const current = getValues("amount");
-    if (!current && movementAmount) {
+    if (!enabled || !active || hasSavedInvoice) return;
+    if (movementAmount === "" || movementAmount == null) return;
+    setValue("amount", movementAmount);
+  }, [enabled, active, movementAmount, hasSavedInvoice, setValue]);
+
+  const handleActiveChange = (checked) => {
+    setActive(checked);
+    if (checked && movementAmount !== "" && movementAmount != null) {
       setValue("amount", movementAmount);
     }
-  }, [movementAmount, movementId, enabled, getValues, setValue]);
+  };
 
   useEffect(() => {
     if (!enabled || movementId) return;
@@ -276,7 +284,7 @@ const InvoiceDataFields = forwardRef(function InvoiceDataFields(
             <input
               type="checkbox"
               checked={active}
-              onChange={(e) => setActive(e.target.checked)}
+              onChange={(e) => handleActiveChange(e.target.checked)}
               className="rounded border-slate-300"
             />
             Registrar factura
@@ -322,12 +330,18 @@ const InvoiceDataFields = forwardRef(function InvoiceDataFields(
               label="Monto neto (factura)"
               type="number"
               step="0.01"
+              readOnly={!hasSavedInvoice}
               {...register("amount", {
                 required: active ? "Ingrese el monto" : false,
                 min: { value: 0.01, message: "Debe ser mayor a 0" },
               })}
               intent={errors.amount ? "danger" : "default"}
-              helperText={errors.amount?.message}
+              helperText={
+                errors.amount?.message ||
+                (!hasSavedInvoice
+                  ? "Se iguala al monto del movimiento"
+                  : undefined)
+              }
             />
 
             <Input
