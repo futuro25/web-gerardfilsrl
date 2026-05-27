@@ -163,7 +163,8 @@ export default function AccountControl() {
         ]
           .filter(Boolean)
           .join(" ");
-        const haystack = `${desc} ${chequeBits}`.trim();
+        const supplierName = (m.supplier_name || "").toLowerCase();
+        const haystack = `${desc} ${chequeBits} ${supplierName}`.trim();
         if (!haystack.includes(q)) return false;
       }
       return true;
@@ -699,6 +700,7 @@ export default function AccountControl() {
                             </th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Tipo</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Clasificación</th>
+                            <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Proveedor</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Detalle</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-right">Monto</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-right">Saldo</th>
@@ -743,6 +745,9 @@ export default function AccountControl() {
                                   </td>
                                   <td className="!text-xs text-left border-b border-slate-100 p-3 text-slate-600">
                                     {movementKindLabel(m.movement_kind)}
+                                  </td>
+                                  <td className="!text-xs text-left border-b border-slate-100 p-3 text-slate-600 max-w-[140px] truncate">
+                                    {m.supplier_name || ""}
                                   </td>
                                   <td className="!text-xs text-left border-b border-slate-100 p-3 text-slate-500 max-w-[200px] truncate">
                                     {m.description || "-"}
@@ -801,7 +806,7 @@ export default function AccountControl() {
                             })
                           ) : (
                             <tr>
-                              <td colSpan={7} className="border-b border-slate-100 p-4 text-slate-500 text-center">
+                              <td colSpan={8} className="border-b border-slate-100 p-4 text-slate-500 text-center">
                                 {movements.length > 0 && listFiltersActive
                                   ? "Ningún movimiento coincide con el filtro"
                                   : "No hay movimientos"}

@@ -11,6 +11,49 @@ function normalizeMovementKind(value) {
   return MOVEMENT_KINDS.has(v) ? v : "UNICA VEZ";
 }
 
+async function attachSupplierNames(movements) {
+  if (!movements?.length) return movements || [];
+
+  const movementIds = movements.map((m) => m.id);
+  const { data: invoices, error } = await supabase
+    .from("supplier_invoices")
+    .select("account_movement_id, supplier_id")
+    .in("account_movement_id", movementIds)
+    .is("deleted_at", null);
+
+  if (error) throw error;
+  if (!invoices?.length) {
+    return movements.map((m) => ({ ...m, supplier_name: null }));
+  }
+
+  const supplierIds = [...new Set(invoices.map((i) => i.supplier_id))];
+  const { data: suppliers, error: suppliersError } = await supabase
+    .from("suppliers")
+    .select("id, fantasy_name, name")
+    .in("id", supplierIds)
+    .is("deleted_at", null);
+
+  if (suppliersError) throw suppliersError;
+
+  const supplierById = {};
+  (suppliers || []).forEach((s) => {
+    supplierById[s.id] = s.fantasy_name || s.name || null;
+  });
+
+  const nameByMovementId = {};
+  invoices.forEach((inv) => {
+    if (inv.account_movement_id != null && !nameByMovementId[inv.account_movement_id]) {
+      nameByMovementId[inv.account_movement_id] =
+        supplierById[inv.supplier_id] || null;
+    }
+  });
+
+  return movements.map((m) => ({
+    ...m,
+    supplier_name: nameByMovementId[m.id] || null,
+  }));
+}
+
 self.getMovements = async (req, res) => {
   try {
     const { month, year, page = 1, limit = 50, dateOrder: dateOrderParam } = req.query;
@@ -35,7 +78,14 @@ self.getMovements = async (req, res) => {
 
     if (error) throw error;
 
-    res.json({ data, total: count, page: parseInt(page), limit: parseInt(limit) });
+    const dataWithSuppliers = await attachSupplierNames(data || []);
+
+    res.json({
+      data: dataWithSuppliers,
+      total: count,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
   } catch (e) {
     console.error("getMovements error:", e.message);
     res.json({ error: e.message });
