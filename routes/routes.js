@@ -19,6 +19,7 @@ const AccountMovementController = require("../controllers/AccountMovementControl
 const AporteController = require("../controllers/AporteController.js");
 const SupplierAccountController = require("../controllers/SupplierAccountController.js");
 const SupplierInvoiceController = require("../controllers/SupplierInvoiceController.js");
+const CronController = require("../controllers/CronController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -453,6 +454,11 @@ router.get("/aportes", (req, res, next) => AporteController.getAportes(req, res,
 router.post("/aportes", (req, res, next) => AporteController.createAporte(req, res, next));
 router.patch("/aportes/:id", (req, res, next) => AporteController.updateAporte(req, res, next));
 router.delete("/aportes/:id", (req, res, next) => AporteController.deleteAporte(req, res, next));
+
+// CRON (Heroku Scheduler o llamada manual con CRON_SECRET)
+router.post("/cron/pending-movements-report", (req, res, next) =>
+  CronController.sendPendingMovementsReport(req, res, next)
+);
 
 // UTILS
 router.post("/utils/send-whatsapp", (req, res, next) =>
