@@ -38,6 +38,8 @@ import RetentionCalculator from "./components/RetentionCalculator";
 import FiscalExports from "./components/FiscalExports";
 import AccountControl from "./components/AccountControl";
 import SupplierCurrentAccounts from "./components/SupplierCurrentAccounts";
+import PendingInvoicesList from "./components/PendingInvoicesList";
+import PurchaseInvoices from "./components/PurchaseInvoices";
 import Aportes from "./components/Aportes";
 import _, { capitalize } from "lodash";
 import { useState } from "react";
@@ -110,6 +112,8 @@ export default function App() {
           <Route path="exportacion-fiscal" element={<FiscalExports />} />
           <Route path="control" element={<AccountControl />} />
           <Route path="cuentas-corrientes" element={<SupplierCurrentAccounts />} />
+          <Route path="facturas-pendientes" element={<PendingInvoicesList />} />
+          <Route path="facturas-compras" element={<PurchaseInvoices />} />
           {(sessionStorage.username === "caro" || sessionStorage.type === "ADMIN") && (
             <Route path="aportes" element={<Aportes />} />
           )}

@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { DateTime } from "luxon";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Eye } from "lucide-react";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
 import Spinner from "./common/Spinner";
@@ -32,6 +32,7 @@ import {
 } from "../apis/queryKeys";
 import InvoiceDataDialog from "./InvoiceDataDialog";
 import InvoiceDataFields from "./InvoiceDataFields";
+import MovementDetailDialog from "./MovementDetailDialog";
 import {
   createSupplierInvoice,
   updateSupplierInvoice,
@@ -87,6 +88,8 @@ export default function AccountControl() {
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [invoiceMovement, setInvoiceMovement] = useState(null);
   const [invoiceShowErrors, setInvoiceShowErrors] = useState(false);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [detailMovement, setDetailMovement] = useState(null);
   const invoiceFieldsRef = useRef(null);
   /** Orden de listado por fecha: coincide con el API; default asc (más antiguas primero). */
   const [dateOrder, setDateOrder] = useState("asc");
@@ -277,16 +280,18 @@ export default function AccountControl() {
         }
       }
 
+      const chequeActive = isCheque && movementType !== "EGRESO";
+
       const body = {
         type: movementType,
         movement_kind: data.movement_kind,
         date: data.date,
         amount: parseFloat(data.amount),
         description: data.description,
-        is_cheque: isCheque,
-        cheque_number: isCheque ? data.cheque_number : null,
-        cheque_bank: isCheque ? data.cheque_bank : null,
-        cheque_due_date: isCheque ? data.cheque_due_date : null,
+        is_cheque: chequeActive,
+        cheque_number: chequeActive ? data.cheque_number : null,
+        cheque_bank: chequeActive ? data.cheque_bank : null,
+        cheque_due_date: chequeActive ? data.cheque_due_date : null,
       };
 
       let movementId;
@@ -771,6 +776,15 @@ export default function AccountControl() {
                                   </td>
                                   <td className="!text-xs text-center border-b border-slate-100 p-3">
                                     <div className="flex items-center justify-center gap-1 flex-wrap">
+                                      {/* Ver detalle */}
+                                      <button
+                                        type="button"
+                                        className="text-slate-400 hover:text-slate-600"
+                                        onClick={() => { setDetailMovement(m); setDetailDialogOpen(true); }}
+                                        title="Ver detalle"
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </button>
                                       {m.type === "EGRESO" && (
                                         <button
                                           type="button"
@@ -865,7 +879,10 @@ export default function AccountControl() {
                         ? "bg-red-500 text-white border-red-500"
                         : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
                     )}
-                    onClick={() => setMovementType("EGRESO")}
+                    onClick={() => {
+                      setMovementType("EGRESO");
+                      setIsCheque(false);
+                    }}
                   >
                     Egreso
                   </button>
@@ -921,66 +938,69 @@ export default function AccountControl() {
                 {...register("description")}
               />
 
-              {/* Cheque toggle */}
-              <div className="flex items-center gap-3 py-2">
-                <label className="text-xs font-sans text-gray-900">¿Es cheque?</label>
-                <button
-                  type="button"
-                  className={utils.cn(
-                    "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                    isCheque ? "bg-blue-500" : "bg-gray-300"
-                  )}
-                  onClick={() => setIsCheque(!isCheque)}
-                >
-                  <span
-                    className={utils.cn(
-                      "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                      isCheque ? "translate-x-6" : "translate-x-1"
-                    )}
-                  />
-                </button>
-              </div>
-
-              {/* Cheque fields */}
-              {isCheque && (
-                <div className="flex flex-col gap-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <Input
-                    label="Número de cheque"
-                    type="text"
-                    placeholder="Número"
-                    {...register("cheque_number", {
-                      required: isCheque ? "Ingrese el número de cheque" : false,
-                    })}
-                    intent={errors.cheque_number ? "danger" : "default"}
-                    helperText={errors.cheque_number?.message}
-                  />
-                  <div>
-                    <label className="text-xs font-sans text-gray-900 mb-2 block">Banco</label>
-                    <select
-                      className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"
-                      {...register("cheque_bank", {
-                        required: isCheque ? "Seleccione el banco" : false,
-                      })}
+              {/* Cheque toggle y campos — solo para INGRESO */}
+              {movementType !== "EGRESO" && (
+                <>
+                  <div className="flex items-center gap-3 py-2">
+                    <label className="text-xs font-sans text-gray-900">¿Es cheque?</label>
+                    <button
+                      type="button"
+                      className={utils.cn(
+                        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                        isCheque ? "bg-blue-500" : "bg-gray-300"
+                      )}
+                      onClick={() => setIsCheque(!isCheque)}
                     >
-                      <option value="">Seleccionar...</option>
-                      {utils.getBanks().map((b) => (
-                        <option key={b} value={b}>{b}</option>
-                      ))}
-                    </select>
-                    {errors.cheque_bank && (
-                      <p className="text-sm text-red-500 pt-1">{errors.cheque_bank.message}</p>
-                    )}
+                      <span
+                        className={utils.cn(
+                          "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                          isCheque ? "translate-x-6" : "translate-x-1"
+                        )}
+                      />
+                    </button>
                   </div>
-                  <Input
-                    label="Fecha de vencimiento"
-                    type="date"
-                    {...register("cheque_due_date", {
-                      required: isCheque ? "Ingrese la fecha de vencimiento" : false,
-                    })}
-                    intent={errors.cheque_due_date ? "danger" : "default"}
-                    helperText={errors.cheque_due_date?.message}
-                  />
-                </div>
+
+                  {isCheque && (
+                    <div className="flex flex-col gap-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <Input
+                        label="Número de cheque"
+                        type="text"
+                        placeholder="Número"
+                        {...register("cheque_number", {
+                          required: isCheque ? "Ingrese el número de cheque" : false,
+                        })}
+                        intent={errors.cheque_number ? "danger" : "default"}
+                        helperText={errors.cheque_number?.message}
+                      />
+                      <div>
+                        <label className="text-xs font-sans text-gray-900 mb-2 block">Banco</label>
+                        <select
+                          className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"
+                          {...register("cheque_bank", {
+                            required: isCheque ? "Seleccione el banco" : false,
+                          })}
+                        >
+                          <option value="">Seleccionar...</option>
+                          {utils.getBanks().map((b) => (
+                            <option key={b} value={b}>{b}</option>
+                          ))}
+                        </select>
+                        {errors.cheque_bank && (
+                          <p className="text-sm text-red-500 pt-1">{errors.cheque_bank.message}</p>
+                        )}
+                      </div>
+                      <Input
+                        label="Fecha de vencimiento"
+                        type="date"
+                        {...register("cheque_due_date", {
+                          required: isCheque ? "Ingrese la fecha de vencimiento" : false,
+                        })}
+                        intent={errors.cheque_due_date ? "danger" : "default"}
+                        helperText={errors.cheque_due_date?.message}
+                      />
+                    </div>
+                  )}
+                </>
               )}
 
               {movementType === "EGRESO" && (
@@ -992,6 +1012,7 @@ export default function AccountControl() {
                   movementDescription={watchedDescription}
                   enabled={movementType === "EGRESO"}
                   showErrors={invoiceShowErrors}
+                  required={movementType === "EGRESO"}
                 />
               )}
 
@@ -1024,6 +1045,12 @@ export default function AccountControl() {
         onOpenChange={setInvoiceDialogOpen}
         accountMovement={invoiceMovement}
         onSaved={() => invalidateAll()}
+      />
+
+      <MovementDetailDialog
+        open={detailDialogOpen}
+        onOpenChange={setDetailDialogOpen}
+        movement={detailMovement}
       />
     </>
   );

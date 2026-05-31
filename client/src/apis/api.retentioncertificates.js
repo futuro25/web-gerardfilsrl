@@ -80,6 +80,26 @@ export const useRetentionCertificateQuery = async (paymentId) => {
   return res.json();
 };
 
+export const fetchRetentionByInvoice = async ({
+  invoiceNumber,
+  supplierId,
+  amount,
+  date,
+} = {}) => {
+  const params = new URLSearchParams({ invoice_number: invoiceNumber || "" });
+  if (supplierId != null) params.append("supplier_id", String(supplierId));
+  if (amount != null) params.append("amount", String(amount));
+  if (date) params.append("date", String(date));
+  const res = await fetch(`${BASE_URL}/by-invoice?${params.toString()}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error("Error en la petición");
+  }
+  return res.json();
+};
+
 export const useRetentionCertificateByNumberQuery = async (certificateNumber) => {
   const res = await fetch(`${BASE_URL}/certificate/${certificateNumber}`, {
     method: "GET",

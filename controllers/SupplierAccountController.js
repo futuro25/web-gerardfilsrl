@@ -54,8 +54,12 @@ async function fetchTaxesBySupplierInvoiceIds(supplierInvoiceIds) {
 function cashflowMovementItems(cashflowRows, taxesByCashflowId) {
   return (cashflowRows || []).map((cf) => {
     const abs = Math.abs(parseAmount(cf.amount));
-    const signed = cf.type === "INGRESO" ? abs : -abs;
     const reference = cf.reference ? String(cf.reference).trim() : "";
+    // Factura de cashflow (EGRESO con referencia) = deuda (+).
+    // Egreso sin referencia = pago/gasto (-). Ingreso = (+).
+    const isInvoice = cf.type === "EGRESO" && reference;
+    const signed =
+      cf.type === "INGRESO" || isInvoice ? abs : -abs;
 
     return {
       id: `cashflow-${cf.id}`,
@@ -85,6 +89,37 @@ function cashflowMovementItems(cashflowRows, taxesByCashflowId) {
   });
 }
 
+function paymentOrderItems(orders) {
+  return (orders || []).map((po) => {
+    const amt = Math.abs(parseAmount(po.amount));
+    const invoiceKey =
+      po.supplier_invoice_id != null
+        ? `supplier-invoice-${po.supplier_invoice_id}`
+        : po.cashflow_id != null
+          ? `cashflow-${po.cashflow_id}`
+          : null;
+    return {
+      id: `payment-order-${po.id}`,
+      source: "payment_order",
+      invoice_key: invoiceKey,
+      movement_type: "EGRESO",
+      category: "ORDEN_PAGO",
+      date: po.payment_date,
+      description: po.description
+        ? `Orden de Pago ${po.order_number} - ${po.description}`
+        : `Orden de Pago ${po.order_number}`,
+      invoice_number: null,
+      order_number: po.order_number,
+      payment_method: po.payment_method,
+      amount: amt,
+      // La orden de pago concilia el saldo (pago, crédito).
+      signed_amount: -amt,
+      display_amount: -amt,
+      taxes: [],
+    };
+  });
+}
+
 function supplierInvoiceMovementItems(supplierInvoices, taxesBySupplierInvoiceId) {
   return (supplierInvoices || []).map((inv) => {
     const total = parseAmount(inv.total ?? inv.amount);
@@ -110,24 +145,56 @@ function supplierInvoiceMovementItems(supplierInvoices, taxesBySupplierInvoiceId
 }
 
 function sortAndApplyBalance(movements) {
-  const sorted = [...movements].sort((a, b) => {
-    const da = String(a.date || "");
-    const db = String(b.date || "");
-    const c = da.localeCompare(db);
+  // Fecha de cada factura/movimiento por su clave, para anclar las órdenes de pago.
+  const dateByKey = {};
+  movements.forEach((m) => {
+    dateByKey[m.id] = m.date;
+  });
+
+  // Cada movimiento recibe una clave de orden:
+  //   _chrono : fecha que define la posición cronológica
+  //   _anchor : agrupa la factura con su orden de pago
+  //   _seq    : 0 = factura/movimiento, 1 = orden de pago (va después)
+  const enriched = movements.map((m) => {
+    if (m.source === "payment_order") {
+      const anchorDate =
+        (m.invoice_key && dateByKey[m.invoice_key]) || m.date;
+      return {
+        ...m,
+        _chrono: String(anchorDate || ""),
+        _anchor: m.invoice_key || m.id,
+        _seq: 1,
+      };
+    }
+    return {
+      ...m,
+      _chrono: String(m.date || ""),
+      _anchor: m.id,
+      _seq: 0,
+    };
+  });
+
+  const sorted = enriched.sort((a, b) => {
+    const c = a._chrono.localeCompare(b._chrono);
     if (c !== 0) return c;
+    const an = String(a._anchor).localeCompare(String(b._anchor));
+    if (an !== 0) return an;
+    if (a._seq !== b._seq) return a._seq - b._seq;
     return String(a.id).localeCompare(String(b.id));
   });
 
   let runningBalance = 0;
   return sorted.map((m) => {
     runningBalance += m.signed_amount;
-    return { ...m, balance: runningBalance };
+    const { _chrono, _anchor, _seq, ...rest } = m;
+    return { ...rest, balance: runningBalance };
   });
 }
 
-function computeSummary(cashflowRows, supplierInvoices) {
+function computeSummary(cashflowRows, supplierInvoices, paymentOrders) {
   const cf = cashflowRows || [];
   const inv = supplierInvoices || [];
+  const po = paymentOrders || [];
 
   const totalCashflowEgresos = cf
     .filter((r) => r.type === "EGRESO")
@@ -140,17 +207,27 @@ function computeSummary(cashflowRows, supplierInvoices) {
     0
   );
 
+  const totalPaymentOrders = po.reduce(
+    (acc, p) => acc + Math.abs(parseAmount(p.amount)),
+    0
+  );
+
   let balance = 0;
   cf.forEach((r) => {
     const abs = Math.abs(parseAmount(r.amount));
-    balance += r.type === "INGRESO" ? abs : -abs;
+    const reference = r.reference ? String(r.reference).trim() : "";
+    const isInvoice = r.type === "EGRESO" && reference;
+    // Factura de cashflow e ingresos suman; egreso sin referencia resta.
+    balance += r.type === "INGRESO" || isInvoice ? abs : -abs;
   });
   balance += totalControlInvoices;
+  balance -= totalPaymentOrders;
 
   return {
     totalCashflowEgresos,
     totalCashflowIngresos,
     totalControlInvoices,
+    totalPaymentOrders,
     totalInvoices: totalCashflowEgresos + totalControlInvoices,
     totalPayments: totalCashflowEgresos,
     totalCredits: totalCashflowIngresos,
@@ -158,7 +235,11 @@ function computeSummary(cashflowRows, supplierInvoices) {
   };
 }
 
-async function buildMergedAccountData(cashflowRows, supplierInvoices) {
+async function buildMergedAccountData(
+  cashflowRows,
+  supplierInvoices,
+  paymentOrders
+) {
   const taxesByCashflowId = await fetchTaxesByCashflowIds(
     (cashflowRows || []).map((cf) => cf.id)
   );
@@ -169,9 +250,10 @@ async function buildMergedAccountData(cashflowRows, supplierInvoices) {
   const movements = sortAndApplyBalance([
     ...cashflowMovementItems(cashflowRows, taxesByCashflowId),
     ...supplierInvoiceMovementItems(supplierInvoices, taxesBySupplierInvoiceId),
+    ...paymentOrderItems(paymentOrders),
   ]);
 
-  const summary = computeSummary(cashflowRows, supplierInvoices);
+  const summary = computeSummary(cashflowRows, supplierInvoices, paymentOrders);
 
   return { movements, summary };
 }
@@ -202,6 +284,20 @@ self.getAllSupplierAccounts = async (req, res) => {
 
     if (supplierInvoicesError) throw supplierInvoicesError;
 
+    const { data: paymentOrders, error: paymentOrdersError } = await supabase
+      .from("payment_orders")
+      .select("supplier_id, supplier_invoice_id, cashflow_id, amount")
+      .is("deleted_at", null);
+
+    if (paymentOrdersError) throw paymentOrdersError;
+
+    const ordersBySupplier = {};
+    (paymentOrders || []).forEach((po) => {
+      if (po.supplier_id == null) return;
+      if (!ordersBySupplier[po.supplier_id]) ordersBySupplier[po.supplier_id] = [];
+      ordersBySupplier[po.supplier_id].push(po);
+    });
+
     const cashflowByProvider = {};
     (cashflowRows || []).forEach((cf) => {
       const pid = cf.provider;
@@ -220,13 +316,20 @@ self.getAllSupplierAccounts = async (req, res) => {
     const list = (suppliers || []).map((supplier) => {
       const supplierCashflow = cashflowByProvider[supplier.id] || [];
       const supplierControlInvoices = invoicesBySupplier[supplier.id] || [];
-      const summary = computeSummary(supplierCashflow, supplierControlInvoices);
+      const supplierOrders = ordersBySupplier[supplier.id] || [];
+      const summary = computeSummary(
+        supplierCashflow,
+        supplierControlInvoices,
+        supplierOrders
+      );
 
       return {
         supplier,
         summary,
         movement_count:
-          supplierCashflow.length + supplierControlInvoices.length,
+          supplierCashflow.length +
+          supplierControlInvoices.length +
+          supplierOrders.length,
       };
     });
 
@@ -293,9 +396,29 @@ self.getSupplierAccount = async (req, res) => {
 
     if (supplierInvoicesError) throw supplierInvoicesError;
 
+    const { data: paymentOrders, error: paymentOrdersError } = await supabase
+      .from("payment_orders")
+      .select(
+        `
+        id,
+        order_number,
+        supplier_invoice_id,
+        cashflow_id,
+        payment_method,
+        amount,
+        description,
+        payment_date
+      `
+      )
+      .eq("supplier_id", supplierId)
+      .is("deleted_at", null);
+
+    if (paymentOrdersError) throw paymentOrdersError;
+
     const { movements, summary } = await buildMergedAccountData(
       cashflowRows,
-      supplierInvoices
+      supplierInvoices,
+      paymentOrders
     );
 
     return res.json({

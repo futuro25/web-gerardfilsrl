@@ -49,6 +49,7 @@ const InvoiceDataFields = forwardRef(function InvoiceDataFields(
     movementDescription,
     enabled = true,
     showErrors = false,
+    required = false,
   },
   ref
 ) {
@@ -61,7 +62,7 @@ const InvoiceDataFields = forwardRef(function InvoiceDataFields(
   const [invoiceLast8, setInvoiceLast8] = useState("");
   const [withoutInvoice, setWithoutInvoice] = useState(false);
   const [supplierQuickOpen, setSupplierQuickOpen] = useState(false);
-  const [active, setActive] = useState(false);
+  const [active, setActive] = useState(required);
 
   const {
     register,
@@ -156,6 +157,11 @@ const InvoiceDataFields = forwardRef(function InvoiceDataFields(
     if (inv) setActive(true);
   }, [enabled, linkedInvoice, movementId, suppliers]);
 
+  // Para egresos la factura es obligatoria: siempre activa.
+  useEffect(() => {
+    if (required && !active) setActive(true);
+  }, [required, active]);
+
   const hasSavedInvoice =
     linkedInvoice && !linkedInvoice.error && linkedInvoice.id;
 
@@ -166,6 +172,7 @@ const InvoiceDataFields = forwardRef(function InvoiceDataFields(
   }, [enabled, active, movementAmount, hasSavedInvoice, setValue]);
 
   const handleActiveChange = (checked) => {
+    if (required) return; // obligatorio: no se puede desactivar
     setActive(checked);
     if (checked && movementAmount !== "" && movementAmount != null) {
       setValue("amount", movementAmount);
@@ -280,15 +287,21 @@ const InvoiceDataFields = forwardRef(function InvoiceDataFields(
           <h3 className="text-sm font-semibold text-slate-800">
             Datos de factura
           </h3>
-          <label className="flex items-center gap-2 text-xs text-slate-600">
-            <input
-              type="checkbox"
-              checked={active}
-              onChange={(e) => handleActiveChange(e.target.checked)}
-              className="rounded border-slate-300"
-            />
-            Registrar factura
-          </label>
+          {required ? (
+            <span className="text-xs font-medium text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+              Obligatorio para egresos
+            </span>
+          ) : (
+            <label className="flex items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={active}
+                onChange={(e) => handleActiveChange(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              Registrar factura
+            </label>
+          )}
         </div>
 
         {active && (

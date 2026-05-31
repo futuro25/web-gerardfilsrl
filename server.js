@@ -1,3 +1,9 @@
+try {
+  require("dotenv").config();
+} catch (e) {
+  // dotenv es opcional (en producción las variables vienen del entorno)
+}
+
 const express = require("express");
 const path = require("path");
 const bodyParser = require("body-parser");

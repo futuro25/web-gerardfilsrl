@@ -1,5 +1,10 @@
 const express = require("express");
+const multer = require("multer");
 const router = express.Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
 const UserController = require("../controllers/UserController.js");
 const SupplierController = require("../controllers/SupplierController.js");
 const ClientController = require("../controllers/ClientController.js");
@@ -20,6 +25,8 @@ const AporteController = require("../controllers/AporteController.js");
 const SupplierAccountController = require("../controllers/SupplierAccountController.js");
 const SupplierInvoiceController = require("../controllers/SupplierInvoiceController.js");
 const CronController = require("../controllers/CronController.js");
+const PaymentOrderController = require("../controllers/PaymentOrderController.js");
+const UploadController = require("../controllers/UploadController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -102,6 +109,10 @@ router.patch("/retention-certificates/payments/:payment_id", (req, res, next) =>
 
 router.delete("/retention-certificates/payments/:payment_id", (req, res, next) =>
   RetentionCertificatesController.deleteRetentionPayment(req, res, next)
+);
+
+router.get("/retention-certificates/by-invoice", (req, res, next) =>
+  RetentionCertificatesController.getRetentionByInvoice(req, res, next)
 );
 
 router.get("/retention-certificates/:payment_id", (req, res, next) =>
@@ -422,6 +433,14 @@ router.delete("/account-movements/:id", (req, res, next) =>
 );
 
 // SUPPLIER INVOICES (facturas de compra / proveedores)
+router.get("/purchase-invoices", (req, res, next) =>
+  SupplierInvoiceController.getPurchaseInvoices(req, res, next)
+);
+
+router.get("/supplier-invoices", (req, res, next) =>
+  SupplierInvoiceController.getSupplierInvoices(req, res, next)
+);
+
 router.get(
   "/supplier-invoices/by-movement/:account_movement_id",
   (req, res, next) =>
@@ -436,8 +455,38 @@ router.post("/supplier-invoices", (req, res, next) =>
   SupplierInvoiceController.createSupplierInvoice(req, res, next)
 );
 
+router.patch("/supplier-invoices/:id/image", (req, res, next) =>
+  SupplierInvoiceController.setSupplierInvoiceImage(req, res, next)
+);
+
 router.patch("/supplier-invoices/:id", (req, res, next) =>
   SupplierInvoiceController.updateSupplierInvoice(req, res, next)
+);
+
+// PAYMENT ORDERS (órdenes de pago)
+router.get("/payment-orders/next-number", (req, res, next) =>
+  PaymentOrderController.getNextOrderNumber(req, res, next)
+);
+
+router.get("/payment-orders/pending", (req, res, next) =>
+  PaymentOrderController.getPendingItems(req, res, next)
+);
+
+router.get("/payment-orders", (req, res, next) =>
+  PaymentOrderController.getPaymentOrders(req, res, next)
+);
+
+router.post("/payment-orders", (req, res, next) =>
+  PaymentOrderController.createPaymentOrder(req, res, next)
+);
+
+// UPLOADS (Cloudflare R2)
+router.post("/uploads/invoice-image", upload.single("file"), (req, res, next) =>
+  UploadController.uploadInvoiceImage(req, res, next)
+);
+
+router.get("/uploads/invoice-image-url", (req, res, next) =>
+  UploadController.getInvoiceImageUrl(req, res, next)
 );
 
 // SUPPLIER ACCOUNTS (cuentas corrientes)

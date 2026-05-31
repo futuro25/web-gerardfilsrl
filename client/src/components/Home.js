@@ -14,6 +14,8 @@ import {
   Landmark,
   PiggyBank,
   Wallet,
+  ClipboardList,
+  FilePlus,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { MoonLoader } from "react-spinners";
@@ -30,7 +32,7 @@ export default function Home() {
     { label: "Proveedores", icon: TruckIcon, path: "/proveedores", order: 4 },
     { label: "Clientes", icon: UsersIcon, path: "/clientes", order: 5 },
     { label: "Facturas", icon: FileText, path: "/entregas", order: 6 },
-    { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow", order: 7 },
+    // { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow", order: 7 },
     { label: "Cheques", icon: Banknote, path: "/cheques", order: 8 },
     { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion", order: 9 },
     // { label: "Libros", icon: BookOpenCheck, path: "/libros-selector", order: 10 },
@@ -48,6 +50,18 @@ export default function Home() {
       path: "/cuentas-corrientes",
       order: 7.52,
     });
+    navItems.push({
+      label: "Facturas Pendientes",
+      icon: ClipboardList,
+      path: "/facturas-pendientes",
+      order: 7.54,
+    });
+    navItems.push({
+      label: "Facturas Compras",
+      icon: FilePlus,
+      path: "/facturas-compras",
+      order: 7.56,
+    });
     navItems.push({ label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 });
   }
 
@@ -58,6 +72,18 @@ export default function Home() {
       icon: Wallet,
       path: "/cuentas-corrientes",
       order: 7.52,
+    });
+    navItems.push({
+      label: "Facturas Pendientes",
+      icon: ClipboardList,
+      path: "/facturas-pendientes",
+      order: 7.54,
+    });
+    navItems.push({
+      label: "Facturas Compras",
+      icon: FilePlus,
+      path: "/facturas-compras",
+      order: 7.56,
     });
   }
 

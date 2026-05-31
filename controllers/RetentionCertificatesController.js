@@ -623,6 +623,104 @@ self.deleteRetentionPayment = async (req, res) => {
   }
 };
 
+function normalizeInvoiceNumber(value) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function normalizeCuit(value) {
+  return String(value || "").replace(/[^0-9]/g, "");
+}
+
+// Busca la retención (pago + certificado) asociada a una factura.
+// Como retention_payments no tiene FK a la factura y normalmente no guarda
+// invoice_number, el match se hace por: invoice_number (si está cargado),
+// o por CUIT del proveedor + monto total (+ fecha como desempate).
+self.getRetentionByInvoice = async (req, res) => {
+  try {
+    const invoiceNorm = normalizeInvoiceNumber(req.query.invoice_number);
+    const supplierId = req.query.supplier_id || null;
+    const amount = req.query.amount != null ? Math.abs(parseFloat(req.query.amount)) : null;
+    const date = req.query.date ? String(req.query.date).slice(0, 10) : null;
+
+    let cuit = null;
+    if (supplierId) {
+      const { data: sup } = await supabase
+        .from("suppliers")
+        .select("cuit")
+        .eq("id", supplierId)
+        .maybeSingle();
+      cuit = sup?.cuit ? normalizeCuit(sup.cuit) : null;
+    }
+
+    // Universo de retenciones acotado por proveedor cuando es posible.
+    let query = supabase
+      .from("retention_payments")
+      .select("*")
+      .is("deleted_at", null);
+    const { data: allRows } = await query;
+    let rows = allRows || [];
+
+    let candidates = cuit
+      ? rows.filter((p) => normalizeCuit(p.supplier_cuit) === cuit)
+      : rows;
+    if (cuit && candidates.length === 0) candidates = rows; // fallback amplio
+
+    let match = null;
+
+    // 1) Match exacto por número de factura (si alguna retención lo tiene cargado)
+    if (invoiceNorm) {
+      match =
+        candidates.find(
+          (p) => normalizeInvoiceNumber(p.invoice_number) === invoiceNorm
+        ) || null;
+    }
+
+    // 2) Match por monto total (con tolerancia) + fecha como desempate
+    if (!match && amount != null && candidates.length) {
+      const tol = Math.max(1, amount * 0.01);
+      const byAmount = candidates.filter(
+        (p) => Math.abs(Math.abs(parseFloat(p.total_amount)) - amount) <= tol
+      );
+      if (byAmount.length === 1) {
+        match = byAmount[0];
+      } else if (byAmount.length > 1) {
+        // Preferir misma fecha; si no, la fecha más cercana.
+        if (date) {
+          match =
+            byAmount.find((p) => String(p.issue_date).slice(0, 10) === date) ||
+            byAmount
+              .slice()
+              .sort(
+                (a, b) =>
+                  Math.abs(new Date(a.issue_date) - new Date(date)) -
+                  Math.abs(new Date(b.issue_date) - new Date(date))
+              )[0];
+        } else {
+          match = byAmount[0];
+        }
+      }
+    }
+
+    if (!match) return res.json({ data: null });
+
+    const { data: certificate } = await supabase
+      .from("retention_certificates")
+      .select("*")
+      .eq("retention_payment_id", match.id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    return res.json({
+      data: { payment: match, certificate: certificate || null },
+    });
+  } catch (e) {
+    console.error("getRetentionByInvoice error:", e.message);
+    return res.json({ error: e.message });
+  }
+};
+
 self.getRetentionCertificate = async (req, res) => {
   try {
     const payment_id = req.params.payment_id;

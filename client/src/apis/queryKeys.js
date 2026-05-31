@@ -27,6 +27,11 @@ export const queryStockEntriesKey = () => ["stock-entries"];
 export const queryRetentionPaymentsKey = () => ["retention-payments"];
 export const queryRetentionPaymentByIdKey = (id) => ["retention-payment", id];
 export const queryRetentionCertificateKey = (paymentId) => ["retention-certificate", paymentId];
+export const queryRetentionByInvoiceKey = (invoiceNumber, supplierId) => [
+  "retention-by-invoice",
+  invoiceNumber,
+  supplierId,
+];
 export const queryAccountMovementsKey = (params) => ["account-movements", params];
 export const queryAccountMovementsSummaryKey = (params) => ["account-movements-summary", params];
 export const queryUpcomingChequesKey = () => ["upcoming-cheques"];
@@ -37,4 +42,20 @@ export const querySupplierAccountKey = (supplierId) => ["supplier-account", supp
 export const querySupplierInvoiceByMovementKey = (movementId) => [
   "supplier-invoice-by-movement",
   movementId,
+];
+export const querySupplierInvoicesListKey = () => ["supplier-invoices-list"];
+export const queryPurchaseInvoicesKey = (params) => [
+  "supplier-invoices-list",
+  params,
+];
+export const queryPaymentOrdersByMovementKey = (sourceMovementId) => [
+  "payment-orders-by-movement",
+  sourceMovementId,
+];
+export const queryPaymentOrdersNextNumberKey = () => ["payment-orders-next-number"];
+export const queryPendingPaymentItemsKey = () => ["pending-payment-items"];
+export const queryInvoiceImageUrlKey = (key) => ["invoice-image-url", key];
+export const queryPaymentOrdersByInvoiceKey = (supplierInvoiceId) => [
+  "payment-orders-by-invoice",
+  supplierInvoiceId,
 ];

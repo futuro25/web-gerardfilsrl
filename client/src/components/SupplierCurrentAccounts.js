@@ -19,9 +19,15 @@ import {
 function categoryLabel(m) {
   if (m.category === "FACTURA_CONTROL") return "Factura (Control)";
   if (m.category === "FACTURA") return "Factura (Cashflow)";
+  if (m.category === "ORDEN_PAGO") return "Orden de Pago";
   if (m.category === "INGRESO") return "Ingreso";
   if (m.category === "EGRESO") return "Egreso";
   return m.movement_type === "INGRESO" ? "Ingreso" : "Egreso";
+}
+
+/** Monto a mostrar: las OP usan display_amount (crédito), el resto signed_amount. */
+function shownAmount(m) {
+  return m.display_amount != null ? m.display_amount : m.signed_amount;
 }
 
 function supplierDisplayName(supplier) {
@@ -234,7 +240,7 @@ export default function SupplierCurrentAccounts() {
 
             {!detailLoading && !detailError && accountData && (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 my-4">
                   <SummaryCard
                     label="Egresos (Cashflow)"
                     value={summary?.totalCashflowEgresos ?? 0}
@@ -249,6 +255,11 @@ export default function SupplierCurrentAccounts() {
                     label="Facturas (Control)"
                     value={summary?.totalControlInvoices ?? 0}
                     positive
+                  />
+                  <SummaryCard
+                    label="Órdenes de pago"
+                    value={summary?.totalPaymentOrders ?? 0}
+                    negative
                   />
                   <SummaryCard
                     label="Saldo"
@@ -309,7 +320,9 @@ export default function SupplierCurrentAccounts() {
                                 <span
                                   className={utils.cn(
                                     "px-2 py-0.5 rounded text-xs font-medium text-white",
-                                    m.signed_amount >= 0
+                                    m.category === "ORDEN_PAGO"
+                                      ? "bg-blue-500"
+                                      : shownAmount(m) >= 0
                                       ? "bg-amber-500"
                                       : "bg-emerald-600"
                                   )}
@@ -342,13 +355,13 @@ export default function SupplierCurrentAccounts() {
                               <td
                                 className={utils.cn(
                                   "p-3 text-right text-xs font-medium tabular-nums",
-                                  m.signed_amount >= 0
+                                  shownAmount(m) >= 0
                                     ? "text-amber-700"
                                     : "text-emerald-700"
                                 )}
                               >
-                                {m.signed_amount >= 0 ? "+" : ""}
-                                {utils.formatAmount(m.signed_amount)}
+                                {shownAmount(m) >= 0 ? "+" : ""}
+                                {utils.formatAmount(shownAmount(m))}
                               </td>
                               <td
                                 className={utils.cn(
