@@ -27,9 +27,13 @@
     "node": ">=20.0.0 <21.0.0"
   },
   "scripts": {
+    "dev": "concurrently --names \"API,CLIENT\" --prefix-colors \"cyan,magenta\" \"nodemon server.js\" \"cd client && yarn start\"",
     "start-dev": "nodemon server.js",
     "start": "node server.js",
     "cron:pending-movements": "node scripts/cron-pending-movements-report.js",
     "heroku-postbuild": "cd client && yarn install --ignore-engines --ignore-platform && yarn run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
