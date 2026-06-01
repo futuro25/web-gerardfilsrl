@@ -43,7 +43,7 @@ export default function Home() {
   if (sessionStorage.type === "ADMIN") {
     navItems.pop();
     navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios", order: 12 });
-    navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5 });
+    navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5, isNew: true });
     navItems.push({
       label: "Cuentas Corrientes",
       icon: Wallet,
@@ -55,18 +55,20 @@ export default function Home() {
       icon: ClipboardList,
       path: "/facturas-pendientes",
       order: 7.54,
+      isNew: true,
     });
     navItems.push({
       label: "Facturas Compras",
       icon: FilePlus,
       path: "/facturas-compras",
       order: 7.56,
+      isNew: true,
     });
     navItems.push({ label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 });
   }
 
   if (sessionStorage.username === "caro" || sessionStorage.username === "lcozza") {
-    navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5 });
+    navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5, isNew: true });
     navItems.push({
       label: "Cuentas Corrientes",
       icon: Wallet,
@@ -78,12 +80,14 @@ export default function Home() {
       icon: ClipboardList,
       path: "/facturas-pendientes",
       order: 7.54,
+      isNew: true,
     });
     navItems.push({
       label: "Facturas Compras",
       icon: FilePlus,
       path: "/facturas-compras",
       order: 7.56,
+      isNew: true,
     });
   }
 
@@ -99,6 +103,12 @@ export default function Home() {
 
   navItems.sort((a, b) => a.order - b.order);
 
+  const logoutItem = navItems.find((item) => item.path === "/logout");
+  const newItems = navItems.filter((item) => item.isNew);
+  const mainItems = navItems.filter(
+    (item) => !item.isNew && item.path !== "/logout"
+  );
+
   return (
     <div className="px-4 h-full overflow-auto mt-0 flex flex-col items-center justify-start">
       <div className="w-full flex flex-col sticky top-0 z-10 rounded pb-4 items-center justify-center mt-10">
@@ -109,10 +119,24 @@ export default function Home() {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        {navItems.map((item, index) => (
+        {mainItems.map((item, index) => (
           <HomeButton key={index} item={item} />
         ))}
       </div>
+
+      {newItems.length > 0 && (
+        <div className="grid grid-cols-3 gap-4 mt-4">
+          {newItems.map((item, index) => (
+            <HomeButton key={`new-${index}`} item={item} />
+          ))}
+        </div>
+      )}
+
+      {logoutItem && (
+        <div className="grid grid-cols-3 gap-4 mt-4">
+          <HomeButton item={logoutItem} />
+        </div>
+      )}
 
       {/* dosmil12 signature */}
       <div className="flex flex-col items-center gap-2 mt-10 mb-6">
@@ -148,9 +172,14 @@ function HomeButton({ item }) {
 
   return (
     <div
-      className="flex items-center justify-center p-3 hover:bg-gray-100 rounded-lg cursor-pointer border h-24 shadow-lg transition-colors duration-200 w-28 bg-white"
+      className="relative flex items-center justify-center p-3 hover:bg-gray-100 rounded-lg cursor-pointer border h-24 shadow-lg transition-colors duration-200 w-28 bg-white"
       onClick={() => onClick()}
     >
+      {item.isNew && sessionStorage.username === "caro" && (
+        <span className="absolute top-1 right-1 bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full shadow">
+          Nuevo
+        </span>
+      )}
       <div className="flex flex-col items-center gap-2">
         {isLoading ? (
           <div className="flex items-center justify-center">
