@@ -54,6 +54,7 @@ export default function PurchaseInvoiceDetailDialog({
   const [imageKey, setImageKey] = useState(invoice?.image_key || null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [certOpen, setCertOpen] = useState(false);
   const [retentionFormOpen, setRetentionFormOpen] = useState(false);
@@ -173,6 +174,14 @@ export default function PurchaseInvoiceDetailDialog({
     }
   };
 
+  const onDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (uploading) return;
+    const f = e.dataTransfer?.files?.[0];
+    if (f) handleUpload(f);
+  };
+
   const imageUrl = imageRes?.url || null;
   const isPdf = imageKey && /\.pdf$/i.test(imageKey);
 
@@ -271,9 +280,44 @@ export default function PurchaseInvoiceDetailDialog({
           )}
 
           {!uploading && !imageKey && (
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-400">
-              No hay imagen cargada para esta factura
-            </div>
+            <label
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setIsDragging(false);
+              }}
+              onDrop={onDrop}
+              className={utils.cn(
+                "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 text-center cursor-pointer transition-colors",
+                isDragging
+                  ? "border-blue-400 bg-blue-50 text-blue-600"
+                  : "border-slate-300 bg-slate-50 text-slate-400 hover:border-blue-300 hover:bg-blue-50/40"
+              )}
+            >
+              <UploadIcon className="h-8 w-8" />
+              <span className="text-sm font-medium">
+                Arrastrá la factura acá o hacé click para subir
+              </span>
+              <span className="text-xs">Imagen o PDF</span>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                disabled={uploading}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  handleUpload(f);
+                }}
+              />
+            </label>
           )}
 
           {!uploading && imageKey && imageLoading && (

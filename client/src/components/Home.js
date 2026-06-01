@@ -31,7 +31,7 @@ export default function Home() {
     { label: "Egreso de Mercaderia", icon: Package, path: "/remitos", order: 3 },
     { label: "Proveedores", icon: TruckIcon, path: "/proveedores", order: 4 },
     { label: "Clientes", icon: UsersIcon, path: "/clientes", order: 5 },
-    { label: "Facturas", icon: FileText, path: "/entregas", order: 6 },
+    { label: "Facturas Ventas", icon: FileText, path: "/entregas", order: 6 },
     // { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow", order: 7 },
     { label: "Cheques", icon: Banknote, path: "/cheques", order: 8 },
     { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion", order: 9 },
