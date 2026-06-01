@@ -196,7 +196,7 @@ export default function PurchaseInvoiceDetailDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-2xl">
+      <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogTitle className="text-lg font-bold text-slate-800 mb-4">
           Detalle de factura
         </DialogTitle>
