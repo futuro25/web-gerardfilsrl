@@ -7,6 +7,74 @@ const { DateTime } = require("luxon");
 
 const _ = require("lodash");
 
+// Resuelve el proveedor (y nº de orden) de cada cheque a partir del movimiento
+// de Control vinculado (movement_id): puede provenir de una orden de pago o de
+// una factura de proveedor cargada directamente en Control.
+async function attachPaycheckSupplier(paychecks) {
+  const movementIds = [
+    ...new Set(
+      (paychecks || []).map((p) => p.movement_id).filter((v) => v != null)
+    ),
+  ];
+  if (movementIds.length === 0) return paychecks || [];
+
+  const [{ data: orders }, { data: invoices }] = await Promise.all([
+    supabase
+      .from("payment_orders")
+      .select("account_movement_id, supplier_id, order_number")
+      .in("account_movement_id", movementIds)
+      .is("deleted_at", null),
+    supabase
+      .from("supplier_invoices")
+      .select("account_movement_id, supplier_id")
+      .in("account_movement_id", movementIds)
+      .is("deleted_at", null),
+  ]);
+
+  const orderByMovement = {};
+  (orders || []).forEach((o) => {
+    if (o.account_movement_id != null)
+      orderByMovement[o.account_movement_id] = o;
+  });
+  const invoiceByMovement = {};
+  (invoices || []).forEach((inv) => {
+    if (inv.account_movement_id != null && !invoiceByMovement[inv.account_movement_id])
+      invoiceByMovement[inv.account_movement_id] = inv;
+  });
+
+  const supplierIds = [
+    ...new Set(
+      [...(orders || []), ...(invoices || [])]
+        .map((r) => r.supplier_id)
+        .filter((v) => v != null)
+    ),
+  ];
+
+  const supplierById = {};
+  if (supplierIds.length) {
+    const { data: suppliers } = await supabase
+      .from("suppliers")
+      .select("id, fantasy_name, name")
+      .in("id", supplierIds);
+    (suppliers || []).forEach((s) => {
+      supplierById[s.id] = s.fantasy_name || s.name || null;
+    });
+  }
+
+  return (paychecks || []).map((p) => {
+    const order = p.movement_id != null ? orderByMovement[p.movement_id] : null;
+    const invoice =
+      p.movement_id != null ? invoiceByMovement[p.movement_id] : null;
+    const supplierId = order?.supplier_id ?? invoice?.supplier_id ?? null;
+    return {
+      ...p,
+      supplier_id: supplierId,
+      supplier_name: supplierId != null ? supplierById[supplierId] || null : null,
+      order_number: order?.order_number || null,
+    };
+  });
+}
+
 self.getPaychecks = async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -16,7 +84,9 @@ self.getPaychecks = async (req, res) => {
 
     if (error) throw error;
 
-    res.json(data);
+    const enriched = await attachPaycheckSupplier(data || []);
+
+    res.json(enriched);
   } catch (e) {
     res.json({ error: e.message });
   }

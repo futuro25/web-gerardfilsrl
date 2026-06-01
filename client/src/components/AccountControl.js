@@ -41,7 +41,6 @@ import {
 const MOVEMENT_KIND_OPTIONS = [
   { value: "UNICA VEZ", label: "Única vez" },
   { value: "FIJO", label: "Fijo" },
-  { value: "PENDIENTE", label: "Pendiente" },
 ];
 
 function movementKindLabel(kind) {

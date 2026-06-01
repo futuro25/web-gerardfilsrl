@@ -28,7 +28,7 @@ const {
 } = require("../services/pendingMovementsReportService");
 
 async function main() {
-  const recipients = process.env.CRON_PENDING_MOVEMENTS_RECIPIENTS;
+  const recipients = "gedeonleandro@gmail.com"; //process.env.CRON_PENDING_MOVEMENTS_RECIPIENTS;
 
   if (!recipients?.trim()) {
     console.error(

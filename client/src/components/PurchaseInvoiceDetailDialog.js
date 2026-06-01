@@ -7,6 +7,7 @@ import Spinner from "./common/Spinner";
 import Button from "./common/Button";
 import PaymentOrderDialog from "./PaymentOrderDialog";
 import RetentionCertificateDialog from "./RetentionCertificateDialog";
+import RetentionFormDialog from "./RetentionFormDialog";
 import { fetchInvoiceImageUrl, uploadInvoiceImage } from "../apis/api.uploads";
 import { setSupplierInvoiceImage } from "../apis/api.supplierinvoices";
 import { fetchRetentionByInvoice } from "../apis/api.retentioncertificates";
@@ -17,6 +18,7 @@ import {
   queryPendingPaymentItemsKey,
   queryPaymentOrdersNextNumberKey,
   queryRetentionByInvoiceKey,
+  queryRetentionPaymentsKey,
 } from "../apis/queryKeys";
 import * as utils from "../utils/utils";
 
@@ -54,10 +56,13 @@ export default function PurchaseInvoiceDetailDialog({
   const [uploadError, setUploadError] = useState(null);
   const [payOpen, setPayOpen] = useState(false);
   const [certOpen, setCertOpen] = useState(false);
+  const [retentionFormOpen, setRetentionFormOpen] = useState(false);
+  const [createdRetention, setCreatedRetention] = useState(null);
 
   useEffect(() => {
     setImageKey(invoice?.image_key || null);
     setUploadError(null);
+    setCreatedRetention(null);
   }, [invoice]);
 
   const isControl =
@@ -113,6 +118,21 @@ export default function PurchaseInvoiceDetailDialog({
     });
     setPayOpen(true);
     onOpenChange(false);
+  };
+
+  const onRetentionCreated = (result) => {
+    setRetentionFormOpen(false);
+    queryClient.invalidateQueries({ queryKey: queryRetentionPaymentsKey() });
+    queryClient.invalidateQueries({
+      queryKey: queryRetentionByInvoiceKey(
+        `${invoice?.invoice_number || ""}|${retentionAmount || ""}`,
+        retentionSupplierId
+      ),
+    });
+    if (result?.payment) {
+      setCreatedRetention(result);
+      setCertOpen(true);
+    }
   };
 
   const onOrderCreated = () => {
@@ -434,9 +454,21 @@ export default function PurchaseInvoiceDetailDialog({
               </div>
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-              No hay retención registrada para esta factura. Verificá si
-              corresponde practicarle retención.
+            <div className="flex flex-col gap-3 rounded-lg border border-dashed border-amber-200 bg-amber-50 p-3">
+              <span className="text-sm text-amber-700">
+                No hay retención registrada para esta factura. Verificá si
+                corresponde practicarle retención.
+              </span>
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                className="self-start"
+                onClick={() => setRetentionFormOpen(true)}
+              >
+                <FileText className="h-4 w-4 mr-1" />
+                Calcular y registrar retención
+              </Button>
             </div>
           )}
         </div>
@@ -463,8 +495,15 @@ export default function PurchaseInvoiceDetailDialog({
     <RetentionCertificateDialog
       open={certOpen}
       onOpenChange={setCertOpen}
-      certificate={retentionCertificate}
-      payment={retentionPayment}
+      certificate={createdRetention?.certificate || retentionCertificate}
+      payment={createdRetention?.payment || retentionPayment}
+    />
+
+    <RetentionFormDialog
+      open={retentionFormOpen}
+      onOpenChange={setRetentionFormOpen}
+      invoice={invoice}
+      onCreated={onRetentionCreated}
     />
     </>
   );

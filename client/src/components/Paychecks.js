@@ -416,6 +416,9 @@ export default function Paychecks() {
                           Movimiento
                         </th>
                         <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
+                          Proveedor
+                        </th>
+                        <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
                           Banco
                         </th>
                         <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
@@ -456,6 +459,20 @@ export default function Paychecks() {
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
                               {paycheck.type === "IN" ? "Ingreso" : "Egreso"}
+                            </td>
+                            <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
+                              {paycheck.supplier_name ? (
+                                <div className="flex flex-col">
+                                  <span>{paycheck.supplier_name}</span>
+                                  {paycheck.order_number && (
+                                    <span className="text-[10px] text-slate-400">
+                                      {paycheck.order_number}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-300">—</span>
+                              )}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
                               {paycheck.bank}
@@ -523,7 +540,7 @@ export default function Paychecks() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={canManagePaychecks ? 8 : 7}
+                            colSpan={canManagePaychecks ? 9 : 8}
                             className="border-b border-slate-100  p-4  text-slate-500 "
                           >
                             No hay próximos cheques para mostrar. Si desea ver cheques anteriores puede hacer click en {" "}

@@ -299,6 +299,14 @@ self.createPaymentOrder = async (req, res) => {
 
     const movementId = newMovement[0].id;
 
+    // Vincular el cheque al movimiento de conciliación (relación bidireccional)
+    if (paycheckId) {
+      await supabase
+        .from("paychecks")
+        .update({ movement_id: movementId })
+        .eq("id", paycheckId);
+    }
+
     // Create the payment order
     const { data: newOrder, error: orderErr } = await supabase
       .from("payment_orders")
