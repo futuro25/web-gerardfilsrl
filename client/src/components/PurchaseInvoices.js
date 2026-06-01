@@ -4,7 +4,7 @@ import { Controller, useForm } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { sortBy } from "lodash";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { ExternalLinkIcon, Eye } from "lucide-react";
+import { ExternalLinkIcon, Eye, UploadIcon } from "lucide-react";
 import { DateTime } from "luxon";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
@@ -59,6 +59,7 @@ export default function PurchaseInvoices() {
   const [supplierQuickOpen, setSupplierQuickOpen] = useState(false);
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [imageFile, setImageFile] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [detailInvoice, setDetailInvoice] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
@@ -715,12 +716,46 @@ export default function PurchaseInvoices() {
                   <label className="text-xs font-sans text-gray-900 mb-2 block">
                     Imagen de la factura (opcional)
                   </label>
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                    className="block w-full text-sm text-slate-500 file:mr-3 file:rounded file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
-                  />
+                  <label
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                      const f = e.dataTransfer?.files?.[0];
+                      if (f) setImageFile(f);
+                    }}
+                    className={utils.cn(
+                      "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors",
+                      isDragging
+                        ? "border-blue-400 bg-blue-50 text-blue-600"
+                        : "border-slate-300 bg-slate-50 text-slate-400 hover:border-blue-300 hover:bg-blue-50/40"
+                    )}
+                  >
+                    <UploadIcon className="h-7 w-7" />
+                    <span className="text-sm font-medium">
+                      Arrastrá la factura acá o hacé click para subir
+                    </span>
+                    <span className="text-xs">Imagen o PDF</span>
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      className="hidden"
+                      onChange={(e) =>
+                        setImageFile(e.target.files?.[0] || null)
+                      }
+                    />
+                  </label>
                   {imageFile && (
                     <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
                       <span className="truncate">{imageFile.name}</span>
