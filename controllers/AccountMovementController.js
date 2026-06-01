@@ -80,8 +80,28 @@ self.getMovements = async (req, res) => {
 
     const dataWithSuppliers = await attachSupplierNames(data || []);
 
+    // Marcar los movimientos que son conciliación de una orden de pago, para que
+    // el módulo Control no les exija ni permita registrar una factura.
+    const movementIds = (dataWithSuppliers || []).map((m) => m.id);
+    let conciliationSet = new Set();
+    if (movementIds.length) {
+      const { data: pos } = await supabase
+        .from("payment_orders")
+        .select("account_movement_id")
+        .in("account_movement_id", movementIds)
+        .is("deleted_at", null);
+      conciliationSet = new Set(
+        (pos || []).map((p) => p.account_movement_id).filter((v) => v != null)
+      );
+    }
+
+    const dataFinal = (dataWithSuppliers || []).map((m) => ({
+      ...m,
+      is_payment_order: conciliationSet.has(m.id),
+    }));
+
     res.json({
-      data: dataWithSuppliers,
+      data: dataFinal,
       total: count,
       page: parseInt(page),
       limit: parseInt(limit),

@@ -121,17 +121,22 @@ self.getPurchaseInvoices = async (req, res) => {
     const { data: orders, error: ordersErr } = await supabase
       .from("payment_orders")
       .select(
-        "supplier_invoice_id, cashflow_id, order_number, payment_method, amount, payment_date, cheque_number, cheque_bank, cheque_due_date"
+        "supplier_invoice_id, cashflow_id, account_movement_id, order_number, payment_method, amount, payment_date, cheque_number, cheque_bank, cheque_due_date"
       )
       .is("deleted_at", null);
     if (ordersErr) throw ordersErr;
 
     const orderByInvoiceId = {};
     const orderByCashflowId = {};
+    // Movimientos de conciliación generados por órdenes de pago: las facturas
+    // colgadas de estos movimientos NO son compras reales (no listarlas).
+    const conciliationMovementIds = new Set();
     (orders || []).forEach((o) => {
       if (o.supplier_invoice_id != null)
         orderByInvoiceId[o.supplier_invoice_id] = o;
       if (o.cashflow_id != null) orderByCashflowId[o.cashflow_id] = o;
+      if (o.account_movement_id != null)
+        conciliationMovementIds.add(o.account_movement_id);
     });
 
     // Proveedores (nombres)
@@ -183,7 +188,9 @@ self.getPurchaseInvoices = async (req, res) => {
           }
         : null;
 
-    const controlItems = (controlRows || []).map((inv) => {
+    const controlItems = (controlRows || [])
+      .filter((inv) => !conciliationMovementIds.has(inv.account_movement_id))
+      .map((inv) => {
       const sup = supplierById[inv.supplier_id];
       const order = orderByInvoiceId[inv.id] || null;
       return {

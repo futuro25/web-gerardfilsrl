@@ -54,7 +54,7 @@ async function computePendingItems() {
     // Órdenes de pago existentes para excluir lo ya pagado
     const { data: orders, error: ordersErr } = await supabase
       .from("payment_orders")
-      .select("supplier_invoice_id, cashflow_id")
+      .select("supplier_invoice_id, cashflow_id, account_movement_id")
       .is("deleted_at", null);
 
     if (ordersErr) throw ordersErr;
@@ -64,6 +64,11 @@ async function computePendingItems() {
     );
     const paidCashflowIds = new Set(
       (orders || []).map((o) => o.cashflow_id).filter((v) => v != null)
+    );
+    // Movimientos de conciliación de órdenes de pago: las facturas colgadas de
+    // ellos no son compras reales y no deben figurar como pendientes.
+    const conciliationMovementIds = new Set(
+      (orders || []).map((o) => o.account_movement_id).filter((v) => v != null)
     );
 
     // Proveedores (para resolver nombres)
@@ -88,7 +93,11 @@ async function computePendingItems() {
     if (ctrlErr) throw ctrlErr;
 
     const controlItems = (controlInvoices || [])
-      .filter((inv) => !paidInvoiceIds.has(inv.id))
+      .filter(
+        (inv) =>
+          !paidInvoiceIds.has(inv.id) &&
+          !conciliationMovementIds.has(inv.account_movement_id)
+      )
       .map((inv) => {
         const total = parseAmount(inv.total ?? inv.amount);
         return {

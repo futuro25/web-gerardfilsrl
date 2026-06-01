@@ -236,6 +236,9 @@ export default function AccountControl() {
   const watchedAmount = watch("amount");
   const watchedDescription = watch("description");
 
+  // Movimiento de conciliación de una orden de pago: no lleva factura propia.
+  const isConciliation = Boolean(selectedMovement?.is_payment_order);
+
   const saveInvoiceForMovement = async (movementId) => {
     if (!invoiceFieldsRef.current?.isActive()) return;
 
@@ -269,7 +272,11 @@ export default function AccountControl() {
       setIsLoadingSubmit(true);
       setInvoiceShowErrors(false);
 
-      if (movementType === "EGRESO" && invoiceFieldsRef.current?.isActive()) {
+      if (
+        movementType === "EGRESO" &&
+        !isConciliation &&
+        invoiceFieldsRef.current?.isActive()
+      ) {
         const validation = invoiceFieldsRef.current.validate();
         if (!validation.ok) {
           setInvoiceShowErrors(true);
@@ -302,7 +309,7 @@ export default function AccountControl() {
         movementId = Array.isArray(created) ? created[0]?.id : created?.id;
       }
 
-      if (movementType === "EGRESO" && movementId) {
+      if (movementType === "EGRESO" && !isConciliation && movementId) {
         await saveInvoiceForMovement(movementId);
         queryClient.invalidateQueries({
           queryKey: querySupplierAccountsListKey(),
@@ -1002,7 +1009,14 @@ export default function AccountControl() {
                 </>
               )}
 
-              {movementType === "EGRESO" && (
+              {movementType === "EGRESO" && isConciliation && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                  Movimiento de conciliación de una orden de pago. No registra
+                  factura.
+                </div>
+              )}
+
+              {movementType === "EGRESO" && !isConciliation && (
                 <InvoiceDataFields
                   ref={invoiceFieldsRef}
                   accountMovement={selectedMovement}
