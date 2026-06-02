@@ -49,6 +49,7 @@ const EXPENSE_CATEGORY_OPTIONS = [
   { value: "GASTOS_BANCARIOS", label: "Gastos bancarios" },
   { value: "IMPUESTOS", label: "Impuestos" },
   { value: "PAGO_HABERES", label: "Pago de Haberes" },
+  { value: "OTRO", label: "Otro" },
 ];
 
 function movementKindLabel(kind) {
@@ -285,7 +286,7 @@ export default function AccountControl() {
   const isConciliation = Boolean(selectedMovement?.is_payment_order);
 
   // Solo los egresos con concepto "Factura de proveedor" exigen factura.
-  // Gastos bancarios, impuestos y pago de haberes son excepciones sin factura.
+  // Gastos bancarios, impuestos, pago de haberes y otro son excepciones sin factura.
   const requiresInvoice =
     movementType === "EGRESO" && !isConciliation && expenseCategory === "FACTURA";
 

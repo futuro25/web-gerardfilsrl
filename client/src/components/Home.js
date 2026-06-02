@@ -34,7 +34,7 @@ export default function Home() {
     { label: "Facturas Ventas", icon: FileText, path: "/entregas", order: 6 },
     // { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow", order: 7 },
     { label: "Cheques", icon: Banknote, path: "/cheques", order: 8 },
-    // { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion", order: 9 },
+    { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion", order: 9 },
     // { label: "Libros", icon: BookOpenCheck, path: "/libros-selector", order: 10 },
     { label: "Export Fiscal", icon: FileDown, path: "/exportacion-fiscal", order: 11 },
     { label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 },
