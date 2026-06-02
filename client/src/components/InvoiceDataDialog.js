@@ -221,7 +221,10 @@ export default function InvoiceDataDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto p-6 gap-4">
+        <DialogContent
+          className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto p-6 gap-4"
+          onOpenAutoFocus={(e) => e.preventDefault()}
+        >
           <DialogTitle className="text-lg font-semibold text-slate-800 pr-8">
             Ingresar datos de factura
           </DialogTitle>
@@ -250,6 +253,7 @@ export default function InvoiceDataDialog({
                     rules={{ required: true }}
                     render={({ field }) => (
                       <SelectComboBox
+                        key={`${movementId ?? "new"}-${open}`}
                         options={supplierOptions}
                         value={field.value}
                         onChange={field.onChange}

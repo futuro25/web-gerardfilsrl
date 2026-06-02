@@ -99,6 +99,12 @@ export default function SelectComboBox({ options, value, onChange }) {
     setIsOpen(true);
   }, []);
 
+  // Cerrar al cambiar valor externo (ej. otro movimiento / reapertura de diálogo)
+  useEffect(() => {
+    setIsOpen(false);
+    setQuery("");
+  }, [value?.id]);
+
   return (
     <div className="w-[256px] h-[52px]">
       <Combobox
@@ -113,7 +119,6 @@ export default function SelectComboBox({ options, value, onChange }) {
             }
             displayValue={(option) => option?.label || ""}
             onChange={handleInputChange}
-            onFocus={handleOpen}
           />
           <ComboboxButton 
             className="group absolute inset-y-0 right-0 px-2.5"
