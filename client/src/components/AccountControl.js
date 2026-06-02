@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { DateTime } from "luxon";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Eye } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Eye, Pin } from "lucide-react";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
 import Spinner from "./common/Spinner";
@@ -43,6 +43,15 @@ const MOVEMENT_KIND_OPTIONS = [
   { value: "FIJO", label: "Fijo" },
 ];
 
+// Concepto del egreso. "FACTURA" exige factura asociada; el resto son
+// excepciones que se registran sin factura.
+const EXPENSE_CATEGORY_OPTIONS = [
+  { value: "FACTURA", label: "Factura de proveedor" },
+  { value: "GASTOS_BANCARIOS", label: "Gastos bancarios" },
+  { value: "IMPUESTOS", label: "Impuestos" },
+  { value: "PAGO_HABERES", label: "Pago de Haberes" },
+];
+
 function movementKindLabel(kind) {
   const k = kind || "UNICA VEZ";
   return MOVEMENT_KIND_OPTIONS.find((o) => o.value === k)?.label ?? "Única vez";
@@ -79,6 +88,7 @@ export default function AccountControl() {
   const [viewAll, setViewAll] = useState(false);
   const [isCheque, setIsCheque] = useState(false);
   const [movementType, setMovementType] = useState("INGRESO");
+  const [expenseCategory, setExpenseCategory] = useState("FACTURA");
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState(null);
   const [detailSearch, setDetailSearch] = useState("");
@@ -89,6 +99,7 @@ export default function AccountControl() {
   const [invoiceShowErrors, setInvoiceShowErrors] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [detailMovement, setDetailMovement] = useState(null);
+  const [togglingFixedId, setTogglingFixedId] = useState(null);
   const invoiceFieldsRef = useRef(null);
   /** Orden de listado por fecha: coincide con el API; default asc (más antiguas primero). */
   const [dateOrder, setDateOrder] = useState("asc");
@@ -209,6 +220,42 @@ export default function AccountControl() {
     setInvoiceDialogOpen(true);
   };
 
+  const buildMovementUpdateBody = (movement, overrides = {}) => ({
+    id: movement.id,
+    type: movement.type,
+    movement_kind: movement.movement_kind || "UNICA VEZ",
+    date: movement.date,
+    amount: movement.amount,
+    description: movement.description || null,
+    is_cheque: movement.is_cheque || false,
+    cheque_number: movement.cheque_number || null,
+    cheque_bank: movement.cheque_bank || null,
+    cheque_due_date: movement.cheque_due_date || null,
+    expense_category: movement.expense_category || null,
+    ...overrides,
+  });
+
+  const toggleFixedKind = async (movement) => {
+    const current = movement.movement_kind || "UNICA VEZ";
+    const nextKind = current === "FIJO" ? "UNICA VEZ" : "FIJO";
+    setTogglingFixedId(movement.id);
+    try {
+      await updateMutation.mutateAsync(
+        buildMovementUpdateBody(movement, { movement_kind: nextKind })
+      );
+      setAllData((prev) =>
+        prev.map((m) =>
+          m.id === movement.id ? { ...m, movement_kind: nextKind } : m
+        )
+      );
+    } catch (e) {
+      console.error(e);
+      window.alert("No se pudo actualizar la clasificación del movimiento");
+    } finally {
+      setTogglingFixedId(null);
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: createAccountMovement,
     onSuccess: invalidateAll,
@@ -238,6 +285,11 @@ export default function AccountControl() {
 
   // Movimiento de conciliación de una orden de pago: no lleva factura propia.
   const isConciliation = Boolean(selectedMovement?.is_payment_order);
+
+  // Solo los egresos con concepto "Factura de proveedor" exigen factura.
+  // Gastos bancarios, impuestos y pago de haberes son excepciones sin factura.
+  const requiresInvoice =
+    movementType === "EGRESO" && !isConciliation && expenseCategory === "FACTURA";
 
   const saveInvoiceForMovement = async (movementId) => {
     if (!invoiceFieldsRef.current?.isActive()) return;
@@ -272,11 +324,7 @@ export default function AccountControl() {
       setIsLoadingSubmit(true);
       setInvoiceShowErrors(false);
 
-      if (
-        movementType === "EGRESO" &&
-        !isConciliation &&
-        invoiceFieldsRef.current?.isActive()
-      ) {
+      if (requiresInvoice && invoiceFieldsRef.current?.isActive()) {
         const validation = invoiceFieldsRef.current.validate();
         if (!validation.ok) {
           setInvoiceShowErrors(true);
@@ -290,7 +338,7 @@ export default function AccountControl() {
 
       const body = {
         type: movementType,
-        movement_kind: data.movement_kind,
+        movement_kind: selectedMovement?.movement_kind || "UNICA VEZ",
         date: data.date,
         amount: parseFloat(data.amount),
         description: data.description,
@@ -298,6 +346,8 @@ export default function AccountControl() {
         cheque_number: chequeActive ? data.cheque_number : null,
         cheque_bank: chequeActive ? data.cheque_bank : null,
         cheque_due_date: chequeActive ? data.cheque_due_date : null,
+        expense_category:
+          movementType === "EGRESO" && !isConciliation ? expenseCategory : null,
       };
 
       let movementId;
@@ -309,7 +359,7 @@ export default function AccountControl() {
         movementId = Array.isArray(created) ? created[0]?.id : created?.id;
       }
 
-      if (movementType === "EGRESO" && !isConciliation && movementId) {
+      if (requiresInvoice && movementId) {
         await saveInvoiceForMovement(movementId);
         queryClient.invalidateQueries({
           queryKey: querySupplierAccountsListKey(),
@@ -319,6 +369,7 @@ export default function AccountControl() {
       setIsLoadingSubmit(false);
       setIsCheque(false);
       setMovementType("INGRESO");
+      setExpenseCategory("FACTURA");
       setSelectedMovement(null);
       setInvoiceShowErrors(false);
       invoiceFieldsRef.current?.reset();
@@ -345,6 +396,7 @@ export default function AccountControl() {
     setSelectedMovement(movement);
     setMovementType(movement.type);
     setIsCheque(movement.is_cheque || false);
+    setExpenseCategory(movement.expense_category || "FACTURA");
     reset({
       movement_kind: movement.movement_kind || "UNICA VEZ",
       date: movement.date ? DateTime.fromISO(movement.date).toFormat("yyyy-MM-dd") : "",
@@ -370,6 +422,7 @@ export default function AccountControl() {
   const onCancel = () => {
     setIsCheque(false);
     setMovementType("INGRESO");
+    setExpenseCategory("FACTURA");
     setIsLoadingSubmit(false);
     setSelectedMovement(null);
     setInvoiceShowErrors(false);
@@ -454,6 +507,7 @@ export default function AccountControl() {
               onClick={() => {
                 setSelectedMovement(null);
                 setMovementType("EGRESO");
+                setExpenseCategory("FACTURA");
                 setIsCheque(false);
                 setInvoiceShowErrors(false);
                 invoiceFieldsRef.current?.reset();
@@ -782,6 +836,37 @@ export default function AccountControl() {
                                   </td>
                                   <td className="!text-xs text-center border-b border-slate-100 p-3">
                                     <div className="flex items-center justify-center gap-1 flex-wrap">
+                                      {m.type === "EGRESO" && (
+                                        <button
+                                          type="button"
+                                          className={utils.cn(
+                                            "p-0.5 rounded transition-colors disabled:opacity-40",
+                                            kind === "FIJO"
+                                              ? "text-sky-600 hover:text-sky-800"
+                                              : "text-slate-300 hover:text-sky-600"
+                                          )}
+                                          onClick={() => toggleFixedKind(m)}
+                                          disabled={togglingFixedId === m.id}
+                                          title={
+                                            kind === "FIJO"
+                                              ? "Quitar marca de gasto fijo"
+                                              : "Marcar como gasto fijo"
+                                          }
+                                          aria-label={
+                                            kind === "FIJO"
+                                              ? "Quitar marca de gasto fijo"
+                                              : "Marcar como gasto fijo"
+                                          }
+                                          aria-pressed={kind === "FIJO"}
+                                        >
+                                          <Pin
+                                            className={utils.cn(
+                                              "w-4 h-4",
+                                              kind === "FIJO" && "fill-current"
+                                            )}
+                                          />
+                                        </button>
+                                      )}
                                       {/* Ver detalle */}
                                       <button
                                         type="button"
@@ -900,19 +985,6 @@ export default function AccountControl() {
                 )}
               </div>
 
-              {/* Clasificación: Fijo / Pendiente / Única vez */}
-              <div>
-                <label className="text-xs font-sans text-gray-900 mb-2 block">Clasificación</label>
-                <select
-                  className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"
-                  {...register("movement_kind", { required: true })}
-                >
-                  {MOVEMENT_KIND_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-
               {/* Date */}
               <Input
                 label="Fecha"
@@ -1017,15 +1089,37 @@ export default function AccountControl() {
               )}
 
               {movementType === "EGRESO" && !isConciliation && (
+                <div>
+                  <label className="text-xs font-sans text-gray-900 mb-2 block">
+                    Concepto del egreso
+                  </label>
+                  <select
+                    className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"
+                    value={expenseCategory}
+                    onChange={(e) => setExpenseCategory(e.target.value)}
+                  >
+                    {EXPENSE_CATEGORY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-500 mt-2">
+                    {requiresInvoice
+                      ? "Requiere cargar la factura asociada."
+                      : "Concepto exento: se registra sin factura asociada."}
+                  </p>
+                </div>
+              )}
+
+              {requiresInvoice && (
                 <InvoiceDataFields
                   ref={invoiceFieldsRef}
                   accountMovement={selectedMovement}
                   movementDate={watchedDate}
                   movementAmount={watchedAmount}
                   movementDescription={watchedDescription}
-                  enabled={movementType === "EGRESO"}
+                  enabled={requiresInvoice}
                   showErrors={invoiceShowErrors}
-                  required={movementType === "EGRESO"}
+                  required={requiresInvoice}
                 />
               )}
 

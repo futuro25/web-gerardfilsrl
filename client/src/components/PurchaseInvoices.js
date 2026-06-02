@@ -4,7 +4,7 @@ import { Controller, useForm } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { sortBy } from "lodash";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { ExternalLinkIcon, Eye, UploadIcon } from "lucide-react";
+import { ExternalLinkIcon, Eye, UploadIcon, Receipt } from "lucide-react";
 import { DateTime } from "luxon";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
@@ -12,6 +12,7 @@ import Spinner from "./common/Spinner";
 import SelectComboBox from "./common/SelectComboBox";
 import SupplierQuickCreateDialog from "./SupplierQuickCreateDialog";
 import PurchaseInvoiceDetailDialog from "./PurchaseInvoiceDetailDialog";
+import PaymentOrderViewDialog from "./PaymentOrderViewDialog";
 import * as utils from "../utils/utils";
 import { useSuppliersQuery } from "../apis/api.suppliers";
 import {
@@ -62,6 +63,8 @@ export default function PurchaseInvoices() {
   const [isDragging, setIsDragging] = useState(false);
   const [detailInvoice, setDetailInvoice] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [poViewInvoice, setPoViewInvoice] = useState(null);
+  const [poViewOpen, setPoViewOpen] = useState(false);
 
   const {
     register,
@@ -155,6 +158,11 @@ export default function PurchaseInvoices() {
   const openDetail = (inv) => {
     setDetailInvoice(inv);
     setDetailOpen(true);
+  };
+
+  const openPaymentOrderView = (inv) => {
+    setPoViewInvoice(inv);
+    setPoViewOpen(true);
   };
 
   const openCreate = () => {
@@ -385,13 +393,16 @@ export default function PurchaseInvoices() {
                         <th className="border-b font-medium p-3 text-slate-400 text-center">
                           Factura
                         </th>
+                        <th className="border-b font-medium p-3 text-slate-400 text-center">
+                          Orden de pago
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white">
                       {invoices.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={7}
+                            colSpan={8}
                             className="p-6 text-center text-slate-400"
                           >
                             {listFetching
@@ -459,6 +470,25 @@ export default function PurchaseInvoices() {
                                   )}
                                 />
                               </button>
+                            </td>
+                            <td className="p-3 text-center">
+                              {inv.has_payment_order ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openPaymentOrderView(inv)}
+                                  title={`Ver orden de pago ${
+                                    inv.payment_order?.order_number || ""
+                                  }`}
+                                  className="inline-flex items-center justify-center"
+                                >
+                                  <Receipt className="h-5 w-5 text-emerald-600 hover:text-emerald-700" />
+                                </button>
+                              ) : (
+                                <Receipt
+                                  className="h-5 w-5 text-slate-300 mx-auto"
+                                  aria-label="Sin orden de pago"
+                                />
+                              )}
                             </td>
                           </tr>
                         ))
@@ -805,6 +835,19 @@ export default function PurchaseInvoices() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         invoice={detailInvoice}
+      />
+
+      <PaymentOrderViewDialog
+        open={poViewOpen}
+        onOpenChange={setPoViewOpen}
+        order={poViewInvoice?.payment_order}
+        supplierName={
+          poViewInvoice?.supplier?.fantasy_name ||
+          poViewInvoice?.supplier_name ||
+          poViewInvoice?.supplier?.name ||
+          null
+        }
+        invoiceNumber={poViewInvoice?.invoice_number || null}
       />
     </>
   );

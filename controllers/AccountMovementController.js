@@ -261,6 +261,7 @@ self.createMovement = async (req, res) => {
       cheque_number: req.body.cheque_number || null,
       cheque_bank: req.body.cheque_bank || null,
       cheque_due_date: req.body.cheque_due_date || null,
+      expense_category: req.body.expense_category || null,
     };
 
     // For cheques, use cheque_due_date as the movement date for ordering
@@ -344,6 +345,7 @@ self.updateMovement = async (req, res) => {
       cheque_number: req.body.cheque_number || null,
       cheque_bank: req.body.cheque_bank || null,
       cheque_due_date: req.body.cheque_due_date || null,
+      expense_category: req.body.expense_category || null,
     };
 
     if (update.is_cheque && update.cheque_due_date) {

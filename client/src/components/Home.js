@@ -29,16 +29,21 @@ export default function Home() {
     { label: "Stock", icon: ShirtIcon, path: "/stock", order: 1 },
     { label: "Pedidos", icon: BookOpenCheck, path: "/pedidos", order: 2 },
     { label: "Egreso de Mercaderia", icon: Package, path: "/remitos", order: 3 },
-    { label: "Proveedores", icon: TruckIcon, path: "/proveedores", order: 4 },
-    { label: "Clientes", icon: UsersIcon, path: "/clientes", order: 5 },
+    // { label: "Proveedores", icon: TruckIcon, path: "/proveedores", order: 4 },
+    // { label: "Clientes", icon: UsersIcon, path: "/clientes", order: 5 },
     { label: "Facturas Ventas", icon: FileText, path: "/entregas", order: 6 },
     // { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow", order: 7 },
     { label: "Cheques", icon: Banknote, path: "/cheques", order: 8 },
-    { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion", order: 9 },
+    // { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion", order: 9 },
     // { label: "Libros", icon: BookOpenCheck, path: "/libros-selector", order: 10 },
     { label: "Export Fiscal", icon: FileDown, path: "/exportacion-fiscal", order: 11 },
     { label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 },
   ];
+
+  // Export Fiscal solo visible para el usuario "lgedeon"
+  if (sessionStorage.username !== "lgedeon") {
+    navItems = navItems.filter((item) => item.label !== "Export Fiscal");
+  }
 
   if (sessionStorage.type === "ADMIN") {
     navItems.pop();
@@ -103,12 +108,6 @@ export default function Home() {
 
   navItems.sort((a, b) => a.order - b.order);
 
-  const logoutItem = navItems.find((item) => item.path === "/logout");
-  const newItems = navItems.filter((item) => item.isNew);
-  const mainItems = navItems.filter(
-    (item) => !item.isNew && item.path !== "/logout"
-  );
-
   return (
     <div className="px-4 h-full overflow-auto mt-0 flex flex-col items-center justify-start">
       <div className="w-full flex flex-col sticky top-0 z-10 rounded pb-4 items-center justify-center mt-10">
@@ -119,24 +118,10 @@ export default function Home() {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        {mainItems.map((item, index) => (
+        {navItems.map((item, index) => (
           <HomeButton key={index} item={item} />
         ))}
       </div>
-
-      {newItems.length > 0 && (
-        <div className="grid grid-cols-3 gap-4 mt-4">
-          {newItems.map((item, index) => (
-            <HomeButton key={`new-${index}`} item={item} />
-          ))}
-        </div>
-      )}
-
-      {logoutItem && (
-        <div className="grid grid-cols-3 gap-4 mt-4">
-          <HomeButton item={logoutItem} />
-        </div>
-      )}
 
       {/* dosmil12 signature */}
       <div className="flex flex-col items-center gap-2 mt-10 mb-6">
