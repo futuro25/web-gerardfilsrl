@@ -1,134 +1,38 @@
 import React, { useState } from 'react';
 import { Calculator, FileText, DollarSign, X, Table } from 'lucide-react';
 import { Dialog, DialogContent } from './common/Dialog';
-
-const RETENTION_SCALES = [
-  { min: 0, max: 8000, fixed: 0, percentage: 0.05 },
-  { min: 8000, max: 16000, fixed: 400, percentage: 0.09 },
-  { min: 16000, max: 24000, fixed: 1120, percentage: 0.12 },
-  { min: 24000, max: 32000, fixed: 2080, percentage: 0.15 },
-  { min: 32000, max: 48000, fixed: 3280, percentage: 0.19 },
-  { min: 48000, max: 64000, fixed: 6320, percentage: 0.23 },
-  { min: 64000, max: 96000, fixed: 10000, percentage: 0.27 },
-  { min: 96000, max: Infinity, fixed: 18640, percentage: 0.31 },
-];
-
-const RETENTION_TABLE = {
-  "19": { inscripto: 0.03, noInscripto: 0.10, montoNoSujeto: 0, usaEscala: false, descripcion: "Intereses por operaciones realizadas en entidades financieras" },
-  "21": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 7870, usaEscala: false, descripcion: "ntereses originados en operaciones no comprendidas en la categoria 19." },
-  "25": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 16830, usaEscala: true, descripcion: "Comisiones u otras retribuciones derivadas de la actividad de comisionista, rematador, consignatario y demás auxiliares de comercio a que se refiere el inciso c) del artículo 49 de la Ley de Impuesto a las Ganancias, texto ordenado en 1997 y sus modificaciones" },
-  "30": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 11200, usaEscala: false, descripcion: "Alquileres o arrendamientos de bienes muebles" },
-  "31": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 11200, usaEscala: false, descripcion: "Bienes Inmuebles Urbanos, incluidos los efectuados bajo la modalidad de leasing – incluye suburbanos." },
-  "32": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 11200, usaEscala: false, descripcion: "Bienes Inmuebles Rurales, incluidos los efectuados bajo la modalidad de leasing – incluye subrurales." },
-  "35": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 7870, usaEscala: false, descripcion: "Regalias" },
-  "43": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 7870, usaEscala: false, descripcion: "Interés accionario, excedentes y retornos distribuidos entre asociados, cooperativas - excepto consumo" },
-  "51": { inscripto: 0.06, noInscripto: 0.28, montoNoSujeto: 7870, usaEscala: false, descripcion: "Obligaciones de no hacer, o por abandono o no ejercicio de una actividad" },
-  "53": { inscripto: 0.005, noInscripto: 0.02, montoNoSujeto: 0, usaEscala: false, descripcion: "Operaciones realizadas por intermedio de mercados de cereales a término que se resuelvan en el curso del término (arbitrajes) y de mercados de futuros y opciones" },
-  "55": { inscripto: 0.005, noInscripto: 0.02, montoNoSujeto: 0, usaEscala: false, descripcion: "Distribución de películas. Transmisión de programación. Televisión vía satelital" },
-  "78": { inscripto: 0.02, noInscripto: 0.10, montoNoSujeto: 224000, usaEscala: false, descripcion: "Enajenación de bienes muebles y bienes de cambio" },
-  "86": { inscripto: 0.02, noInscripto: 0.10, montoNoSujeto: 224000, usaEscala: false, descripcion: "Transferencia temporaria o definitiva de derechos de llave, marcas, patentes de invención, regalías, concesiones y similares" },
-  "94": { inscripto: 0.02, noInscripto: 0.28, montoNoSujeto: 67170, usaEscala: false, descripcion: "Locaciones de obra y/o servicios no ejecutados en relación de dependencia no mencionados expresamente en otros incisos" },
-  "95": { inscripto: 0.0025, noInscripto: 0.28, montoNoSujeto: 67170, usaEscala: false, descripcion: "Operaciones de transporte de carga nacional e internacional" },
-  "110": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 10000, usaEscala: true, descripcion: "Explotación de derechos de autor (Ley N° 11.723)" },
-  "111": { inscripto: 0.005, noInscripto: 0.02, montoNoSujeto: 0, usaEscala: false, descripcion: "Cualquier otra cesión o locación de derechos, excepto las que correspondan a operaciones realizadas por intermedio de mercados de cereales a término que se resuelvan en el curso del término (arbitrajes) y de mercados de futuros y opciones." },
-  "112": { inscripto: 0.03, noInscripto: 0.03, montoNoSujeto: 16830, usaEscala: false, descripcion: "SeguridadBeneficios provenientes del cumplimiento de los requisitos de los planes de seguro de retiro privados administrados por entidades sujetas al control de la Superintendencia de Seguros de la Nación, establecidos por el inciso d) del artículo 45 y el inciso d) del artículo 79, de la Ley de Impuesto a las Ganancias, texto ordenado en 1997 y sus modificaciones -excepto cuando se encuentren alcanzados por el régimen de retención establecido por la Resolución General N° 2,437, sus modificatorias y complementarias." },
-  "113": { inscripto: 0.03, noInscripto: 0.03, montoNoSujeto: 16830, usaEscala: false, descripcion: "VigilanciaRescates -totales o parciales- por desistimiento de los planes de seguro de retiro a que se refiere el inciso o), excepto que sea de aplicación lo normado en el artículo 101 de la Ley de Impuesto a las Ganancias, texto ordenado en 1997 y sus modificaciones." },
-  "116": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 67170, usaEscala: true, descripcion: "Honorarios de director de sociedades anónimas, síndico, fiduciario, consejero de sociedades cooperativas, integrante de consejos de vigilancia y socios administradores de las sociedades de responsabilidad limitada, en comandita simple y en comandita por acciones." },
-  "124": { inscripto: null, noInscripto: 0.28, montoNoSujeto: 16830, usaEscala: true, descripcion: "Corredor, viajante de comercio y despachante de aduana" },
-  "779": { inscripto: 0.02, noInscripto: 0.10, montoNoSujeto: 76140, usaEscala: false, descripcion: "Subsidios abonados por los Estados Nacional, provinciales, municipales o el Gobierno de la Ciudad Autónoma de Buenos Ares, en concepto de enajenación de bienes muebles y bienes de cambio, en la medida que una ley general o especial no establezca la exención de los mismos en el impuesto a las ganancias. " },
-  "780": { inscripto: 0.02, noInscripto: 0.28, montoNoSujeto: 31460, usaEscala: false, descripcion: "Subsidios abonados por los Estados Nacional, provinciales, municipales o el Gobierno de la Ciudad Autónoma de Buenos Aires, en concepto de locaciones de obra y/o servicios, no ejecutados en relación de dependencia, en la medida que una ley general o especial no establezca la exención de los mismos en el impuesto a las ganancias." },
-};
-
-function calculateNetAndIVA(totalAmount) {
-  const factor = 1 + 0.21;
-  const netAmount = totalAmount / factor;
-  const iva = totalAmount - netAmount;
-  return {
-    netAmount: Math.round(netAmount * 100) / 100,
-    iva: Math.round(iva * 100) / 100,
-  };
-}
-
-function calculateScaleRetention(netAmount, montoNoSujeto) {
-  if (netAmount <= montoNoSujeto) {
-    return 0;
-  }
-
-  const montoSujeto = netAmount - montoNoSujeto;
-  
-  const scale = RETENTION_SCALES.find(
-    (s) => montoSujeto >= s.min && montoSujeto < s.max
-  );
-
-  if (!scale) {
-    return 0;
-  }
-
-  const retention = scale.fixed + (montoSujeto - scale.min) * scale.percentage;
-  return Math.round(retention * 100) / 100;
-}
+import {
+  RETENTION_TABLE,
+  RETENTION_SCALES,
+  calculateRetention as calcCore,
+} from '../utils/retention';
 
 function calculateRetention(categoryCode, inscripto, amount) {
   if (amount <= 0) {
-    return {
-      retention: 0,
-      netAmount: 0,
-      iva: 0,
-      details: { error: "El monto debe ser mayor a 0" }
-    };
+    return { retention: 0, netAmount: 0, iva: 0, details: { error: "El monto debe ser mayor a 0" } };
   }
 
   const categoryConfig = RETENTION_TABLE[categoryCode];
-
   if (!categoryConfig) {
-    return {
-      retention: 0,
-      netAmount: 0,
-      iva: 0,
-      details: { error: `Categoría ${categoryCode} no encontrada` }
-    };
+    return { retention: 0, netAmount: 0, iva: 0, details: { error: `Categoría ${categoryCode} no encontrada` } };
   }
 
-  const { netAmount, iva } = calculateNetAndIVA(amount);
+  // Cálculo unificado: única fuente de verdad en utils/retention.js
+  const { retention, netAmount, iva } = calcCore(categoryCode, inscripto, amount);
   const montoNoSujeto = categoryConfig.montoNoSujeto;
 
-  let retention = 0;
-  let calculationMethod = "";
-
-  if (inscripto) {
-    if (categoryConfig.usaEscala) {
-      retention = calculateScaleRetention(netAmount, montoNoSujeto);
-      calculationMethod = "Escala progresiva para inscriptos";
-    } else {
-      const porcentaje = categoryConfig.inscripto;
-      
-      if (porcentaje === null) {
-        retention = 0;
-        calculationMethod = "Sin retención para inscriptos";
-      } else {
-        if (netAmount > montoNoSujeto) {
-          retention = Math.round((netAmount - montoNoSujeto) * porcentaje * 100) / 100;
-          calculationMethod = `${(porcentaje * 100).toFixed(2)}% sobre monto que excede $${montoNoSujeto.toLocaleString('es-AR')}`;
-        } else {
-          retention = 0;
-          calculationMethod = `Monto no supera el mínimo no sujeto de $${montoNoSujeto.toLocaleString('es-AR')}`;
-        }
-      }
-    }
+  // Texto informativo del método aplicado (no afecta el número)
+  let calculationMethod;
+  if (categoryConfig.usaEscala && inscripto) {
+    calculationMethod = "Escala progresiva para inscriptos";
   } else {
-    if (categoryConfig.usaEscala) {
-      retention = calculateScaleRetention(netAmount, montoNoSujeto);
-      calculationMethod = "Escala progresiva para no inscriptos";
+    const porcentaje = inscripto ? categoryConfig.inscripto : categoryConfig.noInscripto;
+    if (porcentaje === null || porcentaje === undefined) {
+      calculationMethod = "Sin retención para inscriptos";
+    } else if (netAmount > montoNoSujeto) {
+      calculationMethod = `${(porcentaje * 100).toFixed(2)}% sobre monto que excede $${montoNoSujeto.toLocaleString('es-AR')}`;
     } else {
-      const porcentaje = categoryConfig.noInscripto;
-      
-      if (netAmount > montoNoSujeto) {
-        retention = Math.round((netAmount - montoNoSujeto) * porcentaje * 100) / 100;
-        calculationMethod = `${(porcentaje * 100).toFixed(2)}% sobre monto que excede $${montoNoSujeto.toLocaleString('es-AR')}`;
-      } else {
-        retention = 0;
-        calculationMethod = `Monto no supera el mínimo no sujeto de $${montoNoSujeto.toLocaleString('es-AR')}`;
-      }
+      calculationMethod = `Monto no supera el mínimo no sujeto de $${montoNoSujeto.toLocaleString('es-AR')}`;
     }
   }
 
@@ -143,8 +47,8 @@ function calculateRetention(categoryCode, inscripto, amount) {
       montoTotal: amount,
       montoNoSujeto,
       metodoCalculo: calculationMethod,
-      montoCobrar: amount - retention
-    }
+      montoCobrar: amount - retention,
+    },
   };
 }
 

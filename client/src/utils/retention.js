@@ -30,7 +30,7 @@ export const REGIMEN_830_CATEGORIES = [
 ];
 
 // Escalas para cálculo de retenciones según RG 4525
-const RETENTION_SCALES = [
+export const RETENTION_SCALES = [
   { min: 0, max: 8000, fixed: 0, percentage: 0.05 },
   { min: 8000, max: 16000, fixed: 400, percentage: 0.09 },
   { min: 16000, max: 24000, fixed: 1120, percentage: 0.12 },
@@ -68,6 +68,14 @@ export const RETENTION_TABLE = {
   "780": { inscripto: 0.02, noInscripto: 0.28, montoNoSujeto: 31460, usaEscala: false },
 };
 
+// Enriquecemos la tabla con la descripción de cada categoría usando una única
+// fuente (REGIMEN_830_CATEGORIES), para que ningún componente duplique los textos.
+REGIMEN_830_CATEGORIES.forEach((cat) => {
+  if (RETENTION_TABLE[cat.code]) {
+    RETENTION_TABLE[cat.code].descripcion = cat.description;
+  }
+});
+
 export function calculateNetAndIVA(totalAmount) {
   const factor = 1 + 0.21;
   const netAmount = totalAmount / factor;
@@ -102,9 +110,12 @@ export function calculateRetention(categoryCode, inscripto, totalAmount) {
   const montoNoSujeto = categoryConfig.montoNoSujeto;
   let retention = 0;
 
-  if (categoryConfig.usaEscala) {
+  if (categoryConfig.usaEscala && inscripto) {
+    // Inscripto en categoría con escala: escala progresiva sobre el monto sujeto
     retention = calculateScaleRetention(netAmount, montoNoSujeto);
   } else {
+    // Resto de casos (sin escala, o no inscripto): alícuota fija sobre el monto sujeto.
+    // El no inscripto en categorías con escala tributa la alícuota fija (28%), sin escala.
     const porcentaje = inscripto
       ? categoryConfig.inscripto
       : categoryConfig.noInscripto;

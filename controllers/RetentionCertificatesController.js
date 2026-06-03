@@ -4,16 +4,18 @@ const self = {};
 const supabase = require("./db.js");
 const _ = require("lodash");
 
-// Escalas para cálculo de retenciones según RG 4525
+// Escalas para cálculo de retenciones según RG 4525.
+// Fuente única: debe coincidir con client/src/utils/retention.js para que el
+// preview que ve el usuario sea igual al monto que se guarda.
 const RETENTION_SCALES = [
-  { min: 0, max: 5000, fixed: 0, percentage: 0 },
-  { min: 5000, max: 10000, fixed: 250, percentage: 0.09 },
-  { min: 10000, max: 15000, fixed: 700, percentage: 0.12 },
-  { min: 15000, max: 20000, fixed: 1300, percentage: 0.15 },
-  { min: 20000, max: 30000, fixed: 2050, percentage: 0.19 },
-  { min: 30000, max: 40000, fixed: 3950, percentage: 0.23 },
-  { min: 40000, max: 60000, fixed: 6250, percentage: 0.27 },
-  { min: 60000, max: Infinity, fixed: 11650, percentage: 0.31 },
+  { min: 0, max: 8000, fixed: 0, percentage: 0.05 },
+  { min: 8000, max: 16000, fixed: 400, percentage: 0.09 },
+  { min: 16000, max: 24000, fixed: 1120, percentage: 0.12 },
+  { min: 24000, max: 32000, fixed: 2080, percentage: 0.15 },
+  { min: 32000, max: 48000, fixed: 3280, percentage: 0.19 },
+  { min: 48000, max: 64000, fixed: 6320, percentage: 0.23 },
+  { min: 64000, max: 96000, fixed: 10000, percentage: 0.27 },
+  { min: 96000, max: Infinity, fixed: 18640, percentage: 0.31 },
 ];
 
 // Tabla AFIP de retenciones: Categoría -> { inscripto: %, noInscripto: %, montoNoSujeto: $, usaEscala: boolean }
@@ -57,15 +59,33 @@ function calculateNetAndIVA(totalAmount) {
 }
 
 /**
- * Calcula la retención según la categoría, el importe neto y la condición frente a ganancias
- * Esta función calcula la retención sobre un monto individual (sin considerar acumulado mensual)
+ * Aplica la escala progresiva (RG 4525) sobre el monto sujeto a retención.
+ * El monto no sujeto ya viene restado en `montoSujeto`.
+ */
+function calculateScaleRetention(montoSujeto) {
+  if (montoSujeto <= 0) return 0;
+  const scale = RETENTION_SCALES.find(
+    (s) => montoSujeto >= s.min && montoSujeto < s.max
+  );
+  if (!scale) return 0;
+  const retention = scale.fixed + (montoSujeto - scale.min) * scale.percentage;
+  return Math.round(retention * 100) / 100;
+}
+
+/**
+ * Calcula la retención según la categoría, el importe neto y la condición frente a ganancias.
+ * Esta función calcula la retención sobre un monto individual (sin considerar acumulado mensual).
+ *
+ * Regla general RG 830: se resta el monto no sujeto al neto para obtener la base
+ * (monto sujeto a retención). El monto no sujeto NUNCA se suma a la retención.
+ *   - Categorías con escala + Inscripto: escala progresiva sobre el monto sujeto.
+ *   - Categorías con escala + No inscripto: alícuota fija (28%) sobre el monto sujeto.
+ *   - Categorías sin escala: alícuota fija (según condición) sobre el monto sujeto.
  */
 function calculateRetention(categoryCode, netAmount, profitsCondition) {
-  let retention = 0;
-
   // Obtener configuración de la categoría
   const categoryConfig = RETENTION_TABLE[categoryCode];
-  
+
   if (!categoryConfig) {
     // Si la categoría no está en la tabla, retención 0
     return 0;
@@ -74,71 +94,30 @@ function calculateRetention(categoryCode, netAmount, profitsCondition) {
   // Determinar si es inscripto o no inscripto (por defecto "Inscripto" si no se especifica)
   const condition = profitsCondition || "Inscripto";
   const isInscripto = condition === "Inscripto" || condition === "inscripto";
-  
-  // Para categorías con escala: regla especial
-  if (categoryConfig.usaEscala) {
-    // Para montos menores a 5000, no se retiene nada
-    if (netAmount < 5000) {
-      return 0;
-    }
-    
-    // Para montos mayores o iguales a 5000, se retiene el monto no sujeto a retención
-    // Calcular base imponible (restar monto no sujeto a retención)
-    const baseImponible = Math.max(0, netAmount - categoryConfig.montoNoSujeto);
-    
-    if (isInscripto) {
-      // Para inscriptos: usar escala progresiva sobre la base imponible
-      const scale = RETENTION_SCALES.find(
-        (s) => baseImponible >= s.min && baseImponible < s.max
-      );
 
-      if (scale) {
-        if (scale.max === Infinity) {
-          // Última escala: aplicar sobre el excedente del mínimo
-          const excedente = baseImponible - scale.min;
-          const calculatedRetention = excedente * scale.percentage;
-          const retentionEscala = scale.fixed + calculatedRetention;
-          // Sumar el monto no sujeto a retención
-          retention = Math.round((categoryConfig.montoNoSujeto + retentionEscala) * 100) / 100;
-        } else {
-          // Otras escalas: aplicar sobre el excedente del mínimo
-          const excedente = baseImponible - scale.min;
-          const calculatedRetention = excedente * scale.percentage;
-          const retentionEscala = scale.fixed + calculatedRetention;
-          // Sumar el monto no sujeto a retención
-          retention = Math.round((categoryConfig.montoNoSujeto + retentionEscala) * 100) / 100;
-        }
-      } else {
-        // Si no encuentra escala, solo retener el monto no sujeto
-        retention = Math.round(categoryConfig.montoNoSujeto * 100) / 100;
-      }
-    } else {
-      // Para no inscriptos: aplicar porcentaje sobre la base imponible + monto no sujeto
-      const retentionPorcentaje = Math.round(baseImponible * categoryConfig.noInscripto * 100) / 100;
-      // Sumar el monto no sujeto a retención
-      retention = Math.round((categoryConfig.montoNoSujeto + retentionPorcentaje) * 100) / 100;
-    }
-  } else {
-    // Para categorías sin escala: calcular base imponible (restar monto no sujeto a retención)
-    const baseImponible = Math.max(0, netAmount - categoryConfig.montoNoSujeto);
-
-    // Si la base imponible es 0 o negativa, no hay retención
-    if (baseImponible <= 0) {
-      return 0;
-    }
-
-    if (isInscripto) {
-      // Para inscriptos: aplicar porcentaje fijo
-      if (categoryConfig.inscripto !== null) {
-        retention = Math.round(baseImponible * categoryConfig.inscripto * 100) / 100;
-      }
-    } else {
-      // Para no inscriptos: aplicar porcentaje fijo
-      retention = Math.round(baseImponible * categoryConfig.noInscripto * 100) / 100;
-    }
+  // Base sujeta a retención: neto menos el monto no sujeto a retención
+  const montoSujeto = Math.max(0, netAmount - categoryConfig.montoNoSujeto);
+  if (montoSujeto <= 0) {
+    return 0;
   }
 
-  return retention;
+  if (categoryConfig.usaEscala) {
+    if (isInscripto) {
+      // Inscripto: escala progresiva sobre el monto sujeto
+      return calculateScaleRetention(montoSujeto);
+    }
+    // No inscripto: alícuota fija (28%) sobre el monto sujeto, sin escala
+    return Math.round(montoSujeto * categoryConfig.noInscripto * 100) / 100;
+  }
+
+  // Categorías sin escala: alícuota fija según la condición
+  const porcentaje = isInscripto
+    ? categoryConfig.inscripto
+    : categoryConfig.noInscripto;
+  if (porcentaje == null) {
+    return 0;
+  }
+  return Math.round(montoSujeto * porcentaje * 100) / 100;
 }
 
 /**
