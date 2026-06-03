@@ -155,7 +155,11 @@ export default function AccountControl() {
   });
 
   useEffect(() => {
-    if (!movementsRes?.data) return;
+    if (movementsRes?.error) {
+      if (page === 1) setAllData([]);
+      return;
+    }
+    if (!Array.isArray(movementsRes?.data)) return;
     if (page === 1) {
       setAllData(movementsRes.data);
     } else {
@@ -166,6 +170,13 @@ export default function AccountControl() {
       });
     }
   }, [movementsRes, page]);
+
+  /** Al volver al listado, re-sincronizar por si la caché ya tenía datos. */
+  useEffect(() => {
+    if (stage !== "LIST") return;
+    if (movementsRes?.error || !Array.isArray(movementsRes?.data)) return;
+    if (page === 1) setAllData(movementsRes.data);
+  }, [stage, movementsRes, page]);
 
   const summaryParams = viewAll
     ? {}
@@ -224,6 +235,10 @@ export default function AccountControl() {
     return chrono;
   }, [allData, detailSearch, kindListFilter, dateOrder]);
 
+  const refreshMovementsList = async () => {
+    await queryClient.refetchQueries({ queryKey: ["account-movements"] });
+  };
+
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ["account-movements"] });
     queryClient.invalidateQueries({ queryKey: ["account-movements-summary"] });
@@ -257,7 +272,7 @@ export default function AccountControl() {
       invalidateAll();
       invalidatePaymentQueries();
       setPage(1);
-      setAllData([]);
+      await refreshMovementsList();
     } catch (e) {
       console.error(e);
       window.alert(e.message || "No se pudo eliminar el movimiento");
@@ -281,7 +296,7 @@ export default function AccountControl() {
       invalidateAll();
       invalidatePaymentQueries();
       setPage(1);
-      setAllData([]);
+      await refreshMovementsList();
     } catch (e) {
       console.error(e);
       window.alert(e.message || "No se pudo anular la orden de pago");
@@ -569,7 +584,8 @@ export default function AccountControl() {
       paymentOrderFieldsRef.current?.reset?.();
       egresoPaymentFieldsRef.current?.reset?.();
       setPage(1);
-      setAllData([]);
+      setStage("LIST");
+      await refreshMovementsList();
       reset({
         movement_kind: "UNICA VEZ",
         date: DateTime.now().toFormat("yyyy-MM-dd"),
@@ -579,7 +595,6 @@ export default function AccountControl() {
         cheque_bank: "",
         cheque_due_date: "",
       });
-      setStage("LIST");
     } catch (e) {
       console.error(e);
       setIsLoadingSubmit(false);
@@ -1483,11 +1498,11 @@ export default function AccountControl() {
         open={payOrderOpen}
         onOpenChange={setPayOrderOpen}
         movement={payOrderMovement}
-        onCreated={() => {
+        onCreated={async () => {
           invalidateAll();
           invalidatePaymentQueries();
           setPage(1);
-          setAllData([]);
+          await refreshMovementsList();
         }}
       />
 
