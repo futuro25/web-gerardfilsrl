@@ -9,6 +9,7 @@ import Button from "./common/Button";
 import FormActions from "./common/FormActions";
 import Spinner from "./common/Spinner";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./common/Tooltip";
 import * as utils from "../utils/utils";
 
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -47,6 +48,43 @@ import {
   queryPaymentOrdersByMovementKey,
   queryRetentionPaymentsKey,
 } from "../apis/queryKeys";
+
+function FixedMovementsTooltipList({ items }) {
+  if (!items?.length) {
+    return (
+      <p className="text-xs text-slate-300 py-1">No hay movimientos fijos en este período.</p>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-1.5 min-w-[14rem] max-w-[20rem]">
+      {items.map((m) => (
+        <li
+          key={m.id}
+          className="flex items-start justify-between gap-3 text-xs border-b border-white/10 last:border-b-0 pb-1.5 last:pb-0"
+        >
+          <div className="min-w-0 flex-1">
+            <span className="text-slate-300 block tabular-nums">
+              {m.date ? DateTime.fromISO(m.date).toFormat("dd/MM/yyyy") : "—"}
+            </span>
+            <span className="text-white block truncate">
+              {m.description || "Sin detalle"}
+            </span>
+          </div>
+          <span
+            className={utils.cn(
+              "font-semibold tabular-nums shrink-0",
+              m.type === "INGRESO" ? "text-green-300" : "text-red-300"
+            )}
+          >
+            {m.type === "INGRESO" ? "+" : "−"}
+            {utils.formatAmount(m.amount)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 function deleteMovementConfirmMessage(m) {
   const extras = [];
@@ -343,22 +381,33 @@ export default function AccountControl() {
     ...overrides,
   });
 
+  const refetchSummary = () =>
+    queryClient.refetchQueries({
+      queryKey: queryAccountMovementsSummaryKey(summaryParams),
+    });
+
   const toggleFixedKind = async (movement) => {
     const current = movement.movement_kind || "UNICA VEZ";
     const nextKind = current === "FIJO" ? "UNICA VEZ" : "FIJO";
     setTogglingFixedId(movement.id);
     try {
-      await updateMutation.mutateAsync(
+      const result = await updateMutation.mutateAsync(
         buildMovementUpdateBody(movement, { movement_kind: nextKind })
       );
+      if (result?.error) {
+        throw new Error(result.error);
+      }
       setAllData((prev) =>
         prev.map((m) =>
           m.id === movement.id ? { ...m, movement_kind: nextKind } : m
         )
       );
+      await refetchSummary();
     } catch (e) {
       console.error(e);
-      window.alert("No se pudo actualizar la clasificación del movimiento");
+      window.alert(
+        e.message || "No se pudo actualizar la clasificación del movimiento"
+      );
     } finally {
       setTogglingFixedId(null);
     }
@@ -770,25 +819,44 @@ export default function AccountControl() {
         {stage === "LIST" && (
           <>
             {/* Summary cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
-              <div className="bg-white border rounded-lg p-4 shadow-sm">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Saldo actual (sin cheques)</p>
-                <p className={utils.cn(
-                  "text-xl font-bold mt-1",
-                  (summary?.balanceWithoutCheques ?? 0) >= 0 ? "text-green-600" : "text-red-600"
-                )}>
-                  {utils.formatAmount(summary?.balanceWithoutCheques ?? 0)}
-                </p>
-              </div>
-              <div className="bg-white border rounded-lg p-4 shadow-sm">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Saldo actual (con cheques)</p>
-                <p className={utils.cn(
-                  "text-xl font-bold mt-1",
-                  (summary?.balanceWithCheques ?? 0) >= 0 ? "text-green-600" : "text-red-600"
-                )}>
-                  {utils.formatAmount(summary?.balanceWithCheques ?? 0)}
-                </p>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-4">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="bg-white border rounded-lg p-4 shadow-sm cursor-help hover:border-slate-300 transition-colors text-left w-full">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">
+                      Movimientos fijos{viewAll ? "" : " del mes"}
+                    </p>
+                    <p
+                      className={utils.cn(
+                        "text-xl font-bold mt-1",
+                        (summary?.totalFixed ?? 0) >= 0
+                          ? "text-green-600"
+                          : "text-red-600"
+                      )}
+                    >
+                      {utils.formatAmount(summary?.totalFixed ?? 0)}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Suma neta (ingresos − egresos) · pasá el mouse para ver el detalle
+                    </p>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  sideOffset={8}
+                  intent="dark"
+                  className="!rounded-lg !p-0 text-left overflow-hidden max-w-xs"
+                >
+                  <div className="px-3 py-2 border-b border-white/10">
+                    <p className="text-xs font-semibold text-white leading-tight m-0">
+                      Movimientos fijos ({summary?.fixedMovements?.length ?? 0})
+                    </p>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto px-3 py-2">
+                    <FixedMovementsTooltipList items={summary?.fixedMovements} />
+                  </div>
+                </TooltipContent>
+              </Tooltip>
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Ingresos del mes</p>
                 <p className="text-xl font-bold mt-1 text-green-600">

@@ -23,6 +23,76 @@ function normalizeMovementKind(value) {
   return MOVEMENT_KINDS.has(v) ? v : "UNICA VEZ";
 }
 
+function parseMovementAmount(value) {
+  const n = parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normOptionalString(value) {
+  if (value == null || value === "") return null;
+  return String(value).trim() || null;
+}
+
+/** True si el body no altera nada salvo movement_kind (p. ej. marcar gasto fijo con OP activa). */
+function movementUpdateChangesOnlyKind(existing, update) {
+  if (existing.type !== update.type) return false;
+  if (parseMovementAmount(existing.amount) !== parseMovementAmount(update.amount)) {
+    return false;
+  }
+  if ((existing.date || null) !== (update.date || null)) return false;
+  if (normOptionalString(existing.description) !== normOptionalString(update.description)) {
+    return false;
+  }
+  if (Boolean(existing.is_cheque) !== Boolean(update.is_cheque)) return false;
+  if (normOptionalString(existing.cheque_number) !== normOptionalString(update.cheque_number)) {
+    return false;
+  }
+  if (normOptionalString(existing.cheque_bank) !== normOptionalString(update.cheque_bank)) {
+    return false;
+  }
+  if ((existing.cheque_due_date || null) !== (update.cheque_due_date || null)) {
+    return false;
+  }
+  if ((existing.expense_category || null) !== (update.expense_category || null)) {
+    return false;
+  }
+  const existingPm = existing.payment_method || null;
+  const updatePm = update.payment_method || null;
+  if (existingPm !== updatePm) return false;
+  return (
+    normalizeMovementKind(existing.movement_kind) !==
+    normalizeMovementKind(update.movement_kind)
+  );
+}
+
+function buildMovementUpdateFromBody(body) {
+  const paymentErr = validateDirectPaymentMethod(body);
+  if (paymentErr) return { error: paymentErr };
+
+  const update = applyDirectPaymentMethod(
+    {
+      type: body.type,
+      responsible: "Sin especificar",
+      movement_kind: normalizeMovementKind(body.movement_kind),
+      date: body.date,
+      amount: body.amount,
+      description: body.description || null,
+      is_cheque: body.is_cheque || false,
+      cheque_number: body.cheque_number || null,
+      cheque_bank: body.cheque_bank || null,
+      cheque_due_date: body.cheque_due_date || null,
+      expense_category: body.expense_category || null,
+    },
+    body
+  );
+
+  if (update.type === "INGRESO" && update.is_cheque && update.cheque_due_date) {
+    update.date = update.cheque_due_date;
+  }
+
+  return { update };
+}
+
 /** Omite payment_method si es null (p. ej. facturas de proveedor antes de pagar). */
 function stripNullPaymentMethod(row) {
   const out = { ...row };
@@ -258,7 +328,9 @@ self.getSummary = async (req, res) => {
     // Current balance: all movements with effective date <= today
     const { data: allMovements, error: allError } = await supabase
       .from("account_movements")
-      .select("type, amount, is_cheque, cheque_due_date, date")
+      .select(
+        "id, type, amount, description, is_cheque, cheque_due_date, date, movement_kind"
+      )
       .is("deleted_at", null);
 
     if (allError) throw allError;
@@ -267,41 +339,79 @@ self.getSummary = async (req, res) => {
 
     let balanceWithoutCheques = 0;
     let balanceWithCheques = 0;
+    let totalFixed = 0;
+    let monthlyIncome = 0;
+    let monthlyExpense = 0;
+    const fixedMovements = [];
+
+    const startDate =
+      month && year
+        ? DateTime.fromObject({
+            year: parseInt(year),
+            month: parseInt(month),
+            day: 1,
+          }).toISODate()
+        : null;
+    const endDate =
+      month && year
+        ? DateTime.fromObject({
+            year: parseInt(year),
+            month: parseInt(month),
+            day: 1,
+          })
+            .endOf("month")
+            .toISODate()
+        : null;
+
     allMovements.forEach((m) => {
+      const amount = parseFloat(m.amount) || 0;
+      const signed = m.type === "INGRESO" ? amount : -amount;
+      const effectiveDate =
+        m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date;
+
+      const isFixed = (m.movement_kind || "UNICA VEZ") === "FIJO";
+      const inMonth =
+        !startDate ||
+        !endDate ||
+        (effectiveDate >= startDate && effectiveDate <= endDate);
+
+      if (isFixed && inMonth) {
+        totalFixed += signed;
+        fixedMovements.push({
+          id: m.id,
+          type: m.type,
+          date: effectiveDate,
+          description: (m.description || "").trim(),
+          amount,
+          signed,
+        });
+      }
+
       if (!movementCountsInBalance(m, excludedIds)) return;
-      const amount = m.type === "INGRESO" ? parseFloat(m.amount) : -parseFloat(m.amount);
-      balanceWithCheques += amount;
+
+      balanceWithCheques += signed;
       if (!m.is_cheque || !m.cheque_due_date || m.cheque_due_date <= today) {
-        balanceWithoutCheques += amount;
+        balanceWithoutCheques += signed;
+      }
+
+      if (startDate && endDate && effectiveDate >= startDate && effectiveDate <= endDate) {
+        if (m.type === "INGRESO") {
+          monthlyIncome += amount;
+        } else {
+          monthlyExpense += amount;
+        }
       }
     });
 
-    // Monthly totals
-    let monthlyIncome = 0;
-    let monthlyExpense = 0;
-
-    if (month && year) {
-      const startDate = DateTime.fromObject({ year: parseInt(year), month: parseInt(month), day: 1 }).toISODate();
-      const endDate = DateTime.fromObject({ year: parseInt(year), month: parseInt(month), day: 1 }).endOf("month").toISODate();
-
-      allMovements.forEach((m) => {
-        if (!movementCountsInBalance(m, excludedIds)) return;
-        const effectiveDate = m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date;
-        if (effectiveDate >= startDate && effectiveDate <= endDate) {
-          if (m.type === "INGRESO") {
-            monthlyIncome += parseFloat(m.amount);
-          } else {
-            monthlyExpense += parseFloat(m.amount);
-          }
-        }
-      });
-    }
+    fixedMovements.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 
     res.json({
       balanceWithoutCheques,
       balanceWithCheques,
       monthlyIncome,
       monthlyExpense,
+      totalFixed,
+      fixedMovements,
     });
   } catch (e) {
     console.error("getSummary error:", e.message);
@@ -486,36 +596,26 @@ self.updateMovement = async (req, res) => {
 
     if (fetchError) throw fetchError;
 
+    const built = buildMovementUpdateFromBody(req.body);
+    if (built.error) return res.json({ error: built.error });
+    const update = built.update;
+
     const activeOrder = await getActiveOrderForMovement(movementId);
     if (activeOrder) {
+      if (movementUpdateChangesOnlyKind(existing, update)) {
+        const { data: updated, error } = await supabase
+          .from("account_movements")
+          .update({ movement_kind: update.movement_kind })
+          .eq("id", movementId)
+          .select();
+
+        if (error) throw error;
+        return res.json(updated);
+      }
       return res.json({
         error:
           "No se puede editar un movimiento con orden de pago activa. Anulá la OP primero.",
       });
-    }
-
-    const paymentErr = validateDirectPaymentMethod(req.body);
-    if (paymentErr) return res.json({ error: paymentErr });
-
-    const update = applyDirectPaymentMethod(
-      {
-        type: req.body.type,
-        responsible: "Sin especificar",
-        movement_kind: normalizeMovementKind(req.body.movement_kind),
-        date: req.body.date,
-        amount: req.body.amount,
-        description: req.body.description || null,
-        is_cheque: req.body.is_cheque || false,
-        cheque_number: req.body.cheque_number || null,
-        cheque_bank: req.body.cheque_bank || null,
-        cheque_due_date: req.body.cheque_due_date || null,
-        expense_category: req.body.expense_category || null,
-      },
-      req.body
-    );
-
-    if (update.type === "INGRESO" && update.is_cheque && update.cheque_due_date) {
-      update.date = update.cheque_due_date;
     }
 
     // Handle paycheck sync for cheque egresos
