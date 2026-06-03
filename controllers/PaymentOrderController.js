@@ -2,6 +2,14 @@
 
 const self = {};
 const supabase = require("./db");
+const {
+  parseAmount,
+  getInvoiceByMovementId,
+  getActiveOrderForInvoice,
+  getActiveOrderForMovement,
+  buildMovementPaymentFields,
+  buildMovementPendingRevert,
+} = require("../services/supplierInvoiceLifecycle");
 
 const PAYMENT_METHODS = new Set([
   "TRANSFERENCIA",
@@ -39,127 +47,72 @@ self.getNextOrderNumber = async (req, res) => {
   }
 };
 
-function parseAmount(value) {
-  const n = parseFloat(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
 function controlInvoiceDate(inv) {
-  return inv.due_date || inv.created_at?.slice?.(0, 10) || "";
+  return (
+    inv.document_date ||
+    inv.due_date ||
+    inv.created_at?.slice?.(0, 10) ||
+    ""
+  );
 }
 
-// Devuelve todas las facturas (Control + Cashflow) que no tienen orden de pago.
+// Facturas de Control sin orden de pago.
 async function computePendingItems() {
-  {
-    // Órdenes de pago existentes para excluir lo ya pagado
-    const { data: orders, error: ordersErr } = await supabase
-      .from("payment_orders")
-      .select("supplier_invoice_id, cashflow_id, account_movement_id")
-      .is("deleted_at", null);
+  const { data: orders, error: ordersErr } = await supabase
+    .from("payment_orders")
+    .select("supplier_invoice_id")
+    .is("deleted_at", null);
 
-    if (ordersErr) throw ordersErr;
+  if (ordersErr) throw ordersErr;
 
-    const paidInvoiceIds = new Set(
-      (orders || []).map((o) => o.supplier_invoice_id).filter((v) => v != null)
-    );
-    const paidCashflowIds = new Set(
-      (orders || []).map((o) => o.cashflow_id).filter((v) => v != null)
-    );
-    // Movimientos de conciliación de órdenes de pago: las facturas colgadas de
-    // ellos no son compras reales y no deben figurar como pendientes.
-    const conciliationMovementIds = new Set(
-      (orders || []).map((o) => o.account_movement_id).filter((v) => v != null)
-    );
+  const paidInvoiceIds = new Set(
+    (orders || []).map((o) => o.supplier_invoice_id).filter((v) => v != null)
+  );
 
-    // Proveedores (para resolver nombres)
-    const { data: suppliers, error: supErr } = await supabase
-      .from("suppliers")
-      .select("id, fantasy_name, name")
-      .is("deleted_at", null);
+  const { data: suppliers, error: supErr } = await supabase
+    .from("suppliers")
+    .select("id, fantasy_name, name")
+    .is("deleted_at", null);
 
-    if (supErr) throw supErr;
+  if (supErr) throw supErr;
 
-    const supplierById = {};
-    (suppliers || []).forEach((s) => {
-      supplierById[s.id] = s.fantasy_name || s.name || null;
+  const supplierById = {};
+  (suppliers || []).forEach((s) => {
+    supplierById[s.id] = s.fantasy_name || s.name || null;
+  });
+
+  const { data: controlInvoices, error: ctrlErr } = await supabase
+    .from("supplier_invoices")
+    .select("*")
+    .is("deleted_at", null);
+
+  if (ctrlErr) throw ctrlErr;
+
+  const controlItems = (controlInvoices || [])
+    .filter((inv) => !paidInvoiceIds.has(inv.id) && inv.account_movement_id != null)
+    .map((inv) => {
+      const total = parseAmount(inv.total ?? inv.amount);
+      return {
+        key: `control-${inv.id}`,
+        source: "control",
+        supplier_invoice_id: inv.id,
+        cashflow_id: null,
+        account_movement_id: inv.account_movement_id || null,
+        supplier_id: inv.supplier_id || null,
+        supplier_name: supplierById[inv.supplier_id] || null,
+        invoice_number: inv.invoice_number || null,
+        description: inv.description || null,
+        date: controlInvoiceDate(inv),
+        amount: parseAmount(inv.amount),
+        total,
+      };
     });
 
-    // ── Facturas de Control (supplier_invoices) ──
-    const { data: controlInvoices, error: ctrlErr } = await supabase
-      .from("supplier_invoices")
-      .select("*")
-      .is("deleted_at", null);
-
-    if (ctrlErr) throw ctrlErr;
-
-    const controlItems = (controlInvoices || [])
-      .filter(
-        (inv) =>
-          !paidInvoiceIds.has(inv.id) &&
-          !conciliationMovementIds.has(inv.account_movement_id)
-      )
-      .map((inv) => {
-        const total = parseAmount(inv.total ?? inv.amount);
-        return {
-          key: `control-${inv.id}`,
-          source: "control",
-          supplier_invoice_id: inv.id,
-          cashflow_id: null,
-          source_movement_id: inv.account_movement_id || null,
-          supplier_id: inv.supplier_id || null,
-          supplier_name: supplierById[inv.supplier_id] || null,
-          invoice_number: inv.invoice_number || null,
-          description: inv.description || null,
-          date: controlInvoiceDate(inv),
-          amount: parseAmount(inv.amount),
-          total,
-        };
-      });
-
-    // ── Facturas de Cashflow (EGRESO con referencia) ──
-    const { data: cashflowRows, error: cfErr } = await supabase
-      .from("cashflow")
-      .select("id, type, amount, net_amount, date, description, reference, provider")
-      .is("deleted_at", null)
-      .eq("type", "EGRESO")
-      .not("reference", "is", null);
-
-    if (cfErr) throw cfErr;
-
-    const cashflowItems = (cashflowRows || [])
-      .filter((cf) => {
-        if (paidCashflowIds.has(cf.id)) return false;
-        const ref = cf.reference ? String(cf.reference).trim() : "";
-        return ref.length > 0;
-      })
-      .map((cf) => {
-        const total = Math.abs(parseAmount(cf.amount));
-        const net = cf.net_amount != null ? Math.abs(parseAmount(cf.net_amount)) : total;
-        return {
-          key: `cashflow-${cf.id}`,
-          source: "cashflow",
-          supplier_invoice_id: null,
-          cashflow_id: cf.id,
-          source_movement_id: null,
-          supplier_id: cf.provider || null,
-          supplier_name: supplierById[cf.provider] || null,
-          invoice_number: cf.reference ? String(cf.reference).trim() : null,
-          description: cf.description || null,
-          date: cf.date || "",
-          amount: net,
-          total,
-        };
-      });
-
-    // Unir y ordenar por fecha ascendente (más antiguas primero)
-    const items = [...controlItems, ...cashflowItems].sort((a, b) => {
-      const c = String(a.date || "").localeCompare(String(b.date || ""));
-      if (c !== 0) return c;
-      return String(a.key).localeCompare(String(b.key));
-    });
-
-    return items;
-  }
+  return controlItems.sort((a, b) => {
+    const c = String(a.date || "").localeCompare(String(b.date || ""));
+    if (c !== 0) return c;
+    return String(a.key).localeCompare(String(b.key));
+  });
 }
 
 self.computePendingItems = computePendingItems;
@@ -176,7 +129,11 @@ self.getPendingItems = async (req, res) => {
 
 self.getPaymentOrders = async (req, res) => {
   try {
-    const { source_movement_id, supplier_invoice_id } = req.query;
+    const {
+      source_movement_id,
+      account_movement_id,
+      supplier_invoice_id,
+    } = req.query;
 
     let query = supabase
       .from("payment_orders")
@@ -184,8 +141,9 @@ self.getPaymentOrders = async (req, res) => {
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
 
-    if (source_movement_id) {
-      query = query.eq("source_movement_id", Number(source_movement_id));
+    const movementId = account_movement_id || source_movement_id;
+    if (movementId) {
+      query = query.eq("account_movement_id", Number(movementId));
     }
     if (supplier_invoice_id) {
       query = query.eq("supplier_invoice_id", Number(supplier_invoice_id));
@@ -205,26 +163,81 @@ self.createPaymentOrder = async (req, res) => {
   try {
     const {
       supplier_invoice_id,
-      cashflow_id,
       supplier_id,
       payment_method,
       amount,
       description,
       payment_date,
+      account_movement_id,
       source_movement_id,
       cheque_number,
       cheque_bank,
       cheque_due_date,
     } = req.body;
 
+    if (req.body.cashflow_id && !supplier_invoice_id) {
+      return res.json({
+        error: "Las órdenes de pago de facturas solo se crean desde Control",
+      });
+    }
+
+    const movementId = account_movement_id || source_movement_id;
+
+    if (!supplier_invoice_id) {
+      return res.json({ error: "Factura de proveedor requerida" });
+    }
+    if (!movementId) {
+      return res.json({ error: "Movimiento de Control requerido" });
+    }
     if (!payment_method || !PAYMENT_METHODS.has(payment_method)) {
       return res.json({ error: "Forma de pago inválida" });
     }
     if (!payment_date) {
       return res.json({ error: "Fecha de pago requerida" });
     }
-    if (!amount || parseFloat(amount) <= 0) {
+
+    const { data: invoice, error: invErr } = await supabase
+      .from("supplier_invoices")
+      .select("*")
+      .eq("id", supplier_invoice_id)
+      .is("deleted_at", null)
+      .single();
+
+    if (invErr || !invoice) {
+      return res.json({ error: "Factura de proveedor no encontrada" });
+    }
+
+    if (Number(invoice.account_movement_id) !== Number(movementId)) {
+      return res.json({ error: "La factura no corresponde a este movimiento" });
+    }
+
+    const invoiceTotal = parseAmount(invoice.total ?? invoice.amount);
+    const payAmount = parseAmount(amount);
+    if (!payAmount || payAmount <= 0) {
       return res.json({ error: "Monto inválido" });
+    }
+    if (Math.abs(payAmount - invoiceTotal) > 0.009) {
+      return res.json({
+        error: "El monto debe coincidir con el total de la factura",
+      });
+    }
+
+    const existingForInvoice = await getActiveOrderForInvoice(supplier_invoice_id);
+    if (existingForInvoice) {
+      return res.json({
+        error: `Esta factura ya tiene la orden de pago ${existingForInvoice.order_number}`,
+      });
+    }
+
+    const { data: movement, error: movFetchErr } = await supabase
+      .from("account_movements")
+      .select("*")
+      .eq("id", movementId)
+      .is("deleted_at", null)
+      .single();
+
+    if (movFetchErr || !movement) {
+      return res.json({ error: "Movimiento no encontrado" });
     }
 
     const isCheque = payment_method === "CHEQUE";
@@ -237,78 +250,75 @@ self.createPaymentOrder = async (req, res) => {
 
     const order_number = await generateNextOrderNumber();
 
-    // Fetch supplier name for the movement description
     let supplierName = "";
-    if (supplier_id) {
+    const resolvedSupplierId = supplier_id || invoice.supplier_id;
+    if (resolvedSupplierId) {
       const { data: sup } = await supabase
         .from("suppliers")
         .select("fantasy_name, name")
-        .eq("id", supplier_id)
+        .eq("id", resolvedSupplierId)
         .single();
       if (sup) supplierName = sup.fantasy_name || sup.name || "";
     }
 
-    const movDescription =
-      description ||
-      [
-        `Orden de Pago ${order_number}`,
-        supplierName ? `- ${supplierName}` : null,
-      ]
-        .filter(Boolean)
-        .join(" ");
+    let paycheckId = movement.paycheck_id || null;
 
-    // Para cheques, el movimiento se ordena por la fecha de vencimiento.
-    const movementDate = isCheque ? cheque_due_date : payment_date;
-
-    // Si es cheque (egreso), también registramos el cheque en "paychecks".
-    let paycheckId = null;
     if (isCheque) {
-      const { data: newPaycheck, error: paycheckError } = await supabase
-        .from("paychecks")
-        .insert({
-          number: cheque_number,
-          bank: cheque_bank,
-          amount: parseFloat(amount),
-          due_date: cheque_due_date,
-          type: "OUT",
-        })
-        .select();
-
-      if (paycheckError) throw paycheckError;
-      if (newPaycheck?.length) paycheckId = newPaycheck[0].id;
-    }
-
-    // Create the conciliation movement in account_movements
-    const { data: newMovement, error: movErr } = await supabase
-      .from("account_movements")
-      .insert({
-        type: "EGRESO",
-        responsible: "Sin especificar",
-        movement_kind: "UNICA VEZ",
-        date: movementDate,
-        amount: parseFloat(amount),
-        description: movDescription,
-        is_cheque: isCheque,
-        cheque_number: isCheque ? cheque_number : null,
-        cheque_bank: isCheque ? cheque_bank : null,
-        cheque_due_date: isCheque ? cheque_due_date : null,
-        paycheck_id: paycheckId,
-      })
-      .select();
-
-    if (movErr) {
       if (paycheckId) {
         await supabase
           .from("paychecks")
-          .update({ deleted_at: new Date() })
+          .update({
+            number: cheque_number,
+            bank: cheque_bank,
+            amount: payAmount,
+            due_date: cheque_due_date,
+            deleted_at: null,
+          })
           .eq("id", paycheckId);
+      } else {
+        const { data: newPaycheck, error: paycheckError } = await supabase
+          .from("paychecks")
+          .insert({
+            number: cheque_number,
+            bank: cheque_bank,
+            amount: payAmount,
+            due_date: cheque_due_date,
+            type: "OUT",
+            movement_id: movementId,
+          })
+          .select();
+
+        if (paycheckError) throw paycheckError;
+        if (newPaycheck?.length) paycheckId = newPaycheck[0].id;
       }
-      throw movErr;
+    } else if (paycheckId) {
+      await supabase
+        .from("paychecks")
+        .update({ deleted_at: new Date() })
+        .eq("id", paycheckId);
+      paycheckId = null;
     }
 
-    const movementId = newMovement[0].id;
+    const paymentFields = buildMovementPaymentFields({
+      payment_method,
+      payment_date,
+      amount: payAmount,
+      cheque_number,
+      cheque_bank,
+      cheque_due_date,
+    });
 
-    // Vincular el cheque al movimiento de conciliación (relación bidireccional)
+    const { data: updatedMovement, error: movUpdateErr } = await supabase
+      .from("account_movements")
+      .update({
+        ...paymentFields,
+        paycheck_id: paycheckId,
+      })
+      .eq("id", movementId)
+      .select();
+
+    if (movUpdateErr) throw movUpdateErr;
+
     if (paycheckId) {
       await supabase
         .from("paychecks")
@@ -316,19 +326,18 @@ self.createPaymentOrder = async (req, res) => {
         .eq("id", paycheckId);
     }
 
-    // Create the payment order
     const { data: newOrder, error: orderErr } = await supabase
       .from("payment_orders")
       .insert({
         order_number,
-        supplier_invoice_id: supplier_invoice_id || null,
-        cashflow_id: cashflow_id || null,
-        supplier_id: supplier_id || null,
+        supplier_invoice_id,
+        cashflow_id: null,
+        supplier_id: resolvedSupplierId || null,
         payment_method,
-        amount: parseFloat(amount),
+        amount: payAmount,
         description: description || null,
         payment_date,
-        source_movement_id: source_movement_id || null,
+        source_movement_id: null,
         account_movement_id: movementId,
         cheque_number: isCheque ? cheque_number : null,
         cheque_bank: isCheque ? cheque_bank : null,
@@ -336,24 +345,96 @@ self.createPaymentOrder = async (req, res) => {
       })
       .select();
 
-    if (orderErr) {
-      // Rollback the movement and paycheck
-      await supabase
-        .from("account_movements")
-        .update({ deleted_at: new Date() })
-        .eq("id", movementId);
-      if (paycheckId) {
-        await supabase
-          .from("paychecks")
-          .update({ deleted_at: new Date() })
-          .eq("id", paycheckId);
-      }
-      throw orderErr;
-    }
+    if (orderErr) throw orderErr;
 
-    res.json({ data: newOrder[0], movement: newMovement[0] });
+    res.json({ data: newOrder[0], movement: updatedMovement?.[0] || null });
   } catch (e) {
     console.error("createPaymentOrder error:", e.message);
+    res.json({ error: e.message });
+  }
+};
+
+self.cancelPaymentOrder = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+
+    const { data: order, error: orderErr } = await supabase
+      .from("payment_orders")
+      .select("*")
+      .eq("id", orderId)
+      .is("deleted_at", null)
+      .single();
+
+    if (orderErr || !order) {
+      return res.json({ error: "Orden de pago no encontrada" });
+    }
+
+    const movementId = order.account_movement_id;
+    if (!movementId) {
+      return res.json({ error: "Orden de pago sin movimiento asociado" });
+    }
+
+    const { data: movement, error: movErr } = await supabase
+      .from("account_movements")
+      .select("*")
+      .eq("id", movementId)
+      .is("deleted_at", null)
+      .single();
+
+    if (movErr || !movement) {
+      return res.json({ error: "Movimiento asociado no encontrado" });
+    }
+
+    let invoice = null;
+    if (order.supplier_invoice_id) {
+      const { data: inv, error: invErr } = await supabase
+        .from("supplier_invoices")
+        .select("*")
+        .eq("id", order.supplier_invoice_id)
+        .is("deleted_at", null)
+        .single();
+      if (invErr) throw invErr;
+      invoice = inv;
+    } else {
+      invoice = await getInvoiceByMovementId(movementId);
+    }
+
+    const documentDate =
+      invoice?.document_date ||
+      invoice?.due_date ||
+      movement.date;
+
+    if (movement.paycheck_id) {
+      await supabase
+        .from("paychecks")
+        .update({ deleted_at: new Date() })
+        .eq("id", movement.paycheck_id);
+    }
+
+    const revertFields = buildMovementPendingRevert(documentDate);
+
+    const { data: updatedMovement, error: updateErr } = await supabase
+      .from("account_movements")
+      .update(revertFields)
+      .eq("id", movementId)
+      .select();
+
+    if (updateErr) throw updateErr;
+
+    const { error: deleteOrderErr } = await supabase
+      .from("payment_orders")
+      .update({ deleted_at: new Date() })
+      .eq("id", orderId);
+
+    if (deleteOrderErr) throw deleteOrderErr;
+
+    res.json({
+      success: true,
+      order_id: orderId,
+      movement: updatedMovement?.[0] || null,
+    });
+  } catch (e) {
+    console.error("cancelPaymentOrder error:", e.message);
     res.json({ error: e.message });
   }
 };

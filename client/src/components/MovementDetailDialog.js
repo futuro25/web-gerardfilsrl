@@ -1,14 +1,21 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import { ExternalLinkIcon, Eye, Maximize2 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import Button from "./common/Button";
 import Spinner from "./common/Spinner";
+import PaymentOrderViewDialog from "./PaymentOrderViewDialog";
+import InvoiceRetentionSection from "./InvoiceRetentionSection";
 import * as utils from "../utils/utils";
+import { buildRetentionInvoiceInput } from "../utils/retentionInvoice";
 import { fetchSupplierInvoiceByAccountMovement } from "../apis/api.supplierinvoices";
 import { fetchPaymentOrdersByMovement } from "../apis/api.paymentorders";
+import { fetchInvoiceImageUrl } from "../apis/api.uploads";
 import {
   querySupplierInvoiceByMovementKey,
   queryPaymentOrdersByMovementKey,
+  queryInvoiceImageUrlKey,
 } from "../apis/queryKeys";
 
 const PAYMENT_METHOD_LABELS = {
@@ -36,7 +43,28 @@ export default function MovementDetailDialog({
   movement,
 }) {
   const movementId = movement?.id;
-  const hasInvoice = movement?.type === "EGRESO" && movement?.supplier_name;
+  const hasInvoice =
+    movement?.type === "EGRESO" &&
+    (movement?.expense_category === "FACTURA" ||
+      movement?.supplier_invoice_id ||
+      movement?.supplier_name);
+
+  const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
+  const [poViewOpen, setPoViewOpen] = useState(false);
+  const [selectedPaymentOrder, setSelectedPaymentOrder] = useState(null);
+
+  useEffect(() => {
+    if (!open) {
+      setImagePreviewOpen(false);
+      setPoViewOpen(false);
+      setSelectedPaymentOrder(null);
+    }
+  }, [open]);
+
+  const openPaymentOrderView = (po) => {
+    setSelectedPaymentOrder(po);
+    setPoViewOpen(true);
+  };
 
   const { data: invoiceData, isLoading: invoiceLoading } = useQuery({
     queryKey: querySupplierInvoiceByMovementKey(movementId),
@@ -51,8 +79,22 @@ export default function MovementDetailDialog({
   });
 
   const invoice = invoiceData && !invoiceData.error ? invoiceData : null;
+  const retentionInvoice = buildRetentionInvoiceInput(invoice, movement);
   const paymentOrders = paymentOrdersData?.data || [];
-  const loading = invoiceLoading || paymentOrdersLoading;
+  const imageKey = invoice?.image_key || null;
+
+  const {
+    data: imageRes,
+    isLoading: imageLoading,
+    isError: imageError,
+  } = useQuery({
+    queryKey: queryInvoiceImageUrlKey(imageKey),
+    queryFn: () => fetchInvoiceImageUrl(imageKey),
+    enabled: open && Boolean(imageKey),
+  });
+
+  const imageUrl = imageRes?.url || null;
+  const isPdf = imageKey && /\.pdf$/i.test(imageKey);
 
   if (!movement) return null;
 
@@ -62,6 +104,7 @@ export default function MovementDetailDialog({
       : movement.date;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto p-6 flex flex-col gap-5">
         <div className="flex items-start justify-between gap-2">
@@ -104,11 +147,10 @@ export default function MovementDetailDialog({
             </span>
           </DetailRow>
           <DetailRow label="Clasificación">
-            {movement.movement_kind === "FIJO"
-              ? "Fijo"
-              : movement.movement_kind === "PENDIENTE"
-              ? "Pendiente"
-              : "Única vez"}
+            {movement.movement_kind === "FIJO" ? "Fijo" : "Única vez"}
+            {movement.invoice_payment_pending && (
+              <span className="ml-2 text-xs text-amber-700">· Pendiente de pago</span>
+            )}
           </DetailRow>
           <DetailRow label="Monto">
             <span
@@ -123,6 +165,12 @@ export default function MovementDetailDialog({
           </DetailRow>
           {movement.description && (
             <DetailRow label="Detalle">{movement.description}</DetailRow>
+          )}
+          {movement.payment_method && (
+            <DetailRow label="Forma de pago">
+              {PAYMENT_METHOD_LABELS[movement.payment_method] ||
+                movement.payment_method}
+            </DetailRow>
           )}
           {movement.is_cheque && (
             <>
@@ -161,6 +209,11 @@ export default function MovementDetailDialog({
                     {utils.formatAmount(invoice.total)}
                   </DetailRow>
                 )}
+                {invoice.document_date && (
+                  <DetailRow label="Fecha comprobante">
+                    {DateTime.fromISO(invoice.document_date).toFormat("dd/MM/yyyy")}
+                  </DetailRow>
+                )}
                 {invoice.due_date && (
                   <DetailRow label="Vencimiento">
                     {DateTime.fromISO(invoice.due_date).toFormat("dd/MM/yyyy")}
@@ -173,11 +226,83 @@ export default function MovementDetailDialog({
                       .join(" · ")}
                   </DetailRow>
                 )}
+                {imageKey && (
+                  <div className="mt-2 pt-3 border-t border-amber-200/80">
+                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">
+                      Comprobante adjunto
+                    </p>
+                    {imageLoading && (
+                      <div className="py-3 flex justify-center">
+                        <Spinner />
+                      </div>
+                    )}
+                    {imageError && (
+                      <p className="text-xs text-red-500">
+                        No se pudo cargar la imagen
+                      </p>
+                    )}
+                    {!imageLoading && !imageError && imageUrl && (
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setImagePreviewOpen(true)}
+                          className="group relative block w-fit max-w-full rounded-lg border border-amber-200 bg-white overflow-hidden hover:border-amber-300 transition-colors"
+                          title="Ver en grande"
+                        >
+                          {isPdf ? (
+                            <div className="flex h-28 w-40 flex-col items-center justify-center gap-1 bg-slate-50 text-slate-500">
+                              <span className="text-2xl font-bold text-red-600">PDF</span>
+                              <span className="text-[10px] uppercase tracking-wide">
+                                Factura
+                              </span>
+                            </div>
+                          ) : (
+                            <img
+                              src={imageUrl}
+                              alt="Miniatura de factura"
+                              className="h-28 w-auto max-w-[11rem] object-cover object-top"
+                            />
+                          )}
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/25 transition-colors">
+                            <Maximize2 className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 drop-shadow" />
+                          </span>
+                        </button>
+                        <div className="flex flex-wrap gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setImagePreviewOpen(true)}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-950"
+                          >
+                            <Maximize2 className="h-3.5 w-3.5" />
+                            Ver en grande
+                          </button>
+                          <a
+                            href={imageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
+                          >
+                            Abrir en nueva pestaña
+                            <ExternalLinkIcon className="h-3.5 w-3.5" />
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <p className="text-xs text-slate-500">Sin datos de factura cargados.</p>
             )}
           </section>
+        )}
+
+        {hasInvoice && retentionInvoice && (
+          <InvoiceRetentionSection
+            invoice={retentionInvoice}
+            enabled={open}
+            className="mt-0 border-t-0 pt-0"
+          />
         )}
 
         {/* Payment orders section */}
@@ -196,9 +321,9 @@ export default function MovementDetailDialog({
               {paymentOrders.map((po) => (
                 <div
                   key={po.id}
-                  className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm"
+                  className="flex items-center justify-between gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2.5 text-sm"
                 >
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-col gap-0.5 min-w-0">
                     <span className="font-semibold text-slate-700 text-xs">
                       {po.order_number}
                     </span>
@@ -209,9 +334,20 @@ export default function MovementDetailDialog({
                         : "-"}
                     </span>
                   </div>
-                  <span className="font-semibold text-slate-700 text-sm">
-                    {utils.formatAmount(po.amount)}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="font-semibold text-slate-700 text-sm tabular-nums">
+                      {utils.formatAmount(po.amount)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => openPaymentOrderView(po)}
+                      className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 transition-colors"
+                      title="Ver orden de pago"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Ver
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -230,7 +366,64 @@ export default function MovementDetailDialog({
             Cerrar
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      <PaymentOrderViewDialog
+        open={poViewOpen}
+        onOpenChange={setPoViewOpen}
+        order={selectedPaymentOrder}
+        supplierName={movement.supplier_name || null}
+        invoiceNumber={invoice?.invoice_number || null}
+      />
+
+      <Dialog open={imagePreviewOpen} onOpenChange={setImagePreviewOpen}>
+        <DialogContent className="w-[98vw] max-w-6xl max-h-[96vh] overflow-hidden p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2 shrink-0">
+            <DialogTitle className="text-base font-semibold text-slate-800">
+              Comprobante de factura
+              {invoice?.invoice_number
+                ? ` · ${utils.formatInvoiceNumber(invoice.invoice_number)}`
+                : ""}
+            </DialogTitle>
+            <div className="flex items-center gap-2">
+              {imageUrl && (
+                <a
+                  href={imageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                >
+                  Nueva pestaña
+                  <ExternalLinkIcon className="h-4 w-4" />
+                </a>
+              )}
+              <button
+                type="button"
+                className="text-slate-400 hover:text-slate-600 text-sm"
+                onClick={() => setImagePreviewOpen(false)}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-slate-200 bg-slate-50">
+            {isPdf ? (
+              <iframe
+                title="Factura PDF"
+                src={imageUrl}
+                className="w-full h-[min(80vh,900px)] bg-white"
+              />
+            ) : (
+              <img
+                src={imageUrl}
+                alt="Factura ampliada"
+                className="w-full h-auto max-h-[min(80vh,900px)] object-contain mx-auto"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

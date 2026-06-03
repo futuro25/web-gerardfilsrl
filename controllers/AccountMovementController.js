@@ -3,12 +3,33 @@
 const self = {};
 const supabase = require("./db");
 const { DateTime } = require("luxon");
+const {
+  getBalanceExcludedMovementIds,
+  movementCountsInBalance,
+} = require("../services/accountMovementBalance");
+const {
+  cascadeDeleteSupplierInvoiceForMovement,
+  getActiveOrderForMovement,
+} = require("../services/supplierInvoiceLifecycle");
+const {
+  validateDirectPaymentMethod,
+  applyDirectPaymentMethod,
+} = require("../services/accountMovementPayment");
 
-const MOVEMENT_KINDS = new Set(["FIJO", "PENDIENTE", "UNICA VEZ"]);
+const MOVEMENT_KINDS = new Set(["FIJO", "UNICA VEZ"]);
 
 function normalizeMovementKind(value) {
   const v = String(value || "").trim();
   return MOVEMENT_KINDS.has(v) ? v : "UNICA VEZ";
+}
+
+/** Omite payment_method si es null (p. ej. facturas de proveedor antes de pagar). */
+function stripNullPaymentMethod(row) {
+  const out = { ...row };
+  if (out.payment_method == null || out.payment_method === "") {
+    delete out.payment_method;
+  }
+  return out;
 }
 
 async function attachSupplierNames(movements) {
@@ -54,11 +75,141 @@ async function attachSupplierNames(movements) {
   }));
 }
 
+async function attachInvoicePaymentFlags(movements) {
+  if (!movements?.length) return movements || [];
+
+  const movementIds = movements.map((m) => m.id);
+  const { data: invoices, error: invErr } = await supabase
+    .from("supplier_invoices")
+    .select("id, account_movement_id")
+    .in("account_movement_id", movementIds)
+    .is("deleted_at", null);
+
+  if (invErr) throw invErr;
+
+  const invoiceByMovementId = {};
+  const invoiceIds = [];
+  (invoices || []).forEach((inv) => {
+    if (inv.account_movement_id != null) {
+      invoiceByMovementId[inv.account_movement_id] = inv.id;
+      invoiceIds.push(inv.id);
+    }
+  });
+
+  let orderByInvoiceId = {};
+  if (invoiceIds.length) {
+    const { data: orders, error: ordErr } = await supabase
+      .from("payment_orders")
+      .select("id, supplier_invoice_id, order_number")
+      .in("supplier_invoice_id", invoiceIds)
+      .is("deleted_at", null);
+    if (ordErr) throw ordErr;
+    (orders || []).forEach((o) => {
+      orderByInvoiceId[o.supplier_invoice_id] = o;
+    });
+  }
+
+  return movements.map((m) => {
+    const supplierInvoiceId = invoiceByMovementId[m.id] || null;
+    const order = supplierInvoiceId
+      ? orderByInvoiceId[supplierInvoiceId]
+      : null;
+    const isInvoiceSource =
+      m.expense_category === "FACTURA" && supplierInvoiceId != null;
+    return {
+      ...m,
+      supplier_invoice_id: supplierInvoiceId,
+      has_payment_order: Boolean(order),
+      payment_order_id: order?.id || null,
+      payment_order_number: order?.order_number || null,
+      invoice_payment_pending: isInvoiceSource && !order,
+    };
+  });
+}
+
+/** Movimientos de Control con factura sin orden de pago activa. */
+async function getPendingMovementIds() {
+  const { data: orders, error: ordersErr } = await supabase
+    .from("payment_orders")
+    .select("supplier_invoice_id")
+    .is("deleted_at", null);
+  if (ordersErr) throw ordersErr;
+
+  const paidInvoiceIds = new Set(
+    (orders || []).map((o) => o.supplier_invoice_id).filter((v) => v != null)
+  );
+
+  const { data: invoices, error: invErr } = await supabase
+    .from("supplier_invoices")
+    .select("id, account_movement_id")
+    .is("deleted_at", null)
+    .not("account_movement_id", "is", null);
+  if (invErr) throw invErr;
+
+  return (invoices || [])
+    .filter((inv) => !paidInvoiceIds.has(inv.id))
+    .map((inv) => inv.account_movement_id)
+    .filter((id) => id != null);
+}
+
+function isPendingFilter(value) {
+  const v = String(value || "").toLowerCase();
+  return v === "1" || v === "true" || v === "pending";
+}
+
 self.getMovements = async (req, res) => {
   try {
-    const { month, year, page = 1, limit = 50, dateOrder: dateOrderParam } = req.query;
+    const { month, year, page = 1, limit = 50, dateOrder: dateOrderParam, pending } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const ascending = String(dateOrderParam || "asc").toLowerCase() !== "desc";
+    const pendingOnly = isPendingFilter(pending);
+
+    if (pendingOnly) {
+      const pendingIds = await getPendingMovementIds();
+      if (!pendingIds.length) {
+        return res.json({
+          data: [],
+          total: 0,
+          page: parseInt(page),
+          limit: parseInt(limit),
+        });
+      }
+
+      let query = supabase
+        .from("account_movements")
+        .select("*", { count: "exact" })
+        .is("deleted_at", null)
+        .in("id", pendingIds)
+        .eq("expense_category", "FACTURA")
+        .order("date", { ascending })
+        .order("id", { ascending })
+        .range(offset, offset + parseInt(limit) - 1);
+
+      if (month && year) {
+        const startDate = DateTime.fromObject({ year: parseInt(year), month: parseInt(month), day: 1 }).toISODate();
+        const endDate = DateTime.fromObject({ year: parseInt(year), month: parseInt(month), day: 1 }).endOf("month").toISODate();
+        query = query.gte("date", startDate).lte("date", endDate);
+      }
+
+      const { data, error, count } = await query;
+      if (error) throw error;
+
+      const dataWithSuppliers = await attachSupplierNames(data || []);
+      const excludedIds = await getBalanceExcludedMovementIds();
+      const withInvoiceFlags = await attachInvoicePaymentFlags(dataWithSuppliers);
+
+      const dataFinal = withInvoiceFlags.map((m) => ({
+        ...m,
+        excludes_from_balance: !movementCountsInBalance(m, excludedIds),
+      }));
+
+      return res.json({
+        data: dataFinal,
+        total: count,
+        page: parseInt(page),
+        limit: parseInt(limit),
+      });
+    }
 
     let query = supabase
       .from("account_movements")
@@ -79,25 +230,12 @@ self.getMovements = async (req, res) => {
     if (error) throw error;
 
     const dataWithSuppliers = await attachSupplierNames(data || []);
+    const excludedIds = await getBalanceExcludedMovementIds();
+    const withInvoiceFlags = await attachInvoicePaymentFlags(dataWithSuppliers);
 
-    // Marcar los movimientos que son conciliación de una orden de pago, para que
-    // el módulo Control no les exija ni permita registrar una factura.
-    const movementIds = (dataWithSuppliers || []).map((m) => m.id);
-    let conciliationSet = new Set();
-    if (movementIds.length) {
-      const { data: pos } = await supabase
-        .from("payment_orders")
-        .select("account_movement_id")
-        .in("account_movement_id", movementIds)
-        .is("deleted_at", null);
-      conciliationSet = new Set(
-        (pos || []).map((p) => p.account_movement_id).filter((v) => v != null)
-      );
-    }
-
-    const dataFinal = (dataWithSuppliers || []).map((m) => ({
+    const dataFinal = withInvoiceFlags.map((m) => ({
       ...m,
-      is_payment_order: conciliationSet.has(m.id),
+      excludes_from_balance: !movementCountsInBalance(m, excludedIds),
     }));
 
     res.json({
@@ -125,9 +263,12 @@ self.getSummary = async (req, res) => {
 
     if (allError) throw allError;
 
+    const excludedIds = await getBalanceExcludedMovementIds();
+
     let balanceWithoutCheques = 0;
     let balanceWithCheques = 0;
     allMovements.forEach((m) => {
+      if (!movementCountsInBalance(m, excludedIds)) return;
       const amount = m.type === "INGRESO" ? parseFloat(m.amount) : -parseFloat(m.amount);
       balanceWithCheques += amount;
       if (!m.is_cheque || !m.cheque_due_date || m.cheque_due_date <= today) {
@@ -144,6 +285,7 @@ self.getSummary = async (req, res) => {
       const endDate = DateTime.fromObject({ year: parseInt(year), month: parseInt(month), day: 1 }).endOf("month").toISODate();
 
       allMovements.forEach((m) => {
+        if (!movementCountsInBalance(m, excludedIds)) return;
         const effectiveDate = m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date;
         if (effectiveDate >= startDate && effectiveDate <= endDate) {
           if (m.type === "INGRESO") {
@@ -178,11 +320,15 @@ self.getFutureBalances = async (req, res) => {
 
     if (error) throw error;
 
-    const withEff = (rows || []).map((m) => ({
-      eff: m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date,
-      created_at: m.created_at || "",
-      delta: m.type === "INGRESO" ? parseFloat(m.amount) : -parseFloat(m.amount),
-    }));
+    const excludedIds = await getBalanceExcludedMovementIds();
+
+    const withEff = (rows || [])
+      .filter((m) => movementCountsInBalance(m, excludedIds))
+      .map((m) => ({
+        eff: m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date,
+        created_at: m.created_at || "",
+        delta: m.type === "INGRESO" ? parseFloat(m.amount) : -parseFloat(m.amount),
+      }));
 
     withEff.sort((a, b) => {
       if (a.eff !== b.eff) return a.eff.localeCompare(b.eff);
@@ -250,22 +396,28 @@ self.getUpcomingCheques = async (req, res) => {
 
 self.createMovement = async (req, res) => {
   try {
-    const movement = {
-      type: req.body.type,
-      responsible: "Sin especificar",
-      movement_kind: normalizeMovementKind(req.body.movement_kind),
-      date: req.body.date,
-      amount: req.body.amount,
-      description: req.body.description || null,
-      is_cheque: req.body.is_cheque || false,
-      cheque_number: req.body.cheque_number || null,
-      cheque_bank: req.body.cheque_bank || null,
-      cheque_due_date: req.body.cheque_due_date || null,
-      expense_category: req.body.expense_category || null,
-    };
+    const paymentErr = validateDirectPaymentMethod(req.body);
+    if (paymentErr) return res.json({ error: paymentErr });
 
-    // For cheques, use cheque_due_date as the movement date for ordering
-    if (movement.is_cheque && movement.cheque_due_date) {
+    const movement = applyDirectPaymentMethod(
+      {
+        type: req.body.type,
+        responsible: "Sin especificar",
+        movement_kind: normalizeMovementKind(req.body.movement_kind),
+        date: req.body.date,
+        amount: req.body.amount,
+        description: req.body.description || null,
+        is_cheque: req.body.is_cheque || false,
+        cheque_number: req.body.cheque_number || null,
+        cheque_bank: req.body.cheque_bank || null,
+        cheque_due_date: req.body.cheque_due_date || null,
+        expense_category: req.body.expense_category || null,
+      },
+      req.body
+    );
+
+    // Ingresos con cheque (toggle UI)
+    if (movement.type === "INGRESO" && movement.is_cheque && movement.cheque_due_date) {
       movement.date = movement.cheque_due_date;
     }
 
@@ -300,7 +452,7 @@ self.createMovement = async (req, res) => {
 
     const { data: newMovement, error } = await supabase
       .from("account_movements")
-      .insert(movement)
+      .insert(stripNullPaymentMethod(movement))
       .select();
 
     if (error) {
@@ -334,21 +486,35 @@ self.updateMovement = async (req, res) => {
 
     if (fetchError) throw fetchError;
 
-    const update = {
-      type: req.body.type,
-      responsible: "Sin especificar",
-      movement_kind: normalizeMovementKind(req.body.movement_kind),
-      date: req.body.date,
-      amount: req.body.amount,
-      description: req.body.description || null,
-      is_cheque: req.body.is_cheque || false,
-      cheque_number: req.body.cheque_number || null,
-      cheque_bank: req.body.cheque_bank || null,
-      cheque_due_date: req.body.cheque_due_date || null,
-      expense_category: req.body.expense_category || null,
-    };
+    const activeOrder = await getActiveOrderForMovement(movementId);
+    if (activeOrder) {
+      return res.json({
+        error:
+          "No se puede editar un movimiento con orden de pago activa. Anulá la OP primero.",
+      });
+    }
 
-    if (update.is_cheque && update.cheque_due_date) {
+    const paymentErr = validateDirectPaymentMethod(req.body);
+    if (paymentErr) return res.json({ error: paymentErr });
+
+    const update = applyDirectPaymentMethod(
+      {
+        type: req.body.type,
+        responsible: "Sin especificar",
+        movement_kind: normalizeMovementKind(req.body.movement_kind),
+        date: req.body.date,
+        amount: req.body.amount,
+        description: req.body.description || null,
+        is_cheque: req.body.is_cheque || false,
+        cheque_number: req.body.cheque_number || null,
+        cheque_bank: req.body.cheque_bank || null,
+        cheque_due_date: req.body.cheque_due_date || null,
+        expense_category: req.body.expense_category || null,
+      },
+      req.body
+    );
+
+    if (update.type === "INGRESO" && update.is_cheque && update.cheque_due_date) {
       update.date = update.cheque_due_date;
     }
 
@@ -391,7 +557,7 @@ self.updateMovement = async (req, res) => {
 
     const { data: updated, error } = await supabase
       .from("account_movements")
-      .update(update)
+      .update(stripNullPaymentMethod(update))
       .eq("id", movementId)
       .select();
 
@@ -417,6 +583,16 @@ self.deleteMovement = async (req, res) => {
       .single();
 
     if (fetchError) throw fetchError;
+
+    const activeOrder = await getActiveOrderForMovement(movementId);
+    if (activeOrder) {
+      return res.json({
+        error:
+          "No se puede eliminar un movimiento con orden de pago activa. Anulá la OP primero.",
+      });
+    }
+
+    await cascadeDeleteSupplierInvoiceForMovement(movementId);
 
     // Soft delete the movement
     const { error } = await supabase

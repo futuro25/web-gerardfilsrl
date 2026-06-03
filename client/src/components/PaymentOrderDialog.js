@@ -5,6 +5,7 @@ import { DateTime } from "luxon";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
+import FormActions from "./common/FormActions";
 import Spinner from "./common/Spinner";
 import * as utils from "../utils/utils";
 import { fetchSupplierInvoiceByAccountMovement } from "../apis/api.supplierinvoices";
@@ -12,19 +13,18 @@ import {
   fetchNextOrderNumber,
   createPaymentOrder,
 } from "../apis/api.paymentorders";
+import { fetchRetentionByInvoice } from "../apis/api.retentioncertificates";
 import {
   querySupplierInvoiceByMovementKey,
   queryPaymentOrdersNextNumberKey,
   queryPaymentOrdersByMovementKey,
+  queryPendingPaymentItemsKey,
+  queryPurchaseInvoicesKey,
+  querySupplierAccountsListKey,
+  queryRetentionByInvoiceKey,
 } from "../apis/queryKeys";
-
-const PAYMENT_METHODS = [
-  { value: "TRANSFERENCIA", label: "Transferencia" },
-  { value: "CHEQUE", label: "Cheque" },
-  { value: "EFECTIVO", label: "Efectivo" },
-  { value: "TARJETA DE CREDITO", label: "Tarjeta de crédito" },
-  { value: "TARJETA DE DEBITO", label: "Tarjeta de débito" },
-];
+import { retentionLookupParams } from "../utils/retentionInvoice";
+import { PAYMENT_METHOD_OPTIONS } from "./PaymentOrderFields";
 
 const today = DateTime.now().toFormat("yyyy-MM-dd");
 
@@ -62,15 +62,18 @@ export default function PaymentOrderDialog({
   const fetchedInvoice =
     invoiceData && !invoiceData.error ? invoiceData : null;
 
-  // Item normalizado para crear la orden, sin importar el origen.
+  // Item normalizado para crear la orden desde Control.
   const item = useMemo(() => {
-    if (pendingItem) return pendingItem;
+    if (pendingItem) {
+      if (pendingItem.source !== "control") return null;
+      return pendingItem;
+    }
     if (!movement) return null;
     return {
       source: "control",
       supplier_invoice_id: fetchedInvoice?.id || null,
       cashflow_id: null,
-      source_movement_id: movement.id || null,
+      account_movement_id: movement.id || null,
       supplier_id:
         fetchedInvoice?.supplier_id || fetchedInvoice?.supplier?.id || null,
       supplier_name:
@@ -81,9 +84,43 @@ export default function PaymentOrderDialog({
       invoice_number: fetchedInvoice?.invoice_number || null,
       amount: fetchedInvoice?.amount ?? movement.amount ?? "",
       total: fetchedInvoice?.total ?? fetchedInvoice?.amount ?? movement.amount ?? "",
-      date: movement.date || null,
+      date:
+        fetchedInvoice?.document_date ||
+        fetchedInvoice?.due_date ||
+        movement.date ||
+        null,
     };
   }, [pendingItem, movement, fetchedInvoice]);
+
+  const retentionLookup = useMemo(
+    () =>
+      retentionLookupParams({
+        supplier_invoice_id: item?.supplier_invoice_id,
+        account_movement_id: item?.account_movement_id || movementId,
+        invoice_number: item?.invoice_number,
+        supplier_id: item?.supplier_id,
+        total: item?.total,
+        amount: item?.amount,
+        date: item?.date,
+      }),
+    [item, movementId]
+  );
+
+  const { data: retentionRes, isLoading: retentionLoading } = useQuery({
+    queryKey: queryRetentionByInvoiceKey(retentionLookup),
+    queryFn: () => fetchRetentionByInvoice(retentionLookup),
+    enabled:
+      open &&
+      Boolean(item?.supplier_invoice_id || item?.account_movement_id || movementId),
+  });
+
+  const retentionPayment = retentionRes?.data?.payment || null;
+  const invoiceTotal =
+    parseFloat(item?.total ?? item?.amount ?? "") || 0;
+  const suggestedPayAmount =
+    retentionPayment?.total_to_pay != null
+      ? parseFloat(retentionPayment.total_to_pay)
+      : invoiceTotal;
 
   const {
     register,
@@ -111,13 +148,13 @@ export default function PaymentOrderDialog({
     reset({
       payment_method: "TRANSFERENCIA",
       payment_date: today,
-      amount: item?.total ?? item?.amount ?? "",
+      amount: suggestedPayAmount > 0 ? suggestedPayAmount : "",
       description: "",
       cheque_number: "",
       cheque_bank: "",
       cheque_due_date: "",
     });
-  }, [open, item, reset]);
+  }, [open, item, suggestedPayAmount, reset]);
 
   const mutation = useMutation({ mutationFn: createPaymentOrder });
 
@@ -135,13 +172,12 @@ export default function PaymentOrderDialog({
 
       const result = await mutation.mutateAsync({
         supplier_invoice_id: item.supplier_invoice_id || null,
-        cashflow_id: item.cashflow_id || null,
         supplier_id: item.supplier_id || null,
         payment_method: data.payment_method,
         amount: parseFloat(data.amount),
         description: data.description || null,
         payment_date: data.payment_date,
-        source_movement_id: item.source_movement_id || null,
+        account_movement_id: item.account_movement_id || movementId || null,
         ...chequeData,
       });
 
@@ -156,6 +192,11 @@ export default function PaymentOrderDialog({
       queryClient.invalidateQueries({
         queryKey: queryPaymentOrdersNextNumberKey(),
       });
+      queryClient.invalidateQueries({ queryKey: queryPendingPaymentItemsKey() });
+      queryClient.invalidateQueries({ queryKey: queryPurchaseInvoicesKey() });
+      queryClient.invalidateQueries({ queryKey: querySupplierAccountsListKey() });
+      queryClient.invalidateQueries({ queryKey: ["account-movements"] });
+      queryClient.invalidateQueries({ queryKey: ["account-movements-summary"] });
 
       onCreated?.(result);
       onOpenChange(false);
@@ -167,6 +208,11 @@ export default function PaymentOrderDialog({
 
   const loading = (needsInvoiceFetch && invoiceLoading) || numberLoading;
   const orderNumber = nextNumberData?.number ?? "—";
+  const alreadyPaid = Boolean(
+    movement?.has_payment_order || pendingItem?.has_payment_order
+  );
+  const missingInvoice =
+    movement && !pendingItem && needsInvoiceFetch && !invoiceLoading && !fetchedInvoice;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -176,11 +222,25 @@ export default function PaymentOrderDialog({
             Nueva Orden de Pago
           </DialogTitle>
           <p className="text-xs text-slate-400 mt-0.5">
-            Se generará un movimiento de conciliación en el módulo de control.
+            Registrá cómo se pagó la factura. Se actualizará el movimiento en Control
+            y se creará la orden de pago.
           </p>
         </div>
 
-        {loading ? (
+        {alreadyPaid ? (
+          <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            Esta factura ya tiene una orden de pago registrada.
+          </p>
+        ) : missingInvoice ? (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-4">
+            Primero cargá los datos de la factura en el movimiento antes de crear
+            la orden de pago.
+          </p>
+        ) : !item ? (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-4">
+            Las órdenes de pago solo se crean desde Control.
+          </p>
+        ) : loading ? (
           <div className="py-8 flex justify-center">
             <Spinner />
           </div>
@@ -232,6 +292,37 @@ export default function PaymentOrderDialog({
               </div>
             )}
 
+            {!retentionLoading && retentionPayment && (
+              <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 flex flex-col gap-1.5">
+                <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
+                  Retención registrada
+                </p>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500 text-xs">Monto retenido</span>
+                  <span className="font-semibold text-slate-800">
+                    {utils.formatAmount(retentionPayment.retention_amount)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500 text-xs">Neto a pagar</span>
+                  <span className="font-semibold text-violet-800">
+                    {utils.formatAmount(retentionPayment.total_to_pay)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-violet-700">
+                  El monto de la orden se completó con el neto después de retención.
+                </p>
+              </div>
+            )}
+
+            {!retentionLoading && !retentionPayment && item?.supplier_invoice_id && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                No hay retención registrada para esta factura. Si corresponde,
+                registrá la retención desde el detalle del movimiento antes de
+                crear la orden de pago.
+              </div>
+            )}
+
             {/* Payment method */}
             <div>
               <label className="text-xs font-sans text-gray-900 mb-2 block">
@@ -241,7 +332,7 @@ export default function PaymentOrderDialog({
                 className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"
                 {...register("payment_method", { required: "Seleccione la forma de pago" })}
               >
-                {PAYMENT_METHODS.map((m) => (
+                {PAYMENT_METHOD_OPTIONS.map((m) => (
                   <option key={m.value} value={m.value}>
                     {m.label}
                   </option>
@@ -309,16 +400,26 @@ export default function PaymentOrderDialog({
 
             {/* Amount */}
             <Input
-              label="Monto"
+              label={
+                retentionPayment
+                  ? "Monto (neto después de retención)"
+                  : "Monto"
+              }
               type="number"
               step="0.01"
               placeholder="0.00"
+              readOnly
               {...register("amount", {
                 required: "Ingrese el monto",
                 min: { value: 0.01, message: "El monto debe ser mayor a 0" },
               })}
               intent={errors.amount ? "danger" : "default"}
-              helperText={errors.amount?.message}
+              helperText={
+                errors.amount?.message ||
+                (retentionPayment && invoiceTotal > 0
+                  ? `Total factura: ${utils.formatAmount(invoiceTotal)}`
+                  : undefined)
+              }
             />
 
             {/* Description */}
@@ -346,25 +447,22 @@ export default function PaymentOrderDialog({
               helperText={errors.payment_date?.message}
             />
 
-            <div className="flex gap-2 pt-1">
-              <Button
-                type="submit"
-                variant="default"
-                className="flex-1"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? "Guardando..." : "Crear Orden de Pago"}
-              </Button>
-              <Button
-                type="button"
-                variant="outlined"
-                className="flex-1"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancelar
-              </Button>
-            </div>
+            <FormActions
+              className="pt-1"
+              equalWidth
+              onCancel={() => onOpenChange(false)}
+              isLoading={isSubmitting}
+              disabled={!item?.supplier_invoice_id}
+              submitLabel="Crear Orden de Pago"
+            />
           </form>
+        )}
+        {(alreadyPaid || missingInvoice || !item) && (
+          <div className="flex justify-end pt-2">
+            <Button type="button" variant="outlined" onClick={() => onOpenChange(false)}>
+              Cerrar
+            </Button>
+          </div>
         )}
       </DialogContent>
     </Dialog>

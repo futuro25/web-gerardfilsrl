@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import { Input } from "./common/Input";
-import Button from "./common/Button";
+import FormActions from "./common/FormActions";
 import { useCreateSupplierMutation } from "../apis/api.suppliers";
 import { querySuppliersKey } from "../apis/queryKeys";
 
@@ -79,23 +79,15 @@ export default function SupplierQuickCreateDialog({ open, onOpenChange, onCreate
           <Input label="CUIT" {...register("cuit")} />
           <Input label="Email" type="email" {...register("email")} />
           <Input label="Teléfono" {...register("phone")} />
-          <FormActions isLoading={isLoading} onCancel={handleClose} />
+          <FormActions
+            className="pt-2"
+            equalWidth
+            isLoading={isLoading}
+            onCancel={handleClose}
+            submitLabel="Crear y seleccionar"
+          />
         </form>
       </DialogContent>
     </Dialog>
   );
 }
-
-function FormActions({ isLoading, onCancel }) {
-  return (
-    <div className="flex gap-2 pt-2">
-      <Button type="submit" className="flex-1" disabled={isLoading}>
-        {isLoading ? "Guardando..." : "Crear y seleccionar"}
-      </Button>
-      <Button type="button" variant="outlined" className="flex-1" onClick={onCancel}>
-        Cancelar
-      </Button>
-    </div>
-  );
-}
-

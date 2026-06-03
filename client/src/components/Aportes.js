@@ -7,6 +7,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
+import FormActions from "./common/FormActions";
 import Spinner from "./common/Spinner";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import * as utils from "../utils/utils";
@@ -331,19 +332,14 @@ export default function Aportes() {
                 ))}
               </select>
             </div>
-            <div className="flex gap-2 pt-2">
-              <Button type="submit" variant="default" className="flex-1" disabled={updateMut.isPending}>
-                {updateMut.isPending ? "Guardando…" : "Actualizar"}
-              </Button>
-              <Button
-                type="button"
-                variant="outlined"
-                className="flex-1"
-                onClick={() => setEditTarget(null)}
-              >
-                Cancelar
-              </Button>
-            </div>
+            <FormActions
+              className="pt-2"
+              equalWidth
+              onCancel={() => setEditTarget(null)}
+              isLoading={updateMut.isPending}
+              submitLabel="Actualizar"
+              loadingLabel="Guardando…"
+            />
             {updateMut.isError && (
               <p className="text-sm text-red-600">{updateMut.error?.message}</p>
             )}

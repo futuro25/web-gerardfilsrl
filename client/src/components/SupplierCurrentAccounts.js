@@ -1,23 +1,28 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { Eye, Receipt } from "lucide-react";
 import { DateTime } from "luxon";
 import { EyeIcon } from "./icons";
 import { Input } from "./common/Input";
 import Spinner from "./common/Spinner";
+import PurchaseInvoiceDetailDialog from "./PurchaseInvoiceDetailDialog";
+import PaymentOrderViewDialog from "./PaymentOrderViewDialog";
 import * as utils from "../utils/utils";
 import {
   fetchAllSupplierAccounts,
   fetchSupplierAccount,
 } from "../apis/api.supplieraccounts";
+import { fetchPurchaseInvoices } from "../apis/api.supplierinvoices";
 import {
   querySupplierAccountsListKey,
   querySupplierAccountKey,
+  queryPurchaseInvoicesKey,
 } from "../apis/queryKeys";
 
 function categoryLabel(m) {
-  if (m.category === "FACTURA_CONTROL") return "Factura (Control)";
+  if (m.category === "FACTURA_CONTROL") return "Factura";
   if (m.category === "FACTURA") return "Factura (Cashflow)";
   if (m.category === "ORDEN_PAGO") return "Orden de Pago";
   if (m.category === "INGRESO") return "Ingreso";
@@ -30,6 +35,20 @@ function shownAmount(m) {
   return m.display_amount != null ? m.display_amount : m.signed_amount;
 }
 
+function movementInvoiceKey(m) {
+  if (m.category === "FACTURA_CONTROL") return `control-${m.source_id}`;
+  if (m.category === "FACTURA") return `cashflow-${m.source_id}`;
+  return null;
+}
+
+function canViewInvoice(m) {
+  return m.category === "FACTURA_CONTROL" || m.category === "FACTURA";
+}
+
+function canViewPaymentOrder(m) {
+  return m.category === "ORDEN_PAGO" && Boolean(m.payment_order);
+}
+
 function supplierDisplayName(supplier) {
   return supplier?.fantasy_name || supplier?.name || "—";
 }
@@ -39,6 +58,10 @@ export default function SupplierCurrentAccounts() {
   const [stage, setStage] = useState("LIST");
   const [selectedSupplierId, setSelectedSupplierId] = useState(null);
   const [search, setSearch] = useState("");
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [poDialogOpen, setPoDialogOpen] = useState(false);
+  const [poView, setPoView] = useState(null);
 
   const {
     data: accountsList,
@@ -60,6 +83,46 @@ export default function SupplierCurrentAccounts() {
     enabled: stage === "DETAIL" && Boolean(selectedSupplierId),
   });
 
+  const { data: purchaseInvoicesRes } = useQuery({
+    queryKey: queryPurchaseInvoicesKey({
+      supplier_id: selectedSupplierId,
+      limit: 500,
+    }),
+    queryFn: () =>
+      fetchPurchaseInvoices({ supplier_id: selectedSupplierId, limit: 500 }),
+    enabled: stage === "DETAIL" && Boolean(selectedSupplierId),
+  });
+
+  const invoiceByKey = useMemo(() => {
+    const map = {};
+    for (const inv of purchaseInvoicesRes?.data || []) {
+      map[inv.key] = inv;
+    }
+    return map;
+  }, [purchaseInvoicesRes]);
+
+  const openInvoiceView = (m) => {
+    const key = movementInvoiceKey(m);
+    const inv = key ? invoiceByKey[key] : null;
+    if (!inv) return;
+    setSelectedInvoice(inv);
+    setInvoiceDialogOpen(true);
+  };
+
+  const openPaymentOrderView = (m) => {
+    if (!canViewPaymentOrder(m)) return;
+    let invoiceNumber = null;
+    if (m.supplier_invoice_id != null) {
+      invoiceNumber =
+        invoiceByKey[`control-${m.supplier_invoice_id}`]?.invoice_number || null;
+    } else if (m.cashflow_id != null) {
+      invoiceNumber =
+        invoiceByKey[`cashflow-${m.cashflow_id}`]?.invoice_number || null;
+    }
+    setPoView({ order: m.payment_order, invoiceNumber });
+    setPoDialogOpen(true);
+  };
+
   const openDetail = (supplierId) => {
     setSelectedSupplierId(supplierId);
     setStage("DETAIL");
@@ -68,6 +131,10 @@ export default function SupplierCurrentAccounts() {
   const backToList = () => {
     setStage("LIST");
     setSelectedSupplierId(null);
+    setInvoiceDialogOpen(false);
+    setSelectedInvoice(null);
+    setPoDialogOpen(false);
+    setPoView(null);
   };
 
   const headerBack = () => {
@@ -288,13 +355,16 @@ export default function SupplierCurrentAccounts() {
                           <th className="border-b font-medium p-3 text-slate-400 text-right">
                             Saldo
                           </th>
+                          <th className="border-b font-medium p-3 text-slate-400 text-center w-12">
+                            Doc
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="bg-white">
                         {movements.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={5}
+                              colSpan={6}
                               className="p-4 text-center text-slate-500"
                             >
                               No hay movimientos para este proveedor
@@ -373,6 +443,42 @@ export default function SupplierCurrentAccounts() {
                               >
                                 {utils.formatAmount(m.balance)}
                               </td>
+                              <td className="p-3 text-center">
+                                {canViewInvoice(m) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openInvoiceView(m)}
+                                    disabled={!movementInvoiceKey(m) || !invoiceByKey[movementInvoiceKey(m)]}
+                                    title={
+                                      invoiceByKey[movementInvoiceKey(m)]?.image_key
+                                        ? "Ver factura"
+                                        : "Ver factura (sin imagen)"
+                                    }
+                                    className="inline-flex items-center justify-center disabled:opacity-30"
+                                  >
+                                    <Eye
+                                      className={utils.cn(
+                                        "h-5 w-5",
+                                        invoiceByKey[movementInvoiceKey(m)]?.image_key
+                                          ? "text-green-600 hover:text-green-700"
+                                          : "text-red-500 hover:text-red-600"
+                                      )}
+                                    />
+                                  </button>
+                                )}
+                                {canViewPaymentOrder(m) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openPaymentOrderView(m)}
+                                    title={`Ver orden de pago ${
+                                      m.payment_order?.order_number || ""
+                                    }`}
+                                    className="inline-flex items-center justify-center"
+                                  >
+                                    <Receipt className="h-5 w-5 text-emerald-600 hover:text-emerald-700" />
+                                  </button>
+                                )}
+                              </td>
                             </tr>
                           ))
                         )}
@@ -385,6 +491,20 @@ export default function SupplierCurrentAccounts() {
           </>
         )}
       </div>
+
+      <PurchaseInvoiceDetailDialog
+        open={invoiceDialogOpen}
+        onOpenChange={setInvoiceDialogOpen}
+        invoice={selectedInvoice}
+      />
+
+      <PaymentOrderViewDialog
+        open={poDialogOpen}
+        onOpenChange={setPoDialogOpen}
+        order={poView?.order}
+        supplierName={supplierDisplayName(detailSupplier)}
+        invoiceNumber={poView?.invoiceNumber || null}
+      />
     </>
   );
 }

@@ -4,6 +4,11 @@ const supabase = require("./db");
 
 const self = {};
 
+const {
+  getActiveOrderForInvoice,
+  syncPendingMovementFromInvoice,
+} = require("../services/supplierInvoiceLifecycle");
+
 async function fetchTaxesBySupplierInvoiceIds(supplierInvoiceIds) {
   if (!supplierInvoiceIds.length) return {};
   const { data, error } = await supabase
@@ -128,15 +133,10 @@ self.getPurchaseInvoices = async (req, res) => {
 
     const orderByInvoiceId = {};
     const orderByCashflowId = {};
-    // Movimientos de conciliación generados por órdenes de pago: las facturas
-    // colgadas de estos movimientos NO son compras reales (no listarlas).
-    const conciliationMovementIds = new Set();
     (orders || []).forEach((o) => {
       if (o.supplier_invoice_id != null)
         orderByInvoiceId[o.supplier_invoice_id] = o;
       if (o.cashflow_id != null) orderByCashflowId[o.cashflow_id] = o;
-      if (o.account_movement_id != null)
-        conciliationMovementIds.add(o.account_movement_id);
     });
 
     // Proveedores (nombres)
@@ -188,9 +188,7 @@ self.getPurchaseInvoices = async (req, res) => {
           }
         : null;
 
-    const controlItems = (controlRows || [])
-      .filter((inv) => !conciliationMovementIds.has(inv.account_movement_id))
-      .map((inv) => {
+    const controlItems = (controlRows || []).map((inv) => {
       const sup = supplierById[inv.supplier_id];
       const order = orderByInvoiceId[inv.id] || null;
       return {
@@ -206,7 +204,7 @@ self.getPurchaseInvoices = async (req, res) => {
           : null,
         invoice_number: inv.invoice_number || null,
         description: inv.description || null,
-        date: inv.due_date || inv.created_at?.slice?.(0, 10) || "",
+        date: inv.document_date || inv.due_date || inv.created_at?.slice?.(0, 10) || "",
         created_at: inv.created_at || null,
         amount: parseNum(inv.amount),
         total: parseNum(inv.total ?? inv.amount),
@@ -326,6 +324,7 @@ self.createSupplierInvoice = async (req, res) => {
       amount: req.body.amount,
       invoice_number: req.body.invoice_number || "",
       description: req.body.description,
+      document_date: req.body.document_date || req.body.due_date || null,
       due_date: req.body.due_date,
       total: req.body.total,
       account_movement_id: req.body.account_movement_id || null,
@@ -364,6 +363,10 @@ self.createSupplierInvoice = async (req, res) => {
       newTaxes = taxRows;
     }
 
+    if (created?.[0]) {
+      await syncPendingMovementFromInvoice(created[0]);
+    }
+
     return res.status(201).json({
       invoice: created[0],
       taxes: newTaxes,
@@ -395,6 +398,15 @@ self.setSupplierInvoiceImage = async (req, res) => {
 self.updateSupplierInvoice = async (req, res) => {
   try {
     const id = req.params.id;
+
+    const activeOrder = await getActiveOrderForInvoice(id);
+    if (activeOrder) {
+      return res.status(400).json({
+        error:
+          "No se puede editar la factura: tiene una orden de pago activa. Anulá la OP primero.",
+      });
+    }
+
     const update = { ...req.body };
     if (update.id) delete update.id;
 
@@ -427,6 +439,10 @@ self.updateSupplierInvoice = async (req, res) => {
 
       if (insertError) throw insertError;
       newTaxes = inserted;
+    }
+
+    if (updated?.[0]) {
+      await syncPendingMovementFromInvoice(updated[0]);
     }
 
     return res.status(200).json({

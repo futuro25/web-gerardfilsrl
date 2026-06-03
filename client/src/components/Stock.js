@@ -6,6 +6,7 @@ import { ArrowLeftIcon, PlusIcon, ChevronDownIcon, ChevronRightIcon } from "@her
 import { TrashIcon, CloseIcon, EyeIcon } from "./icons";
 import * as utils from "../utils/utils";
 import Button from "./common/Button";
+import FormActions from "./common/FormActions";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import Spinner from "./common/Spinner";
 import { Input } from "./common/Input";
@@ -1799,24 +1800,12 @@ export default function Stock({}) {
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-2 pt-2">
-              <Button
-                type="submit"
-                variant="default"
-                className="min-w-[7rem]"
-                disabled={updateMutation.isPending}
-              >
-                {updateMutation.isPending ? "Guardando…" : "Guardar"}
-              </Button>
-              <Button
-                type="button"
-                variant="outlined"
-                onClick={() => setEditTarget(null)}
-                disabled={updateMutation.isPending}
-              >
-                Cancelar
-              </Button>
-            </div>
+            <FormActions
+              className="pt-2"
+              onCancel={() => setEditTarget(null)}
+              isLoading={updateMutation.isPending}
+              submitClassName="min-w-[7rem]"
+            />
           </form>
         </DialogContent>
       </Dialog>

@@ -7,6 +7,7 @@ import { EditIcon, TrashIcon, CloseIcon } from "./icons";
 import * as utils from "../utils/utils";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
+import FormActions from "./common/FormActions";
 import Spinner from "./common/Spinner";
 
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -360,18 +361,12 @@ export default function Paychecks() {
                     <option value="OUT">Egreso</option>
                   </select>
                 </div>
-                <div className="flex gap-3 pt-2">
-                  <Button type="submit" disabled={isLoadingSubmit}>
-                    {isLoadingSubmit ? "Guardando..." : "Guardar"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="alternative"
-                    onClick={onCancel}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
+                <FormActions
+                  className="pt-2"
+                  onCancel={onCancel}
+                  isLoading={isLoadingSubmit}
+                  cancelVariant="alternative"
+                />
               </form>
             </div>
           </div>

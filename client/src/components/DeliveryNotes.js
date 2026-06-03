@@ -9,6 +9,7 @@ import { TrashIcon, EyeIcon, CloseIcon } from "./icons";
 import * as utils from "../utils/utils";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
+import FormActions from "./common/FormActions";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import Spinner from "./common/Spinner";
 import SelectComboBox from "./common/SelectComboBox";
@@ -1062,14 +1063,13 @@ export default function DeliveryNotes() {
                 autoComplete="off"
               />
             </div>
-            <div className="flex gap-2 pt-2">
-              <Button type="submit" variant="default" className="flex-1" disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? "Guardando…" : "Guardar"}
-              </Button>
-              <Button type="button" variant="outlined" onClick={() => setEditTarget(null)} className="flex-1">
-                Cancelar
-              </Button>
-            </div>
+            <FormActions
+              className="pt-2"
+              equalWidth
+              onCancel={() => setEditTarget(null)}
+              isLoading={updateMutation.isPending}
+              loadingLabel="Guardando…"
+            />
           </form>
         </DialogContent>
       </Dialog>

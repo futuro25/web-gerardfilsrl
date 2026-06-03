@@ -480,6 +480,10 @@ router.post("/payment-orders", (req, res, next) =>
   PaymentOrderController.createPaymentOrder(req, res, next)
 );
 
+router.delete("/payment-orders/:id", (req, res, next) =>
+  PaymentOrderController.cancelPaymentOrder(req, res, next)
+);
+
 // UPLOADS (Cloudflare R2)
 router.post("/uploads/invoice-image", upload.single("file"), (req, res, next) =>
   UploadController.uploadInvoiceImage(req, res, next)

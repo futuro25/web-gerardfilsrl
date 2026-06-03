@@ -27,10 +27,17 @@ export const queryStockEntriesKey = () => ["stock-entries"];
 export const queryRetentionPaymentsKey = () => ["retention-payments"];
 export const queryRetentionPaymentByIdKey = (id) => ["retention-payment", id];
 export const queryRetentionCertificateKey = (paymentId) => ["retention-certificate", paymentId];
-export const queryRetentionByInvoiceKey = (invoiceNumber, supplierId) => [
-  "retention-by-invoice",
+export const queryRetentionByInvoiceKey = ({
+  supplierInvoiceId,
+  accountMovementId,
   invoiceNumber,
   supplierId,
+} = {}) => [
+  "retention-by-invoice",
+  supplierInvoiceId ?? null,
+  accountMovementId ?? null,
+  invoiceNumber ?? null,
+  supplierId ?? null,
 ];
 export const queryAccountMovementsKey = (params) => ["account-movements", params];
 export const queryAccountMovementsSummaryKey = (params) => ["account-movements-summary", params];

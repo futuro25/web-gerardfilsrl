@@ -6,6 +6,7 @@ export const fetchAccountMovements = async ({
   page = 1,
   limit = 50,
   dateOrder = "asc",
+  pending,
 }) => {
   const params = new URLSearchParams({
     page: String(page),
@@ -15,6 +16,9 @@ export const fetchAccountMovements = async ({
   if (month && year) {
     params.set("month", String(month));
     params.set("year", String(year));
+  }
+  if (pending) {
+    params.set("pending", "1");
   }
   const res = await fetch(`${BASE_URL}?${params.toString()}`, {
     method: "GET",

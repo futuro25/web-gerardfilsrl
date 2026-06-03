@@ -1,16 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Controller, useForm } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { sortBy } from "lodash";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { ExternalLinkIcon, Eye, UploadIcon, Receipt } from "lucide-react";
-import { DateTime } from "luxon";
-import { Input } from "./common/Input";
+import { Eye, Receipt } from "lucide-react";
 import Button from "./common/Button";
+import FormActions from "./common/FormActions";
 import Spinner from "./common/Spinner";
-import SelectComboBox from "./common/SelectComboBox";
-import SupplierQuickCreateDialog from "./SupplierQuickCreateDialog";
+import SupplierInvoiceForm from "./SupplierInvoiceForm";
 import PurchaseInvoiceDetailDialog from "./PurchaseInvoiceDetailDialog";
 import PaymentOrderViewDialog from "./PaymentOrderViewDialog";
 import * as utils from "../utils/utils";
@@ -29,16 +26,6 @@ import {
 
 const PAGE_SIZE = 25;
 
-function getTotalAmount(taxes, amount) {
-  const totalTaxes = (taxes || []).reduce(
-    (acc, t) => acc + (parseFloat(t.value) || 0),
-    0
-  );
-  return (parseFloat(amount) || 0) + totalTaxes;
-}
-
-const today = DateTime.now().toFormat("yyyy-MM-dd");
-
 export default function PurchaseInvoices() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -51,32 +38,13 @@ export default function PurchaseInvoices() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
-  const [taxes, setTaxes] = useState([{ type: "IVA", value: "" }]);
-  const [invoiceLetter, setInvoiceLetter] = useState("A");
-  const [invoiceFirst4, setInvoiceFirst4] = useState("");
-  const [invoiceLast8, setInvoiceLast8] = useState("");
-  const [withoutInvoice, setWithoutInvoice] = useState(false);
-  const [formSubmitted, setFormSubmitted] = useState(false);
-  const [supplierQuickOpen, setSupplierQuickOpen] = useState(false);
+  const [showInvoiceErrors, setShowInvoiceErrors] = useState(false);
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
-  const [imageFile, setImageFile] = useState(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const invoiceFormRef = useRef(null);
   const [detailInvoice, setDetailInvoice] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [poViewInvoice, setPoViewInvoice] = useState(null);
   const [poViewOpen, setPoViewOpen] = useState(false);
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    control,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm({
-    defaultValues: { amount: "", description: "", due_date: today },
-  });
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -110,29 +78,17 @@ export default function PurchaseInvoices() {
     keepPreviousData: true,
   });
 
-  const { data: suppliers, isLoading: suppliersLoading } = useQuery({
+  const { data: suppliers } = useQuery({
     queryKey: querySuppliersKey(),
     queryFn: useSuppliersQuery,
-    enabled: stage === "CREATE" || stage === "LIST",
+    enabled: stage === "LIST",
   });
 
   const createMutation = useMutation({ mutationFn: createSupplierInvoice });
 
-  const watchedAmount = watch("amount");
-  const amountWithTaxes = useMemo(
-    () => getTotalAmount(taxes, watchedAmount),
-    [taxes, watchedAmount]
-  );
-
   const invoices = listRes?.data || [];
   const total = listRes?.total || 0;
   const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
-
-  const supplierOptions = sortBy(suppliers || [], "fantasy_name").map((p) => ({
-    id: p.id,
-    name: p.fantasy_name,
-    label: p.fantasy_name || p.name,
-  }));
 
   const filterSupplierOptions = useMemo(
     () =>
@@ -144,15 +100,8 @@ export default function PurchaseInvoices() {
   );
 
   const resetForm = () => {
-    reset({ amount: "", description: "", due_date: today });
-    setTaxes([{ type: "IVA", value: "" }]);
-    setInvoiceLetter("A");
-    setInvoiceFirst4("");
-    setInvoiceLast8("");
-    setWithoutInvoice(false);
-    setFormSubmitted(false);
-    setImageFile(null);
-    setValue("supplier", null);
+    invoiceFormRef.current?.reset();
+    setShowInvoiceErrors(false);
   };
 
   const openDetail = (inv) => {
@@ -180,45 +129,22 @@ export default function PurchaseInvoices() {
     else onCancel();
   };
 
-  const onSubmit = async (data) => {
-    setFormSubmitted(true);
-    if (!data.supplier?.id) return;
-
-    let invoiceNumber = "";
-    if (!withoutInvoice) {
-      if (!invoiceLetter || !invoiceFirst4 || !invoiceLast8) return;
-      invoiceNumber = `${invoiceLetter}${invoiceFirst4}${invoiceLast8}`;
+  const onSubmit = async (e) => {
+    e.preventDefault();
+    const validation = invoiceFormRef.current?.validate();
+    if (!validation?.ok) {
+      setShowInvoiceErrors(true);
+      return;
     }
 
     try {
       setIsLoadingSubmit(true);
-
-      let imageKey = null;
+      const body = invoiceFormRef.current.buildPayload(null);
+      const imageFile = invoiceFormRef.current.getImageFile?.();
       if (imageFile) {
-        try {
-          const uploadRes = await uploadInvoiceImage(imageFile);
-          imageKey = uploadRes?.key || null;
-        } catch (uploadErr) {
-          console.error(uploadErr);
-          setIsLoadingSubmit(false);
-          window.alert(
-            "No se pudo subir la imagen de la factura: " + uploadErr.message
-          );
-          return;
-        }
+        const uploadRes = await uploadInvoiceImage(imageFile);
+        body.image_key = uploadRes?.key || null;
       }
-
-      const body = {
-        supplier_id: data.supplier.id,
-        amount: parseFloat(data.amount),
-        description: data.description || null,
-        invoice_number: invoiceNumber,
-        due_date: data.due_date,
-        total: getTotalAmount(taxes, data.amount),
-        taxes: taxes.filter((t) => t.value !== ""),
-        account_movement_id: null,
-        image_key: imageKey,
-      };
 
       const result = await createMutation.mutateAsync(body);
       if (result?.error) {
@@ -233,10 +159,10 @@ export default function PurchaseInvoices() {
 
       setIsLoadingSubmit(false);
       onCancel();
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
       setIsLoadingSubmit(false);
-      window.alert("No se pudo guardar la factura");
+      window.alert(err.message || "No se pudo guardar la factura");
     }
   };
 
@@ -537,299 +463,24 @@ export default function PurchaseInvoices() {
 
         {stage === "CREATE" && (
           <div className="mx-auto mt-4 max-w-lg">
-            {suppliersLoading ? (
-              <div className="py-8 flex justify-center">
-                <Spinner />
-              </div>
-            ) : (
-              <form
-                onSubmit={handleSubmit(onSubmit)}
-                className="flex flex-col gap-4"
-              >
-                {/* Proveedor */}
-                <div>
-                  <label className="text-xs font-sans text-gray-900 mb-2 block">
-                    Proveedor
-                  </label>
-                  <div className="flex flex-col sm:flex-row gap-2 items-start">
-                    <Controller
-                      name="supplier"
-                      control={control}
-                      rules={{ required: true }}
-                      render={({ field }) => (
-                        <SelectComboBox
-                          options={supplierOptions}
-                          value={field.value}
-                          onChange={field.onChange}
-                        />
-                      )}
-                    />
-                    <Button
-                      type="button"
-                      variant="alternative"
-                      size="sm"
-                      className="h-[52px] shrink-0"
-                      onClick={() => setSupplierQuickOpen(true)}
-                    >
-                      Nuevo
-                      <ExternalLinkIcon className="ml-1 h-4 w-4" />
-                    </Button>
-                  </div>
-                  {errors.supplier && (
-                    <p className="text-sm text-red-500 pt-1">* Obligatorio</p>
-                  )}
-                </div>
-
-                {/* Número de factura */}
-                <div>
-                  <label className="text-xs font-sans text-gray-900 mb-2 block">
-                    Número de factura
-                  </label>
-                  <div className="flex flex-wrap gap-2 items-center">
-                    <select
-                      disabled={withoutInvoice}
-                      value={invoiceLetter}
-                      onChange={(e) => setInvoiceLetter(e.target.value)}
-                      className="rounded border border-slate-300 p-3 text-slate-500 w-16 text-center disabled:opacity-50"
-                    >
-                      <option value="A">A</option>
-                      <option value="B">B</option>
-                      <option value="C">C</option>
-                    </select>
-                    <span className="text-slate-400">-</span>
-                    <input
-                      type="text"
-                      value={invoiceFirst4}
-                      disabled={withoutInvoice}
-                      onChange={(e) =>
-                        setInvoiceFirst4(
-                          e.target.value.replace(/\D/g, "").slice(0, 4)
-                        )
-                      }
-                      placeholder="0001"
-                      maxLength={4}
-                      className="rounded border border-slate-200 p-3 text-slate-500 w-20 text-center h-[52px]"
-                    />
-                    <span className="text-slate-400">-</span>
-                    <input
-                      type="text"
-                      value={invoiceLast8}
-                      disabled={withoutInvoice}
-                      onChange={(e) =>
-                        setInvoiceLast8(
-                          e.target.value.replace(/\D/g, "").slice(0, 8)
-                        )
-                      }
-                      placeholder="00000001"
-                      maxLength={8}
-                      className="rounded border border-slate-200 p-3 text-slate-500 w-28 text-center h-[52px]"
-                    />
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={withoutInvoice}
-                        onChange={(e) => {
-                          setWithoutInvoice(e.target.checked);
-                          setInvoiceLetter(e.target.checked ? "" : "A");
-                          setInvoiceFirst4("");
-                          setInvoiceLast8("");
-                        }}
-                      />
-                      Sin factura
-                    </label>
-                  </div>
-                  {formSubmitted &&
-                    !withoutInvoice &&
-                    (!invoiceLetter || !invoiceFirst4 || !invoiceLast8) && (
-                      <p className="text-sm text-red-500 pt-1">
-                        Complete el número de factura
-                      </p>
-                    )}
-                </div>
-
-                {/* Monto neto */}
-                <Input
-                  label="Monto neto"
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  {...register("amount", {
-                    required: "Ingrese el monto",
-                    min: { value: 0.01, message: "Debe ser mayor a 0" },
-                  })}
-                  intent={errors.amount ? "danger" : "default"}
-                  helperText={errors.amount?.message}
-                />
-
-                {/* Descripción */}
-                <Input
-                  label="Descripción"
-                  type="text"
-                  placeholder="Detalle de la factura"
-                  {...register("description")}
-                />
-
-                {/* Fecha vencimiento */}
-                <Input
-                  label="Fecha vencimiento"
-                  type="date"
-                  {...register("due_date", { required: "Ingrese la fecha" })}
-                  intent={errors.due_date ? "danger" : "default"}
-                  helperText={errors.due_date?.message}
-                />
-
-                {/* Impuestos */}
-                <div>
-                  <label className="text-xs font-sans text-gray-900 mb-2 block">
-                    Impuestos
-                  </label>
-                  {taxes.map((tax, index) => (
-                    <div key={index} className="flex items-center gap-2 mb-2">
-                      <select
-                        value={tax.type}
-                        onChange={(e) => {
-                          const updated = [...taxes];
-                          updated[index].type = e.target.value;
-                          setTaxes(updated);
-                        }}
-                        className="rounded border border-slate-200 p-2 text-slate-500 w-40 text-sm"
-                      >
-                        {utils.getTaxes().map((t) => (
-                          <option key={t.type} value={t.type}>
-                            {t.type}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        placeholder="Valor"
-                        value={tax.value}
-                        onChange={(e) => {
-                          const updated = [...taxes];
-                          updated[index].value = e.target.value;
-                          setTaxes(updated);
-                        }}
-                        className="rounded border border-slate-200 p-2 text-slate-500 w-32 text-sm"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setTaxes(taxes.filter((_, i) => i !== index))
-                        }
-                        className="text-red-500 font-bold px-1"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setTaxes([...taxes, { type: "IVA", value: "" }])
-                    }
-                    className="text-blue-500 text-sm font-medium"
-                  >
-                    + Agregar impuesto
-                  </button>
-                  <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-100 flex items-center justify-between">
-                    <span className="text-xs text-slate-500 uppercase tracking-wide">
-                      Total con impuestos
-                    </span>
-                    <span className="text-base font-bold text-slate-800">
-                      {utils.formatAmount(amountWithTaxes)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Imagen de la factura */}
-                <div>
-                  <label className="text-xs font-sans text-gray-900 mb-2 block">
-                    Imagen de la factura (opcional)
-                  </label>
-                  <label
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setIsDragging(true);
-                    }}
-                    onDragEnter={(e) => {
-                      e.preventDefault();
-                      setIsDragging(true);
-                    }}
-                    onDragLeave={(e) => {
-                      e.preventDefault();
-                      setIsDragging(false);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setIsDragging(false);
-                      const f = e.dataTransfer?.files?.[0];
-                      if (f) setImageFile(f);
-                    }}
-                    className={utils.cn(
-                      "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors",
-                      isDragging
-                        ? "border-blue-400 bg-blue-50 text-blue-600"
-                        : "border-slate-300 bg-slate-50 text-slate-400 hover:border-blue-300 hover:bg-blue-50/40"
-                    )}
-                  >
-                    <UploadIcon className="h-7 w-7" />
-                    <span className="text-sm font-medium">
-                      Arrastrá la factura acá o hacé click para subir
-                    </span>
-                    <span className="text-xs">Imagen o PDF</span>
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      onChange={(e) =>
-                        setImageFile(e.target.files?.[0] || null)
-                      }
-                    />
-                  </label>
-                  {imageFile && (
-                    <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                      <span className="truncate">{imageFile.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => setImageFile(null)}
-                        className="text-red-500 font-bold px-1"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Acciones */}
-                <div className="flex gap-2 mt-2">
-                  <Button
-                    type="submit"
-                    variant="default"
-                    className="flex-1"
-                    disabled={isLoadingSubmit}
-                  >
-                    {isLoadingSubmit ? "Guardando..." : "Guardar"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outlined"
-                    className="flex-1"
-                    onClick={onCancel}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              </form>
-            )}
+            <form onSubmit={onSubmit} className="flex flex-col gap-4">
+              <SupplierInvoiceForm
+                ref={invoiceFormRef}
+                enabled
+                showErrors={showInvoiceErrors}
+                showImageUpload
+                embedded
+              />
+              <FormActions
+                className="mt-2"
+                equalWidth
+                onCancel={onCancel}
+                isLoading={isLoadingSubmit}
+              />
+            </form>
           </div>
         )}
       </div>
-
-      <SupplierQuickCreateDialog
-        open={supplierQuickOpen}
-        onOpenChange={setSupplierQuickOpen}
-        onCreated={(option) => setValue("supplier", option)}
-      />
 
       <PurchaseInvoiceDetailDialog
         open={detailOpen}

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
+import FormActions from "./common/FormActions";
 import Spinner from "./common/Spinner";
 import * as utils from "../utils/utils";
 import {
@@ -116,6 +117,9 @@ export default function RetentionFormDialog({
         cashflowCategory: "",
         cashflowService: "",
         paymentMethod: "",
+        supplierInvoiceId:
+          invoice?.supplier_invoice_id ?? invoice?.id ?? null,
+        accountMovementId: invoice?.account_movement_id ?? null,
       });
 
       if (result?.error) {
@@ -264,31 +268,24 @@ export default function RetentionFormDialog({
           <p className="text-sm text-red-500 -mt-1">{errorMsg}</p>
         )}
 
-        <div className="flex gap-2 pt-1">
-          <Button
-            type="button"
-            variant="default"
-            className="flex-1"
-            onClick={onSave}
-            disabled={mutation.isPending}
-          >
-            {mutation.isPending ? (
+        <FormActions
+          className="pt-1"
+          equalWidth
+          submitType="button"
+          onSubmit={onSave}
+          onCancel={() => onOpenChange(false)}
+          isLoading={mutation.isPending}
+          submitLabel="Registrar retención"
+          submitContent={
+            mutation.isPending ? (
               <span className="flex items-center gap-2">
                 <Spinner /> Guardando...
               </span>
             ) : (
               "Registrar retención"
-            )}
-          </Button>
-          <Button
-            type="button"
-            variant="outlined"
-            className="flex-1"
-            onClick={() => onOpenChange(false)}
-          >
-            Cancelar
-          </Button>
-        </div>
+            )
+          }
+        />
       </DialogContent>
     </Dialog>
   );

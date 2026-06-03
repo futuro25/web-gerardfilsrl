@@ -363,7 +363,45 @@ self.createRetentionPayment = async (req, res) => {
       cashflowCategory,
       cashflowService,
       paymentMethod,
+      supplierInvoiceId,
+      accountMovementId,
     } = req.body;
+
+    const parsedSupplierInvoiceId =
+      supplierInvoiceId != null && supplierInvoiceId !== ""
+        ? Number(supplierInvoiceId)
+        : null;
+    const parsedAccountMovementId =
+      accountMovementId != null && accountMovementId !== ""
+        ? Number(accountMovementId)
+        : null;
+
+    if (parsedSupplierInvoiceId) {
+      const { data: existing, error: existingErr } = await supabase
+        .from("retention_payments")
+        .select("id")
+        .eq("supplier_invoice_id", parsedSupplierInvoiceId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (existingErr) throw existingErr;
+      if (existing) {
+        return res.json({
+          error: "Ya existe una retención registrada para esta factura.",
+        });
+      }
+    }
+
+    let linkedAccountMovementId = parsedAccountMovementId;
+    if (parsedSupplierInvoiceId && !linkedAccountMovementId) {
+      const { data: supplierInvoice, error: siErr } = await supabase
+        .from("supplier_invoices")
+        .select("account_movement_id")
+        .eq("id", parsedSupplierInvoiceId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (siErr) throw siErr;
+      linkedAccountMovementId = supplierInvoice?.account_movement_id ?? null;
+    }
 
     // Calcular retención considerando el acumulado mensual
     const retentionResult = await calculateMonthlyRetention(
@@ -392,6 +430,8 @@ self.createRetentionPayment = async (req, res) => {
       profits_condition: profitsCondition || "Inscripto",
       retention_amount: retentionAmount,
       total_to_pay: totalToPay,
+      supplier_invoice_id: parsedSupplierInvoiceId,
+      account_movement_id: linkedAccountMovementId,
     };
 
     const { data: newPayment, error: paymentError } = await supabase
@@ -634,71 +674,100 @@ function normalizeCuit(value) {
 }
 
 // Busca la retención (pago + certificado) asociada a una factura.
-// Como retention_payments no tiene FK a la factura y normalmente no guarda
-// invoice_number, el match se hace por: invoice_number (si está cargado),
-// o por CUIT del proveedor + monto total (+ fecha como desempate).
+// Prioridad: supplier_invoice_id → account_movement_id → heurística legacy.
 self.getRetentionByInvoice = async (req, res) => {
   try {
+    const supplierInvoiceId =
+      req.query.supplier_invoice_id != null &&
+      req.query.supplier_invoice_id !== ""
+        ? Number(req.query.supplier_invoice_id)
+        : null;
+    const accountMovementId =
+      req.query.account_movement_id != null &&
+      req.query.account_movement_id !== ""
+        ? Number(req.query.account_movement_id)
+        : null;
+
+    let match = null;
+
+    if (supplierInvoiceId) {
+      const { data, error } = await supabase
+        .from("retention_payments")
+        .select("*")
+        .eq("supplier_invoice_id", supplierInvoiceId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (error) throw error;
+      match = data || null;
+    }
+
+    if (!match && accountMovementId) {
+      const { data, error } = await supabase
+        .from("retention_payments")
+        .select("*")
+        .eq("account_movement_id", accountMovementId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (error) throw error;
+      match = data || null;
+    }
+
     const invoiceNorm = normalizeInvoiceNumber(req.query.invoice_number);
     const supplierId = req.query.supplier_id || null;
     const amount = req.query.amount != null ? Math.abs(parseFloat(req.query.amount)) : null;
     const date = req.query.date ? String(req.query.date).slice(0, 10) : null;
 
-    let cuit = null;
-    if (supplierId) {
-      const { data: sup } = await supabase
-        .from("suppliers")
-        .select("cuit")
-        .eq("id", supplierId)
-        .maybeSingle();
-      cuit = sup?.cuit ? normalizeCuit(sup.cuit) : null;
-    }
+    if (!match) {
+      let cuit = null;
+      if (supplierId) {
+        const { data: sup } = await supabase
+          .from("suppliers")
+          .select("cuit")
+          .eq("id", supplierId)
+          .maybeSingle();
+        cuit = sup?.cuit ? normalizeCuit(sup.cuit) : null;
+      }
 
-    // Universo de retenciones acotado por proveedor cuando es posible.
-    let query = supabase
-      .from("retention_payments")
-      .select("*")
-      .is("deleted_at", null);
-    const { data: allRows } = await query;
-    let rows = allRows || [];
+      const { data: allRows, error: rowsErr } = await supabase
+        .from("retention_payments")
+        .select("*")
+        .is("deleted_at", null);
+      if (rowsErr) throw rowsErr;
 
-    let candidates = cuit
-      ? rows.filter((p) => normalizeCuit(p.supplier_cuit) === cuit)
-      : rows;
-    if (cuit && candidates.length === 0) candidates = rows; // fallback amplio
+      let rows = allRows || [];
+      let candidates = cuit
+        ? rows.filter((p) => normalizeCuit(p.supplier_cuit) === cuit)
+        : rows;
+      if (cuit && candidates.length === 0) candidates = rows;
 
-    let match = null;
+      if (invoiceNorm) {
+        match =
+          candidates.find(
+            (p) => normalizeInvoiceNumber(p.invoice_number) === invoiceNorm
+          ) || null;
+      }
 
-    // 1) Match exacto por número de factura (si alguna retención lo tiene cargado)
-    if (invoiceNorm) {
-      match =
-        candidates.find(
-          (p) => normalizeInvoiceNumber(p.invoice_number) === invoiceNorm
-        ) || null;
-    }
-
-    // 2) Match por monto total (con tolerancia) + fecha como desempate
-    if (!match && amount != null && candidates.length) {
-      const tol = Math.max(1, amount * 0.01);
-      const byAmount = candidates.filter(
-        (p) => Math.abs(Math.abs(parseFloat(p.total_amount)) - amount) <= tol
-      );
-      if (byAmount.length === 1) {
-        match = byAmount[0];
-      } else if (byAmount.length > 1) {
-        // Preferir misma fecha; si no, la fecha más cercana.
-        if (date) {
-          match =
-            byAmount.find((p) => String(p.issue_date).slice(0, 10) === date) ||
-            byAmount
-              .slice()
-              .sort(
-                (a, b) =>
-                  Math.abs(new Date(a.issue_date) - new Date(date)) -
-                  Math.abs(new Date(b.issue_date) - new Date(date))
-              )[0];
-        } else {
+      if (!match && amount != null && candidates.length) {
+        const tol = Math.max(1, amount * 0.01);
+        const byAmount = candidates.filter(
+          (p) => Math.abs(Math.abs(parseFloat(p.total_amount)) - amount) <= tol
+        );
+        if (byAmount.length === 1) {
           match = byAmount[0];
+        } else if (byAmount.length > 1) {
+          if (date) {
+            match =
+              byAmount.find((p) => String(p.issue_date).slice(0, 10) === date) ||
+              byAmount
+                .slice()
+                .sort(
+                  (a, b) =>
+                    Math.abs(new Date(a.issue_date) - new Date(date)) -
+                    Math.abs(new Date(b.issue_date) - new Date(date))
+                )[0];
+          } else {
+            match = byAmount[0];
+          }
         }
       }
     }

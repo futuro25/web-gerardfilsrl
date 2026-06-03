@@ -81,12 +81,21 @@ export const useRetentionCertificateQuery = async (paymentId) => {
 };
 
 export const fetchRetentionByInvoice = async ({
+  supplierInvoiceId,
+  accountMovementId,
   invoiceNumber,
   supplierId,
   amount,
   date,
 } = {}) => {
-  const params = new URLSearchParams({ invoice_number: invoiceNumber || "" });
+  const params = new URLSearchParams();
+  if (supplierInvoiceId != null) {
+    params.set("supplier_invoice_id", String(supplierInvoiceId));
+  }
+  if (accountMovementId != null) {
+    params.set("account_movement_id", String(accountMovementId));
+  }
+  if (invoiceNumber) params.set("invoice_number", invoiceNumber);
   if (supplierId != null) params.append("supplier_id", String(supplierId));
   if (amount != null) params.append("amount", String(amount));
   if (date) params.append("date", String(date));

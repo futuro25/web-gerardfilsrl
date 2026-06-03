@@ -3,9 +3,10 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { DateTime } from "luxon";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Eye, Pin } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Eye, Pin, Receipt, Trash2, Undo2 } from "lucide-react";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
+import FormActions from "./common/FormActions";
 import Spinner from "./common/Spinner";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import * as utils from "../utils/utils";
@@ -18,6 +19,7 @@ import {
   fetchFutureBalances,
   createAccountMovement,
   updateAccountMovement,
+  deleteAccountMovement,
 } from "../apis/api.accountmovements";
 import {
   queryAccountMovementsKey,
@@ -29,13 +31,21 @@ import {
   querySupplierInvoiceByMovementKey,
   querySupplierAccountKey,
 } from "../apis/queryKeys";
-import InvoiceDataDialog from "./InvoiceDataDialog";
 import InvoiceDataFields from "./InvoiceDataFields";
+import PaymentOrderFields from "./PaymentOrderFields";
+import PaymentOrderDialog from "./PaymentOrderDialog";
 import MovementDetailDialog from "./MovementDetailDialog";
 import {
   createSupplierInvoice,
   updateSupplierInvoice,
 } from "../apis/api.supplierinvoices";
+import { uploadInvoiceImage } from "../apis/api.uploads";
+import { createPaymentOrder, cancelPaymentOrder } from "../apis/api.paymentorders";
+import {
+  queryPendingPaymentItemsKey,
+  queryPurchaseInvoicesKey,
+  queryPaymentOrdersByMovementKey,
+} from "../apis/queryKeys";
 
 const MOVEMENT_KIND_OPTIONS = [
   { value: "UNICA VEZ", label: "Única vez" },
@@ -97,14 +107,21 @@ export default function AccountControl() {
   const [selectedMovement, setSelectedMovement] = useState(null);
   const [detailSearch, setDetailSearch] = useState("");
   const [kindListFilter, setKindListFilter] = useState("");
+  const [pendingListFilter, setPendingListFilter] = useState("");
   const [futureDialogOpen, setFutureDialogOpen] = useState(false);
-  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
-  const [invoiceMovement, setInvoiceMovement] = useState(null);
-  const [invoiceShowErrors, setInvoiceShowErrors] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [detailMovement, setDetailMovement] = useState(null);
+  const [invoiceShowErrors, setInvoiceShowErrors] = useState(false);
   const [togglingFixedId, setTogglingFixedId] = useState(null);
+  const [invoicePayMode, setInvoicePayMode] = useState("pending");
+  const [payOrderOpen, setPayOrderOpen] = useState(false);
+  const [payOrderMovement, setPayOrderMovement] = useState(null);
+  const [paymentOrderShowErrors, setPaymentOrderShowErrors] = useState(false);
+  const [egresoPaymentShowErrors, setEgresoPaymentShowErrors] = useState(false);
+  const [invoiceTotalForPo, setInvoiceTotalForPo] = useState(0);
   const invoiceFieldsRef = useRef(null);
+  const paymentOrderFieldsRef = useRef(null);
+  const egresoPaymentFieldsRef = useRef(null);
   /** Orden de listado por fecha: coincide con el API; default asc (más antiguas primero). */
   const [dateOrder, setDateOrder] = useState("asc");
 
@@ -122,8 +139,15 @@ export default function AccountControl() {
   });
 
   const filterParams = viewAll
-    ? { page, limit: 50, dateOrder }
-    : { month: selectedMonth, year: selectedYear, page, limit: 50, dateOrder };
+    ? { page, limit: 50, dateOrder, pending: pendingListFilter === "pending" }
+    : {
+        month: selectedMonth,
+        year: selectedYear,
+        page,
+        limit: 50,
+        dateOrder,
+        pending: pendingListFilter === "pending",
+      };
 
   const { data: movementsRes, isLoading } = useQuery({
     queryKey: queryAccountMovementsKey(filterParams),
@@ -165,8 +189,7 @@ export default function AccountControl() {
 
   const movements = allData;
 
-  // Saldo: siempre acumulado en orden cronológico; la vista puede invertirse (dateOrder === "desc")
-  const movementsWithBalance = useMemo(() => {
+  const filteredMovements = useMemo(() => {
     if (!movements || movements.length === 0) return [];
 
     const q = detailSearch.trim().toLowerCase();
@@ -195,17 +218,10 @@ export default function AccountControl() {
       return (a.id || 0) - (b.id || 0);
     });
 
-    let runningBalance = 0;
-    const withBal = chrono.map((m) => {
-      const amount = parseFloat(m.amount);
-      runningBalance += m.type === "INGRESO" ? amount : -amount;
-      return { ...m, balance: runningBalance };
-    });
-
     if (dateOrder === "desc") {
-      return [...withBal].reverse();
+      return [...chrono].reverse();
     }
-    return withBal;
+    return chrono;
   }, [allData, detailSearch, kindListFilter, dateOrder]);
 
   const invalidateAll = () => {
@@ -219,9 +235,62 @@ export default function AccountControl() {
     });
   };
 
-  const openInvoiceDialog = (movement) => {
-    setInvoiceMovement(movement);
-    setInvoiceDialogOpen(true);
+  const openPaymentOrderDialog = (movement) => {
+    setPayOrderMovement(movement);
+    setPayOrderOpen(true);
+  };
+
+  const handleDeleteMovement = async (movement) => {
+    if (
+      !window.confirm(
+        "¿Eliminar este movimiento y su factura vinculada? Esta acción no se puede deshacer."
+      )
+    ) {
+      return;
+    }
+    try {
+      const result = await deleteAccountMovement(movement.id);
+      if (result?.error) {
+        window.alert(result.error);
+        return;
+      }
+      invalidateAll();
+      invalidatePaymentQueries();
+      setPage(1);
+      setAllData([]);
+    } catch (e) {
+      console.error(e);
+      window.alert(e.message || "No se pudo eliminar el movimiento");
+    }
+  };
+
+  const handleCancelPaymentOrder = async (movement) => {
+    if (
+      !window.confirm(
+        `¿Anular la orden de pago ${movement.payment_order_number || ""}? El movimiento volverá a pendiente.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const result = await cancelPaymentOrder(movement.payment_order_id);
+      if (result?.error) {
+        window.alert(result.error);
+        return;
+      }
+      invalidateAll();
+      invalidatePaymentQueries();
+      setPage(1);
+      setAllData([]);
+    } catch (e) {
+      console.error(e);
+      window.alert(e.message || "No se pudo anular la orden de pago");
+    }
+  };
+
+  const invalidatePaymentQueries = () => {
+    queryClient.invalidateQueries({ queryKey: queryPendingPaymentItemsKey() });
+    queryClient.invalidateQueries({ queryKey: queryPurchaseInvoicesKey() });
   };
 
   const buildMovementUpdateBody = (movement, overrides = {}) => ({
@@ -236,6 +305,7 @@ export default function AccountControl() {
     cheque_bank: movement.cheque_bank || null,
     cheque_due_date: movement.cheque_due_date || null,
     expense_category: movement.expense_category || null,
+    payment_method: movement.payment_method || null,
     ...overrides,
   });
 
@@ -265,6 +335,17 @@ export default function AccountControl() {
     onSuccess: invalidateAll,
   });
 
+  const parseMovementResponse = (result) => {
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+    const movement = Array.isArray(result) ? result[0] : result;
+    if (!movement?.id) {
+      throw new Error("No se pudo guardar el movimiento");
+    }
+    return movement;
+  };
+
   const updateMutation = useMutation({
     mutationFn: updateAccountMovement,
     onSuccess: invalidateAll,
@@ -279,33 +360,41 @@ export default function AccountControl() {
   });
 
   const watchedDate = watch("date");
-  const watchedAmount = watch("amount");
   const watchedDescription = watch("description");
 
-  // Movimiento de conciliación de una orden de pago: no lleva factura propia.
-  const isConciliation = Boolean(selectedMovement?.is_payment_order);
-
   // Solo los egresos con concepto "Factura de proveedor" exigen factura.
-  // Gastos bancarios, impuestos, pago de haberes y otro son excepciones sin factura.
   const requiresInvoice =
-    movementType === "EGRESO" && !isConciliation && expenseCategory === "FACTURA";
+    movementType === "EGRESO" && expenseCategory === "FACTURA";
+
+  const requiresPaymentMethod =
+    movementType === "EGRESO" && expenseCategory !== "FACTURA";
+
+  const movementHasPaymentOrder = Boolean(
+    selectedMovement?.has_payment_order
+  );
 
   const saveInvoiceForMovement = async (movementId) => {
-    if (!invoiceFieldsRef.current?.isActive()) return;
-
-    const validation = invoiceFieldsRef.current.validate();
-    if (!validation.ok) {
+    const validation = invoiceFieldsRef.current?.validate();
+    if (!validation?.ok) {
       setInvoiceShowErrors(true);
       throw new Error(validation.message || "Revise los datos de la factura");
     }
 
     const payload = invoiceFieldsRef.current.buildPayload(movementId);
+    const imageFile = invoiceFieldsRef.current.getImageFile?.();
+    if (imageFile) {
+      const uploadRes = await uploadInvoiceImage(imageFile);
+      payload.image_key = uploadRes?.key || null;
+    }
+
     const existingId = invoiceFieldsRef.current.getExistingInvoiceId();
+    let invoiceId = existingId;
 
     if (existingId) {
       await updateInvoiceMutation.mutateAsync({ ...payload, id: existingId });
     } else {
-      await createInvoiceMutation.mutateAsync(payload);
+      const created = await createInvoiceMutation.mutateAsync(payload);
+      invoiceId = created?.invoice?.id ?? created?.id ?? null;
     }
 
     queryClient.invalidateQueries({
@@ -316,50 +405,152 @@ export default function AccountControl() {
         queryKey: querySupplierAccountKey(payload.supplier_id),
       });
     }
+    invalidatePaymentQueries();
+    return { invoiceId, payload };
+  };
+
+  const createPaymentOrderForInvoice = async (
+    movementId,
+    invoiceId,
+    supplierId
+  ) => {
+    const poValidation = await paymentOrderFieldsRef.current?.validate();
+    if (!poValidation?.ok) {
+      setPaymentOrderShowErrors(true);
+      throw new Error(
+        poValidation.message || "Revise los datos de la orden de pago"
+      );
+    }
+    const poPayload = paymentOrderFieldsRef.current.getPayload();
+    const result = await createPaymentOrder({
+      supplier_invoice_id: invoiceId,
+      supplier_id: supplierId,
+      account_movement_id: movementId,
+      ...poPayload,
+    });
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+    invalidatePaymentQueries();
+    queryClient.invalidateQueries({
+      queryKey: queryPaymentOrdersByMovementKey(movementId),
+    });
+    return result;
   };
 
   const onSubmit = async (data) => {
     try {
       setIsLoadingSubmit(true);
       setInvoiceShowErrors(false);
+      setPaymentOrderShowErrors(false);
+      setEgresoPaymentShowErrors(false);
 
-      if (requiresInvoice && invoiceFieldsRef.current?.isActive()) {
-        const validation = invoiceFieldsRef.current.validate();
-        if (!validation.ok) {
+      if (requiresPaymentMethod) {
+        const payValidation = await egresoPaymentFieldsRef.current?.validate();
+        if (!payValidation?.ok) {
+          setEgresoPaymentShowErrors(true);
+          setIsLoadingSubmit(false);
+          window.alert(
+            payValidation.message || "Revise la forma de pago del egreso"
+          );
+          return;
+        }
+      }
+
+      if (requiresInvoice) {
+        if (movementHasPaymentOrder) {
+          setIsLoadingSubmit(false);
+          window.alert(
+            "Este movimiento tiene una orden de pago activa. Anulá la OP para editarlo."
+          );
+          return;
+        }
+        const validation = invoiceFieldsRef.current?.validate();
+        if (!validation?.ok) {
           setInvoiceShowErrors(true);
           setIsLoadingSubmit(false);
           window.alert(validation.message || "Revise los datos de la factura");
           return;
         }
+        if (
+          invoicePayMode === "pay_now" &&
+          !movementHasPaymentOrder
+        ) {
+          const poValidation = await paymentOrderFieldsRef.current?.validate();
+          if (!poValidation?.ok) {
+            setPaymentOrderShowErrors(true);
+            setIsLoadingSubmit(false);
+            window.alert(
+              poValidation.message || "Revise los datos de la orden de pago"
+            );
+            return;
+          }
+        }
       }
 
       const chequeActive = isCheque && movementType !== "EGRESO";
 
+      let movementAmount = parseFloat(data.amount);
+      let movementDate = data.date;
+      if (requiresInvoice && invoiceFieldsRef.current) {
+        const invoicePayload = invoiceFieldsRef.current.buildPayload(
+          selectedMovement?.id ?? null
+        );
+        movementAmount = invoiceFieldsRef.current.getTotalAmount();
+        movementDate = invoicePayload.document_date;
+      }
+
       const body = {
         type: movementType,
         movement_kind: selectedMovement?.movement_kind || "UNICA VEZ",
-        date: data.date,
-        amount: parseFloat(data.amount),
+        date: movementDate,
+        amount: movementAmount,
         description: data.description,
         is_cheque: chequeActive,
         cheque_number: chequeActive ? data.cheque_number : null,
         cheque_bank: chequeActive ? data.cheque_bank : null,
         cheque_due_date: chequeActive ? data.cheque_due_date : null,
-        expense_category:
-          movementType === "EGRESO" && !isConciliation ? expenseCategory : null,
+        expense_category: movementType === "EGRESO" ? expenseCategory : null,
+        payment_method: null,
       };
+
+      if (requiresPaymentMethod) {
+        const payPayload = egresoPaymentFieldsRef.current.getPayload();
+        body.payment_method = payPayload.payment_method;
+        body.is_cheque = payPayload.is_cheque;
+        body.cheque_number = payPayload.cheque_number || null;
+        body.cheque_bank = payPayload.cheque_bank || null;
+        body.cheque_due_date = payPayload.cheque_due_date || null;
+        if (payPayload.is_cheque && payPayload.cheque_due_date) {
+          body.date = payPayload.cheque_due_date;
+        }
+      } else if (movementType === "EGRESO" && !requiresInvoice) {
+        body.payment_method = null;
+      }
 
       let movementId;
       if (selectedMovement) {
-        await updateMutation.mutateAsync({ ...body, id: selectedMovement.id });
+        const updated = await updateMutation.mutateAsync({ ...body, id: selectedMovement.id });
+        parseMovementResponse(updated);
         movementId = selectedMovement.id;
       } else {
         const created = await createMutation.mutateAsync(body);
-        movementId = Array.isArray(created) ? created[0]?.id : created?.id;
+        movementId = parseMovementResponse(created).id;
       }
 
       if (requiresInvoice && movementId) {
-        await saveInvoiceForMovement(movementId);
+        const { invoiceId, payload } = await saveInvoiceForMovement(movementId);
+        if (
+          invoicePayMode === "pay_now" &&
+          !movementHasPaymentOrder &&
+          invoiceId
+        ) {
+          await createPaymentOrderForInvoice(
+            movementId,
+            invoiceId,
+            payload.supplier_id
+          );
+        }
         queryClient.invalidateQueries({
           queryKey: querySupplierAccountsListKey(),
         });
@@ -369,9 +560,14 @@ export default function AccountControl() {
       setIsCheque(false);
       setMovementType("INGRESO");
       setExpenseCategory("FACTURA");
+      setInvoicePayMode("pending");
       setSelectedMovement(null);
       setInvoiceShowErrors(false);
+      setPaymentOrderShowErrors(false);
+      setEgresoPaymentShowErrors(false);
       invoiceFieldsRef.current?.reset();
+      paymentOrderFieldsRef.current?.reset?.();
+      egresoPaymentFieldsRef.current?.reset?.();
       setPage(1);
       setAllData([]);
       reset({
@@ -396,6 +592,9 @@ export default function AccountControl() {
     setMovementType(movement.type);
     setIsCheque(movement.is_cheque || false);
     setExpenseCategory(movement.expense_category || "FACTURA");
+    setInvoicePayMode(
+      movement.invoice_payment_pending ? "pending" : "pay_now"
+    );
     reset({
       movement_kind: movement.movement_kind || "UNICA VEZ",
       date: movement.date ? DateTime.fromISO(movement.date).toFormat("yyyy-MM-dd") : "",
@@ -414,10 +613,15 @@ export default function AccountControl() {
     setIsCheque(false);
     setMovementType("INGRESO");
     setExpenseCategory("FACTURA");
+    setInvoicePayMode("pending");
     setIsLoadingSubmit(false);
     setSelectedMovement(null);
     setInvoiceShowErrors(false);
+    setPaymentOrderShowErrors(false);
+    setEgresoPaymentShowErrors(false);
     invoiceFieldsRef.current?.reset();
+    paymentOrderFieldsRef.current?.reset?.();
+    egresoPaymentFieldsRef.current?.reset?.();
     reset({
       movement_kind: "UNICA VEZ",
       date: DateTime.now().toFormat("yyyy-MM-dd"),
@@ -436,6 +640,12 @@ export default function AccountControl() {
     setPage(1);
     setAllData([]);
     setViewAll(false);
+  };
+
+  const handlePendingFilterChange = (value) => {
+    setPendingListFilter(value);
+    setPage(1);
+    setAllData([]);
   };
 
   const handleViewAll = () => {
@@ -462,7 +672,9 @@ export default function AccountControl() {
   };
 
   const hasMore = movementsRes?.total > movements.length;
-  const listFiltersActive = Boolean(detailSearch.trim() || kindListFilter);
+  const listFiltersActive = Boolean(
+    detailSearch.trim() || kindListFilter || pendingListFilter
+  );
 
   const redirectNavigation = () => {
     if (stage === "LIST") {
@@ -621,6 +833,14 @@ export default function AccountControl() {
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
+              <select
+                className="border rounded px-2 py-1.5 text-sm bg-white min-w-[10rem]"
+                value={pendingListFilter}
+                onChange={(e) => handlePendingFilterChange(e.target.value)}
+              >
+                <option value="">Todos los estados</option>
+                <option value="pending">Pendientes de pago</option>
+              </select>
               <input
                 type="search"
                 placeholder="Buscar en detalle…"
@@ -723,7 +943,7 @@ export default function AccountControl() {
                   {listFiltersActive && (
                     <span className="text-slate-400">
                       {" "}
-                      · Mostrando {movementsWithBalance.length} con el filtro actual
+                      · Mostrando {filteredMovements.length} con el filtro actual
                     </span>
                   )}
                 </div>
@@ -754,22 +974,20 @@ export default function AccountControl() {
                                 )}
                               </button>
                             </th>
-                            <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Tipo</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Clasificación</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Proveedor</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-left">Detalle</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-right">Monto</th>
-                            <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-right">Saldo</th>
                             <th className="border-b font-medium p-3 pt-0 pb-3 text-slate-400 text-center min-w-[11rem]"></th>
                           </tr>
                         </thead>
                         <tbody className="bg-white">
-                          {movementsWithBalance.length > 0 ? (
-                            movementsWithBalance.map((m, index) => {
+                          {filteredMovements.length > 0 ? (
+                            filteredMovements.map((m, index) => {
                               const effectiveDate = m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date;
                               const kind = m.movement_kind || "UNICA VEZ";
                               const rowKindBg =
-                                kind === "PENDIENTE"
+                                m.invoice_payment_pending
                                   ? "bg-yellow-100 hover:bg-yellow-200/80"
                                   : kind === "FIJO"
                                     ? "bg-sky-100 hover:bg-sky-200/80"
@@ -791,14 +1009,6 @@ export default function AccountControl() {
                                       )}
                                     </div>
                                   </td>
-                                  <td className="!text-xs text-left border-b border-slate-100 p-3">
-                                    <span className={utils.cn(
-                                      "px-2 py-0.5 rounded text-xs font-medium text-white",
-                                      m.type === "INGRESO" ? "bg-green-500" : "bg-red-500"
-                                    )}>
-                                      {m.type === "INGRESO" ? "Ingreso" : "Egreso"}
-                                    </span>
-                                  </td>
                                   <td className="!text-xs text-left border-b border-slate-100 p-3 text-slate-600">
                                     {movementKindLabel(m.movement_kind)}
                                   </td>
@@ -807,6 +1017,31 @@ export default function AccountControl() {
                                   </td>
                                   <td className="!text-xs text-left border-b border-slate-100 p-3 text-slate-500 max-w-[200px] truncate">
                                     {m.description || "-"}
+                                    {m.invoice_payment_pending && (
+                                      <span className="block text-[10px] text-amber-700 font-medium">
+                                        Factura pendiente de pago
+                                      </span>
+                                    )}
+                                    {m.has_payment_order && m.payment_order_number && (
+                                      <span className="block text-[10px] text-emerald-700">
+                                        {m.payment_order_number}
+                                      </span>
+                                    )}
+                                    {m.payment_method && m.expense_category !== "FACTURA" && (
+                                      <span className="block text-[10px] text-slate-500">
+                                        {m.payment_method === "TRANSFERENCIA"
+                                          ? "Transferencia"
+                                          : m.payment_method === "CHEQUE"
+                                            ? "Cheque"
+                                            : m.payment_method === "EFECTIVO"
+                                              ? "Efectivo"
+                                              : m.payment_method === "TARJETA DE CREDITO"
+                                                ? "Tarjeta de crédito"
+                                                : m.payment_method === "TARJETA DE DEBITO"
+                                                  ? "Tarjeta de débito"
+                                                  : m.payment_method}
+                                      </span>
+                                    )}
                                     {m.is_cheque && m.cheque_number && (
                                       <span className="block text-[10px] text-blue-600">
                                         Cheque #{m.cheque_number} - {m.cheque_bank}
@@ -815,15 +1050,16 @@ export default function AccountControl() {
                                   </td>
                                   <td className={utils.cn(
                                     "!text-xs text-right border-b border-slate-100 p-3 font-medium",
-                                    m.type === "INGRESO" ? "text-green-600" : "text-red-600"
+                                    m.type === "INGRESO" ? "text-green-600" : "text-red-600",
+                                    m.excludes_from_balance && "opacity-60"
                                   )}>
-                                    {m.type === "INGRESO" ? "+" : "-"}{utils.formatAmount(m.amount)}
-                                  </td>
-                                  <td className={utils.cn(
-                                    "!text-xs text-right border-b border-slate-100 p-3 font-bold",
-                                    m.balance >= 0 ? "text-gray-800" : "text-red-600"
-                                  )}>
-                                    {utils.formatAmount(m.balance)}
+                                    {m.type === "INGRESO" ? "+" : "-"}
+                                    {utils.formatAmount(m.amount)}
+                                    {m.excludes_from_balance && (
+                                      <span className="block text-[10px] font-normal text-slate-400">
+                                        sin impacto en saldo
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="!text-xs border-b border-slate-100 px-2 py-2 sm:px-3 sm:py-3">
                                     <div className="flex items-center justify-end gap-2 sm:gap-2.5 flex-nowrap">
@@ -871,29 +1107,67 @@ export default function AccountControl() {
                                       >
                                         <Eye className="w-5 h-5" />
                                       </button>
-                                      {m.type === "EGRESO" && (
+                                      {m.invoice_payment_pending && (
                                         <button
                                           type="button"
                                           className={utils.cn(
                                             ROW_ACTION_BTN,
-                                            "min-w-[3.25rem] text-amber-700 hover:bg-amber-50 hover:text-amber-900 text-xs font-semibold"
+                                            "text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900"
                                           )}
-                                          onClick={() => openInvoiceDialog(m)}
-                                          title="Ingresar datos de factura"
-                                          aria-label="Ingresar datos de factura"
+                                          onClick={() => openPaymentOrderDialog(m)}
+                                          title="Crear orden de pago"
+                                          aria-label="Crear orden de pago"
                                         >
-                                          Factura
+                                          <Receipt className="w-5 h-5" />
+                                        </button>
+                                      )}
+                                      {m.has_payment_order && m.payment_order_id && (
+                                        <button
+                                          type="button"
+                                          className={utils.cn(
+                                            ROW_ACTION_BTN,
+                                            "text-amber-700 hover:bg-amber-50 hover:text-amber-900"
+                                          )}
+                                          onClick={() => handleCancelPaymentOrder(m)}
+                                          title="Anular orden de pago"
+                                          aria-label="Anular orden de pago"
+                                        >
+                                          <Undo2 className="w-5 h-5" />
+                                        </button>
+                                      )}
+                                      {(m.invoice_payment_pending ||
+                                        (m.type === "EGRESO" &&
+                                          m.expense_category === "FACTURA" &&
+                                          !m.has_payment_order)) && (
+                                        <button
+                                          type="button"
+                                          className={utils.cn(
+                                            ROW_ACTION_BTN,
+                                            "text-red-500 hover:bg-red-50 hover:text-red-700"
+                                          )}
+                                          onClick={() => handleDeleteMovement(m)}
+                                          title="Eliminar movimiento"
+                                          aria-label="Eliminar movimiento"
+                                        >
+                                          <Trash2 className="w-5 h-5" />
                                         </button>
                                       )}
                                       <button
                                         type="button"
                                         className={utils.cn(
                                           ROW_ACTION_BTN,
-                                          "text-blue-500 hover:bg-blue-50 hover:text-blue-700"
+                                          "text-blue-500 hover:bg-blue-50 hover:text-blue-700",
+                                          m.has_payment_order &&
+                                            m.expense_category === "FACTURA" &&
+                                            "opacity-40 pointer-events-none"
                                         )}
                                         onClick={() => onEdit(m)}
                                         title="Editar"
                                         aria-label="Editar"
+                                        disabled={
+                                          m.has_payment_order &&
+                                          m.expense_category === "FACTURA"
+                                        }
                                       >
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5" aria-hidden>
                                           <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
@@ -906,7 +1180,7 @@ export default function AccountControl() {
                             })
                           ) : (
                             <tr>
-                              <td colSpan={8} className="border-b border-slate-100 p-4 text-slate-500 text-center">
+                              <td colSpan={6} className="border-b border-slate-100 p-4 text-slate-500 text-center">
                                 {movements.length > 0 && listFiltersActive
                                   ? "Ningún movimiento coincide con el filtro"
                                   : "No hay movimientos"}
@@ -980,28 +1254,32 @@ export default function AccountControl() {
                 )}
               </div>
 
-              {/* Date */}
-              <Input
-                label="Fecha"
-                type="date"
-                {...register("date", { required: "Ingrese la fecha" })}
-                intent={errors.date ? "danger" : "default"}
-                helperText={errors.date?.message}
-              />
+              {/* Date — oculto para facturas: la fecha comprobante va en el formulario de factura */}
+              {!requiresInvoice && (
+                <Input
+                  label="Fecha"
+                  type="date"
+                  {...register("date", { required: "Ingrese la fecha" })}
+                  intent={errors.date ? "danger" : "default"}
+                  helperText={errors.date?.message}
+                />
+              )}
 
-              {/* Amount */}
-              <Input
-                label="Monto"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                {...register("amount", {
-                  required: "Ingrese el monto",
-                  min: { value: 0.01, message: "El monto debe ser mayor a 0" },
-                })}
-                intent={errors.amount ? "danger" : "default"}
-                helperText={errors.amount?.message}
-              />
+              {/* Amount — oculto para facturas: el monto sale del formulario de factura */}
+              {!requiresInvoice && (
+                <Input
+                  label="Monto"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  {...register("amount", {
+                    required: "Ingrese el monto",
+                    min: { value: 0.01, message: "El monto debe ser mayor a 0" },
+                  })}
+                  intent={errors.amount ? "danger" : "default"}
+                  helperText={errors.amount?.message}
+                />
+              )}
 
               {/* Description */}
               <Input
@@ -1076,14 +1354,7 @@ export default function AccountControl() {
                 </>
               )}
 
-              {movementType === "EGRESO" && isConciliation && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
-                  Movimiento de conciliación de una orden de pago. No registra
-                  factura.
-                </div>
-              )}
-
-              {movementType === "EGRESO" && !isConciliation && (
+              {movementType === "EGRESO" && (
                 <div>
                   <label className="text-xs font-sans text-gray-900 mb-2 block">
                     Concepto del egreso
@@ -1099,9 +1370,77 @@ export default function AccountControl() {
                   </select>
                   <p className="text-xs text-slate-500 mt-2">
                     {requiresInvoice
-                      ? "Requiere cargar la factura asociada."
-                      : "Concepto exento: se registra sin factura asociada."}
+                      ? "Registrá la factura y dejala pendiente o pagala con una orden de pago."
+                      : "Indicá la forma de pago con la que se realizó el egreso."}
                   </p>
+                </div>
+              )}
+
+              {requiresPaymentMethod && (
+                <PaymentOrderFields
+                  key={`egreso-pay-${selectedMovement?.id ?? "new"}-${expenseCategory}`}
+                  ref={egresoPaymentFieldsRef}
+                  variant="egreso"
+                  showErrors={egresoPaymentShowErrors}
+                  defaultPaymentMethod={
+                    selectedMovement?.payment_method || "TRANSFERENCIA"
+                  }
+                  defaultChequeNumber={selectedMovement?.cheque_number || ""}
+                  defaultChequeBank={selectedMovement?.cheque_bank || ""}
+                  defaultChequeDueDate={
+                    selectedMovement?.cheque_due_date
+                      ? DateTime.fromISO(selectedMovement.cheque_due_date).toFormat(
+                          "yyyy-MM-dd"
+                        )
+                      : ""
+                  }
+                />
+              )}
+
+              {requiresInvoice && !movementHasPaymentOrder && (
+                <div>
+                  <label className="text-xs font-sans text-gray-900 mb-2 block">
+                    Estado del pago
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={utils.cn(
+                        "flex-1 py-2 rounded text-sm font-medium border transition-colors",
+                        invoicePayMode === "pending"
+                          ? "bg-amber-500 text-white border-amber-500"
+                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                      )}
+                      onClick={() => setInvoicePayMode("pending")}
+                    >
+                      Pendiente
+                    </button>
+                    <button
+                      type="button"
+                      className={utils.cn(
+                        "flex-1 py-2 rounded text-sm font-medium border transition-colors",
+                        invoicePayMode === "pay_now"
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                      )}
+                      onClick={() => setInvoicePayMode("pay_now")}
+                    >
+                      Pagar ahora (OP)
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    {invoicePayMode === "pending"
+                      ? "La factura quedará pendiente. Podrás crear la orden de pago desde la fila del movimiento."
+                      : "Al guardar se creará la orden de pago con la forma de pago indicada."}
+                  </p>
+                </div>
+              )}
+
+              {requiresInvoice && movementHasPaymentOrder && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                  Esta factura ya tiene orden de pago (
+                  {selectedMovement.payment_order_number}). Anulá la OP para
+                  editar la factura o eliminar el movimiento.
                 </div>
               )}
 
@@ -1110,43 +1449,46 @@ export default function AccountControl() {
                   ref={invoiceFieldsRef}
                   accountMovement={selectedMovement}
                   movementDate={watchedDate}
-                  movementAmount={watchedAmount}
                   movementDescription={watchedDescription}
-                  enabled={requiresInvoice}
+                  enabled={requiresInvoice && !movementHasPaymentOrder}
                   showErrors={invoiceShowErrors}
-                  required={requiresInvoice}
+                  onTotalChange={setInvoiceTotalForPo}
                 />
               )}
 
+              {requiresInvoice &&
+                invoicePayMode === "pay_now" &&
+                !movementHasPaymentOrder && (
+                  <PaymentOrderFields
+                    ref={paymentOrderFieldsRef}
+                    defaultAmount={invoiceTotalForPo || ""}
+                    showErrors={paymentOrderShowErrors}
+                  />
+                )}
+
               {/* Actions */}
-              <div className="flex gap-2 mt-2">
-                <Button
-                  type="submit"
-                  variant="default"
-                  className="flex-1"
-                  disabled={isLoadingSubmit}
-                >
-                  {isLoadingSubmit ? "Guardando..." : selectedMovement ? "Actualizar" : "Guardar"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outlined"
-                  className="flex-1"
-                  onClick={onCancel}
-                >
-                  Cancelar
-                </Button>
-              </div>
+              <FormActions
+                className="mt-2"
+                equalWidth
+                onCancel={onCancel}
+                isLoading={isLoadingSubmit}
+                submitLabel={selectedMovement ? "Actualizar" : "Guardar"}
+              />
             </form>
           </div>
         )}
       </div>
 
-      <InvoiceDataDialog
-        open={invoiceDialogOpen}
-        onOpenChange={setInvoiceDialogOpen}
-        accountMovement={invoiceMovement}
-        onSaved={() => invalidateAll()}
+      <PaymentOrderDialog
+        open={payOrderOpen}
+        onOpenChange={setPayOrderOpen}
+        movement={payOrderMovement}
+        onCreated={() => {
+          invalidateAll();
+          invalidatePaymentQueries();
+          setPage(1);
+          setAllData([]);
+        }}
       />
 
       <MovementDetailDialog

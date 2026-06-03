@@ -1,8 +1,8 @@
 const BASE_URL = "/api/payment-orders";
 
-export const fetchPaymentOrdersByMovement = async (sourceMovementId) => {
+export const fetchPaymentOrdersByMovement = async (movementId) => {
   const params = new URLSearchParams({
-    source_movement_id: String(sourceMovementId),
+    account_movement_id: String(movementId),
   });
   const res = await fetch(`${BASE_URL}?${params}`, {
     method: "GET",
@@ -47,6 +47,15 @@ export const createPaymentOrder = async (body) => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("Error en la petición");
+  return res.json();
+};
+
+export const cancelPaymentOrder = async (id) => {
+  const res = await fetch(`${BASE_URL}/${id}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error("Error en la petición");
   return res.json();

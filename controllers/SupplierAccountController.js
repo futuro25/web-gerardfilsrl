@@ -101,7 +101,10 @@ function paymentOrderItems(orders) {
     return {
       id: `payment-order-${po.id}`,
       source: "payment_order",
+      source_id: po.id,
       invoice_key: invoiceKey,
+      supplier_invoice_id: po.supplier_invoice_id ?? null,
+      cashflow_id: po.cashflow_id ?? null,
       movement_type: "EGRESO",
       category: "ORDEN_PAGO",
       date: po.payment_date,
@@ -115,6 +118,15 @@ function paymentOrderItems(orders) {
       // La orden de pago concilia el saldo (pago, crédito).
       signed_amount: -amt,
       display_amount: -amt,
+      payment_order: {
+        order_number: po.order_number,
+        payment_method: po.payment_method,
+        amount: po.amount,
+        payment_date: po.payment_date,
+        cheque_number: po.cheque_number ?? null,
+        cheque_bank: po.cheque_bank ?? null,
+        cheque_due_date: po.cheque_due_date ?? null,
+      },
       taxes: [],
     };
   });
@@ -134,7 +146,7 @@ function supplierInvoiceMovementItems(supplierInvoices, taxesBySupplierInvoiceId
         inv.description ||
         (inv.invoice_number
           ? `Factura ${inv.invoice_number}`
-          : "Factura (Control)"),
+          : "Factura"),
       invoice_number: inv.invoice_number || null,
       amount: total,
       signed_amount: total,
@@ -295,13 +307,6 @@ self.getAllSupplierAccounts = async (req, res) => {
 
     if (paymentOrdersError) throw paymentOrdersError;
 
-    // Facturas colgadas de un movimiento de conciliación de OP no son deuda real.
-    const conciliationMovementIds = new Set(
-      (paymentOrders || [])
-        .map((po) => po.account_movement_id)
-        .filter((v) => v != null)
-    );
-
     const ordersBySupplier = {};
     (paymentOrders || []).forEach((po) => {
       if (po.supplier_id == null) return;
@@ -317,9 +322,7 @@ self.getAllSupplierAccounts = async (req, res) => {
     });
 
     const invoicesBySupplier = {};
-    (supplierInvoices || [])
-      .filter((inv) => !conciliationMovementIds.has(inv.account_movement_id))
-      .forEach((inv) => {
+    (supplierInvoices || []).forEach((inv) => {
         if (!invoicesBySupplier[inv.supplier_id]) {
           invoicesBySupplier[inv.supplier_id] = [];
         }
@@ -421,7 +424,10 @@ self.getSupplierAccount = async (req, res) => {
         payment_method,
         amount,
         description,
-        payment_date
+        payment_date,
+        cheque_number,
+        cheque_bank,
+        cheque_due_date
       `
       )
       .eq("supplier_id", supplierId)
@@ -429,19 +435,9 @@ self.getSupplierAccount = async (req, res) => {
 
     if (paymentOrdersError) throw paymentOrdersError;
 
-    // Excluir las facturas que son movimientos de conciliación de OP (no son deuda real).
-    const conciliationMovementIds = new Set(
-      (paymentOrders || [])
-        .map((po) => po.account_movement_id)
-        .filter((v) => v != null)
-    );
-    const realSupplierInvoices = (supplierInvoices || []).filter(
-      (inv) => !conciliationMovementIds.has(inv.account_movement_id)
-    );
-
     const { movements, summary } = await buildMergedAccountData(
       cashflowRows,
-      realSupplierInvoices,
+      supplierInvoices,
       paymentOrders
     );
 
