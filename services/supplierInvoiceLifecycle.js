@@ -63,16 +63,94 @@ async function syncPendingMovementFromInvoice(invoice) {
     .is("deleted_at", null);
 }
 
+async function softDeletePaymentOrders({ movementId, supplierInvoiceId }) {
+  const ids = new Set();
+
+  if (movementId) {
+    const { data, error } = await supabase
+      .from("payment_orders")
+      .select("id")
+      .eq("account_movement_id", movementId)
+      .is("deleted_at", null);
+    if (error) throw error;
+    (data || []).forEach((o) => ids.add(o.id));
+  }
+
+  if (supplierInvoiceId) {
+    const { data, error } = await supabase
+      .from("payment_orders")
+      .select("id")
+      .eq("supplier_invoice_id", supplierInvoiceId)
+      .is("deleted_at", null);
+    if (error) throw error;
+    (data || []).forEach((o) => ids.add(o.id));
+  }
+
+  if (!ids.size) return;
+
+  const deletedAt = new Date().toISOString();
+  const { error } = await supabase
+    .from("payment_orders")
+    .update({ deleted_at: deletedAt })
+    .in("id", [...ids])
+    .is("deleted_at", null);
+  if (error) throw error;
+}
+
+async function softDeleteRetentionsForInvoice({ supplierInvoiceId, accountMovementId }) {
+  const paymentIds = new Set();
+
+  if (supplierInvoiceId) {
+    const { data, error } = await supabase
+      .from("retention_payments")
+      .select("id")
+      .eq("supplier_invoice_id", supplierInvoiceId)
+      .is("deleted_at", null);
+    if (error) throw error;
+    (data || []).forEach((p) => paymentIds.add(p.id));
+  }
+
+  if (accountMovementId) {
+    const { data, error } = await supabase
+      .from("retention_payments")
+      .select("id")
+      .eq("account_movement_id", accountMovementId)
+      .is("deleted_at", null);
+    if (error) throw error;
+    (data || []).forEach((p) => paymentIds.add(p.id));
+  }
+
+  if (!paymentIds.size) return;
+
+  const deletedAt = new Date().toISOString();
+  const ids = [...paymentIds];
+
+  await supabase
+    .from("retention_certificates")
+    .update({ deleted_at: deletedAt })
+    .in("retention_payment_id", ids)
+    .is("deleted_at", null);
+
+  const { error } = await supabase
+    .from("retention_payments")
+    .update({ deleted_at: deletedAt })
+    .in("id", ids)
+    .is("deleted_at", null);
+  if (error) throw error;
+}
+
 async function cascadeDeleteSupplierInvoiceForMovement(movementId) {
   const invoice = await getInvoiceByMovementId(movementId);
-  if (!invoice) return;
+  if (!invoice) return null;
 
-  const order = await getActiveOrderForInvoice(invoice.id);
-  if (order) {
-    throw new Error(
-      "No se puede eliminar: la factura tiene una orden de pago activa. Anulá la OP primero."
-    );
-  }
+  await softDeletePaymentOrders({
+    movementId,
+    supplierInvoiceId: invoice.id,
+  });
+  await softDeleteRetentionsForInvoice({
+    supplierInvoiceId: invoice.id,
+    accountMovementId: movementId,
+  });
 
   await supabase.from("taxes").delete().eq("supplier_invoice_id", invoice.id);
 
@@ -90,6 +168,43 @@ async function cascadeDeleteSupplierInvoiceForMovement(movementId) {
       console.error("Error deleting invoice image:", e.message);
     }
   }
+
+  return invoice;
+}
+
+/** Elimina en cascada OP, retenciones, factura, cheque vinculado y el movimiento. */
+async function cascadeDeleteMovementAndRelated(movement) {
+  const movementId = movement.id;
+
+  const invoice = await getInvoiceByMovementId(movementId);
+
+  if (invoice) {
+    await cascadeDeleteSupplierInvoiceForMovement(movementId);
+  } else {
+    await softDeletePaymentOrders({ movementId, supplierInvoiceId: null });
+    await softDeleteRetentionsForInvoice({
+      supplierInvoiceId: null,
+      accountMovementId: movementId,
+    });
+  }
+
+  if (movement.paycheck_id) {
+    const { error: paycheckError } = await supabase
+      .from("paychecks")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", movement.paycheck_id)
+      .is("deleted_at", null);
+    if (paycheckError) {
+      console.error("Error deleting linked paycheck:", paycheckError);
+    }
+  }
+
+  const { error } = await supabase
+    .from("account_movements")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", movementId)
+    .is("deleted_at", null);
+  if (error) throw error;
 }
 
 function buildMovementPaymentFields({
@@ -131,6 +246,7 @@ module.exports = {
   getActiveOrderForMovement,
   syncPendingMovementFromInvoice,
   cascadeDeleteSupplierInvoiceForMovement,
+  cascadeDeleteMovementAndRelated,
   buildMovementPaymentFields,
   buildMovementPendingRevert,
 };

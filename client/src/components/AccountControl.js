@@ -45,7 +45,29 @@ import {
   queryPendingPaymentItemsKey,
   queryPurchaseInvoicesKey,
   queryPaymentOrdersByMovementKey,
+  queryRetentionPaymentsKey,
 } from "../apis/queryKeys";
+
+function deleteMovementConfirmMessage(m) {
+  const extras = [];
+  if (m.has_payment_order) extras.push("orden de pago");
+  if (
+    m.expense_category === "FACTURA" ||
+    m.supplier_invoice_id ||
+    m.invoice_payment_pending
+  ) {
+    extras.push("factura vinculada");
+  }
+  if (m.is_cheque) extras.push("datos de cheque del movimiento");
+  if (m.paycheck_id) extras.push("registro en Cheques");
+
+  let msg = "¿Eliminar este movimiento?";
+  if (extras.length) {
+    msg += ` También se eliminarán: ${extras.join(", ")}.`;
+  }
+  msg += " Esta acción no se puede deshacer.";
+  return msg;
+}
 
 const MOVEMENT_KIND_OPTIONS = [
   { value: "UNICA VEZ", label: "Única vez" },
@@ -256,11 +278,7 @@ export default function AccountControl() {
   };
 
   const handleDeleteMovement = async (movement) => {
-    if (
-      !window.confirm(
-        "¿Eliminar este movimiento y su factura vinculada? Esta acción no se puede deshacer."
-      )
-    ) {
+    if (!window.confirm(deleteMovementConfirmMessage(movement))) {
       return;
     }
     try {
@@ -271,6 +289,7 @@ export default function AccountControl() {
       }
       invalidateAll();
       invalidatePaymentQueries();
+      queryClient.invalidateQueries({ queryKey: queryRetentionPaymentsKey() });
       setPage(1);
       await refreshMovementsList();
     } catch (e) {
@@ -1150,23 +1169,18 @@ export default function AccountControl() {
                                           <Undo2 className="w-5 h-5" />
                                         </button>
                                       )}
-                                      {(m.invoice_payment_pending ||
-                                        (m.type === "EGRESO" &&
-                                          m.expense_category === "FACTURA" &&
-                                          !m.has_payment_order)) && (
-                                        <button
-                                          type="button"
-                                          className={utils.cn(
-                                            ROW_ACTION_BTN,
-                                            "text-red-500 hover:bg-red-50 hover:text-red-700"
-                                          )}
-                                          onClick={() => handleDeleteMovement(m)}
-                                          title="Eliminar movimiento"
-                                          aria-label="Eliminar movimiento"
-                                        >
-                                          <Trash2 className="w-5 h-5" />
-                                        </button>
-                                      )}
+                                      <button
+                                        type="button"
+                                        className={utils.cn(
+                                          ROW_ACTION_BTN,
+                                          "text-red-500 hover:bg-red-50 hover:text-red-700"
+                                        )}
+                                        onClick={() => handleDeleteMovement(m)}
+                                        title="Eliminar movimiento"
+                                        aria-label="Eliminar movimiento"
+                                      >
+                                        <Trash2 className="w-5 h-5" />
+                                      </button>
                                       <button
                                         type="button"
                                         className={utils.cn(

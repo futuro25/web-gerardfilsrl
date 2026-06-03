@@ -8,7 +8,7 @@ const {
   movementCountsInBalance,
 } = require("../services/accountMovementBalance");
 const {
-  cascadeDeleteSupplierInvoiceForMovement,
+  cascadeDeleteMovementAndRelated,
   getActiveOrderForMovement,
 } = require("../services/supplierInvoiceLifecycle");
 const {
@@ -574,7 +574,6 @@ self.deleteMovement = async (req, res) => {
   try {
     const movementId = req.params.id;
 
-    // Get the movement first to check for paycheck_id
     const { data: movement, error: fetchError } = await supabase
       .from("account_movements")
       .select("*")
@@ -583,36 +582,11 @@ self.deleteMovement = async (req, res) => {
       .single();
 
     if (fetchError) throw fetchError;
-
-    const activeOrder = await getActiveOrderForMovement(movementId);
-    if (activeOrder) {
-      return res.json({
-        error:
-          "No se puede eliminar un movimiento con orden de pago activa. Anulá la OP primero.",
-      });
+    if (!movement) {
+      return res.status(404).json({ error: "Movimiento no encontrado" });
     }
 
-    await cascadeDeleteSupplierInvoiceForMovement(movementId);
-
-    // Soft delete the movement
-    const { error } = await supabase
-      .from("account_movements")
-      .update({ deleted_at: new Date() })
-      .eq("id", movementId);
-
-    if (error) throw error;
-
-    // If it has a linked paycheck, soft delete that too
-    if (movement.paycheck_id) {
-      const { error: paycheckError } = await supabase
-        .from("paychecks")
-        .update({ deleted_at: new Date() })
-        .eq("id", movement.paycheck_id);
-
-      if (paycheckError) {
-        console.error("Error deleting linked paycheck:", paycheckError);
-      }
-    }
+    await cascadeDeleteMovementAndRelated(movement);
 
     res.json({ success: true });
   } catch (e) {
