@@ -101,12 +101,14 @@ export default function RetentionCertificates() {
   });
 
   const {
-    data: suppliers,
+    data: suppliersRaw,
     isLoading: isLoadingSuppliers,
   } = useQuery({
     queryKey: querySuppliersKey(),
     queryFn: useSuppliersQuery,
   });
+
+  const suppliers = Array.isArray(suppliersRaw) ? suppliersRaw : [];
 
   const watchedTotalAmount = watch("totalAmount");
   const watchedProfitsCondition = watch("profitsCondition");
@@ -629,12 +631,11 @@ export default function RetentionCertificates() {
     window.print();
   };
 
-  const supplierOptions =
-    suppliers?.map((s) => ({
-      id: s.id,
-      label: s.fantasy_name,
-      name: s.fantasy_name,
-    })) || [];
+  const supplierOptions = suppliers.map((s) => ({
+    id: s.id,
+    label: s.fantasy_name,
+    name: s.fantasy_name,
+  }));
 
   return (
     <>

@@ -10,7 +10,11 @@ export const useSuppliersQuery = async () => {
   if (!res.ok) {
     throw new Error("Error en la petición");
   }
-  return res.json();
+  const data = await res.json();
+  if (data?.error) {
+    throw new Error(data.error);
+  }
+  return Array.isArray(data) ? data : [];
 };
 
 export const useSupplierByIdQuery = async (inviteId) => {
