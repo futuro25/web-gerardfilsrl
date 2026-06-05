@@ -53,11 +53,16 @@ function supplierDisplayName(supplier) {
   return supplier?.fantasy_name || supplier?.name || "—";
 }
 
+function isZeroBalance(balance) {
+  return Math.abs(parseFloat(balance) || 0) < 0.01;
+}
+
 export default function SupplierCurrentAccounts() {
   const navigate = useNavigate();
   const [stage, setStage] = useState("LIST");
   const [selectedSupplierId, setSelectedSupplierId] = useState(null);
   const [search, setSearch] = useState("");
+  const [hideZeroBalance, setHideZeroBalance] = useState(true);
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [poDialogOpen, setPoDialogOpen] = useState(false);
@@ -148,6 +153,9 @@ export default function SupplierCurrentAccounts() {
   const searchLower = search.trim().toLowerCase();
   const filteredList =
     accountsList?.filter((row) => {
+      if (hideZeroBalance && isZeroBalance(row.summary?.balance)) {
+        return false;
+      }
       if (!searchLower) return true;
       const s = row.supplier;
       const haystack = [
@@ -161,6 +169,12 @@ export default function SupplierCurrentAccounts() {
         .toLowerCase();
       return haystack.includes(searchLower);
     }) ?? [];
+
+  const totalSuppliers = accountsList?.length ?? 0;
+  const hiddenZeroCount =
+    hideZeroBalance && accountsList
+      ? accountsList.filter((row) => isZeroBalance(row.summary?.balance)).length
+      : 0;
 
   const movements = accountData?.movements || [];
   const summary = accountData?.summary;
@@ -185,15 +199,26 @@ export default function SupplierCurrentAccounts() {
       <div className="px-4 h-full overflow-auto pb-28">
         {stage === "LIST" && (
           <>
-            <div className="w-full flex shadow rounded mb-4 mt-4">
-              <Input
-                type="text"
-                value={search}
-                name="search"
-                id="search"
-                placeholder="Buscar proveedor..."
-                onChange={(e) => setSearch(e.target.value)}
-              />
+            <div className="flex flex-col sm:flex-row gap-3 mb-4 mt-4">
+              <div className="w-full flex shadow rounded flex-1">
+                <Input
+                  type="text"
+                  value={search}
+                  name="search"
+                  id="search"
+                  placeholder="Buscar proveedor..."
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-600 shrink-0 cursor-pointer select-none px-1">
+                <input
+                  type="checkbox"
+                  className="rounded border-slate-300"
+                  checked={hideZeroBalance}
+                  onChange={(e) => setHideZeroBalance(e.target.checked)}
+                />
+                Ocultar saldo en cero
+              </label>
             </div>
 
             {listLoading && <Spinner />}
@@ -209,6 +234,13 @@ export default function SupplierCurrentAccounts() {
                 <p className="pl-1 pb-2 text-slate-500 text-sm">
                   {filteredList.length} proveedor
                   {filteredList.length !== 1 ? "es" : ""}
+                  {hideZeroBalance && hiddenZeroCount > 0 && totalSuppliers > 0 && (
+                    <span className="text-slate-400">
+                      {" "}
+                      · {hiddenZeroCount} con saldo $0 oculto
+                      {hiddenZeroCount !== 1 ? "s" : ""}
+                    </span>
+                  )}
                 </p>
                 <div className="not-prose relative bg-slate-50 rounded-xl overflow-hidden">
                   <div className="shadow-sm overflow-auto my-2">

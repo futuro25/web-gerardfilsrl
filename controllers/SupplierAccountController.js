@@ -9,6 +9,11 @@ function parseAmount(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Solo egresos de cashflow: los ingresos usan provider = cliente, no proveedor. */
+function supplierCashflowRows(rows) {
+  return (rows || []).filter((cf) => cf.type === "EGRESO");
+}
+
 function effectiveInvoiceDate(row) {
   return row.due_date || row.created_at?.slice?.(0, 10) || "";
 }
@@ -204,7 +209,7 @@ function sortAndApplyBalance(movements) {
 }
 
 function computeSummary(cashflowRows, supplierInvoices, paymentOrders) {
-  const cf = cashflowRows || [];
+  const cf = supplierCashflowRows(cashflowRows);
   const inv = supplierInvoices || [];
   const po = paymentOrders || [];
 
@@ -253,19 +258,20 @@ async function buildMergedAccountData(
   paymentOrders
 ) {
   const taxesByCashflowId = await fetchTaxesByCashflowIds(
-    (cashflowRows || []).map((cf) => cf.id)
+    supplierCashflowRows(cashflowRows).map((cf) => cf.id)
   );
   const taxesBySupplierInvoiceId = await fetchTaxesBySupplierInvoiceIds(
     (supplierInvoices || []).map((inv) => inv.id)
   );
 
+  const cfRows = supplierCashflowRows(cashflowRows);
   const movements = sortAndApplyBalance([
-    ...cashflowMovementItems(cashflowRows, taxesByCashflowId),
+    ...cashflowMovementItems(cfRows, taxesByCashflowId),
     ...supplierInvoiceMovementItems(supplierInvoices, taxesBySupplierInvoiceId),
     ...paymentOrderItems(paymentOrders),
   ]);
 
-  const summary = computeSummary(cashflowRows, supplierInvoices, paymentOrders);
+  const summary = computeSummary(cfRows, supplierInvoices, paymentOrders);
 
   return { movements, summary };
 }
@@ -283,6 +289,7 @@ self.getAllSupplierAccounts = async (req, res) => {
     const { data: cashflowRows, error: cashflowError } = await supabase
       .from("cashflow")
       .select("id, provider, type, amount, reference, date")
+      .eq("type", "EGRESO")
       .is("deleted_at", null)
       .not("provider", "is", null);
 
@@ -315,7 +322,7 @@ self.getAllSupplierAccounts = async (req, res) => {
     });
 
     const cashflowByProvider = {};
-    (cashflowRows || []).forEach((cf) => {
+    supplierCashflowRows(cashflowRows).forEach((cf) => {
       const pid = cf.provider;
       if (!cashflowByProvider[pid]) cashflowByProvider[pid] = [];
       cashflowByProvider[pid].push(cf);
@@ -387,6 +394,7 @@ self.getSupplierAccount = async (req, res) => {
         "id, type, amount, net_amount, date, description, reference, payment_method"
       )
       .eq("provider", supplierId)
+      .eq("type", "EGRESO")
       .is("deleted_at", null);
 
     if (cashflowError) throw cashflowError;

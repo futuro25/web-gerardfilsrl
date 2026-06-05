@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { DateTime } from "luxon";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
@@ -20,10 +20,6 @@ const CONTRIBUTORS = [
   { value: "Walter", label: "Walter" },
 ];
 
-function canAccessAportes() {
-  return sessionStorage.username === "caro" || sessionStorage.type === "ADMIN";
-}
-
 function totalsByPerson(rows) {
   const totals = { Carolina: 0, "Jose Maria": 0, Walter: 0 };
   for (const row of rows) {
@@ -39,12 +35,6 @@ export default function Aportes() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editTarget, setEditTarget] = useState(null);
-
-  const allowed = canAccessAportes();
-
-  useEffect(() => {
-    if (!allowed) navigate("/home", { replace: true });
-  }, [allowed, navigate]);
 
   const createForm = useForm({
     defaultValues: {
@@ -79,7 +69,6 @@ export default function Aportes() {
   const { data: res, isLoading } = useQuery({
     queryKey: queryAportesKey(),
     queryFn: fetchAportes,
-    enabled: allowed,
   });
 
   const list = res?.data || [];
@@ -151,8 +140,6 @@ export default function Aportes() {
       }
     }
   };
-
-  if (!allowed) return null;
 
   return (
     <div className="px-4 pb-28 max-w-3xl mx-auto">

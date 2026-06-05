@@ -114,9 +114,7 @@ export default function App() {
           <Route path="cuentas-corrientes" element={<SupplierCurrentAccounts />} />
           <Route path="facturas-pendientes" element={<PendingInvoicesList />} />
           <Route path="facturas-compras" element={<PurchaseInvoices />} />
-          {(sessionStorage.username === "caro" || sessionStorage.type === "ADMIN") && (
-            <Route path="aportes" element={<Aportes />} />
-          )}
+          <Route path="aportes" element={<Aportes />} />
           <Route path="clientes" element={<Clients />} />
           <Route path="productos" element={<Products />} />
           <Route path="pedidos" element={<Orders />} />

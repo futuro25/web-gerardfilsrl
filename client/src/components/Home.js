@@ -5,7 +5,6 @@ import {
   BookOpenCheck,
   UserPlus,
   LogOutIcon,
-  Layers,
   Package,
   FileText,
   ShirtIcon,
@@ -33,77 +32,34 @@ export default function Home() {
     { label: "Clientes", icon: UsersIcon, path: "/clientes", order: 5 },
     { label: "Facturas Ventas", icon: FileText, path: "/entregas", order: 6 },
     // { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow", order: 7 },
+    { label: "Control", icon: Landmark, path: "/control", order: 7.5 },
+    {
+      label: "Cuentas Corrientes",
+      icon: Wallet,
+      path: "/cuentas-corrientes",
+      order: 7.52,
+    },
+    {
+      label: "Facturas Pendientes",
+      icon: ClipboardList,
+      path: "/facturas-pendientes",
+      order: 7.54,
+    },
+    { label: "Aportes", icon: PiggyBank, path: "/aportes", order: 7.55 },
+    {
+      label: "Facturas Compras",
+      icon: FilePlus,
+      path: "/facturas-compras",
+      order: 7.56,
+    },
     { label: "Cheques", icon: Banknote, path: "/cheques", order: 8 },
     { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion", order: 9 },
-    // { label: "Libros", icon: BookOpenCheck, path: "/libros-selector", order: 10 },
     { label: "Export Fiscal", icon: FileDown, path: "/exportacion-fiscal", order: 11 },
     { label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 },
   ];
 
-  // Export Fiscal solo visible para el usuario "lgedeon"
-  if (sessionStorage.username !== "lgedeon") {
-    navItems = navItems.filter((item) => item.label !== "Export Fiscal");
-  }
-
   if (sessionStorage.type === "ADMIN") {
-    navItems.pop();
     navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios", order: 12 });
-    navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5, isNew: true });
-    navItems.push({
-      label: "Cuentas Corrientes",
-      icon: Wallet,
-      path: "/cuentas-corrientes",
-      order: 7.52,
-    });
-    navItems.push({
-      label: "Facturas Pendientes",
-      icon: ClipboardList,
-      path: "/facturas-pendientes",
-      order: 7.54,
-      isNew: true,
-    });
-    navItems.push({
-      label: "Facturas Compras",
-      icon: FilePlus,
-      path: "/facturas-compras",
-      order: 7.56,
-      isNew: true,
-    });
-    navItems.push({ label: "Logout", icon: LogOutIcon, path: "/logout", order: 99 });
-  }
-
-  if (sessionStorage.username === "caro" || sessionStorage.username === "lcozza") {
-    navItems.push({ label: "Control", icon: Landmark, path: "/control", order: 7.5, isNew: true });
-    navItems.push({
-      label: "Cuentas Corrientes",
-      icon: Wallet,
-      path: "/cuentas-corrientes",
-      order: 7.52,
-    });
-    navItems.push({
-      label: "Facturas Pendientes",
-      icon: ClipboardList,
-      path: "/facturas-pendientes",
-      order: 7.54,
-      isNew: true,
-    });
-    navItems.push({
-      label: "Facturas Compras",
-      icon: FilePlus,
-      path: "/facturas-compras",
-      order: 7.56,
-      isNew: true,
-    });
-  }
-
-  if (sessionStorage.username === "caro" || sessionStorage.type === "ADMIN") {
-    navItems.push({ label: "Aportes", icon: PiggyBank, path: "/aportes", order: 7.55 });
-  }
-
-  if (sessionStorage.username === "lcozza") {
-    navItems = navItems.filter((item) => item.label !== "Cashflow");
-    navItems = navItems.filter((item) => item.label !== "Cheques");
-    navItems = navItems.filter((item) => item.label !== "Libros");
   }
 
   navItems.sort((a, b) => a.order - b.order);
@@ -126,17 +82,17 @@ export default function Home() {
       {/* dosmil12 signature */}
       <div className="flex flex-col items-center gap-2 mt-10 mb-6">
         <span className="text-xs text-zinc-500">Sitio desarrollado por</span>
-        <a 
-          href="https://dosmil12.com/?utm_source=gerardfilsrl&utm_medium=home" 
-          target="_blank" 
+        <a
+          href="https://dosmil12.com/?utm_source=gerardfilsrl&utm_medium=home"
+          target="_blank"
           rel="noopener noreferrer"
           className="hover:opacity-80 transition-opacity"
         >
-          <img 
-            src="https://pub-8df60d5ed0274fa8a9989b2040218ce5.r2.dev/logodosmil12.png" 
-            alt="dosmil12" 
-            width={100} 
-            height={30} 
+          <img
+            src="https://pub-8df60d5ed0274fa8a9989b2040218ce5.r2.dev/logodosmil12.png"
+            alt="dosmil12"
+            width={100}
+            height={30}
             className="object-contain"
           />
         </a>
@@ -160,11 +116,6 @@ function HomeButton({ item }) {
       className="relative flex items-center justify-center p-3 hover:bg-gray-100 rounded-lg cursor-pointer border h-24 shadow-lg transition-colors duration-200 w-28 bg-white"
       onClick={() => onClick()}
     >
-      {item.isNew && sessionStorage.username === "caro" && (
-        <span className="absolute top-1 right-1 bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full shadow">
-          Nuevo
-        </span>
-      )}
       <div className="flex flex-col items-center gap-2">
         {isLoading ? (
           <div className="flex items-center justify-center">
