@@ -8,7 +8,8 @@ const PAYMENT_METHODS = new Set([
   "DEBITO AUTOMATICO",
 ]);
 
-const EXPENSE_REQUIRES_SUPPLIER = new Set(["OTRO", "SERVICIOS"]);
+const EXPENSE_WITH_SUPPLIER_FIELDS = new Set(["OTRO", "SERVICIOS"]);
+const EXPENSE_REQUIRES_SUPPLIER = new Set(["SERVICIOS"]);
 
 /** Egresos con concepto distinto de factura de proveedor llevan forma de pago en el movimiento. */
 function requiresDirectPaymentMethod(type, expenseCategory) {
@@ -21,21 +22,16 @@ function requiresDirectPaymentMethod(type, expenseCategory) {
 }
 
 function validateEgresoSupplierFields(body) {
-  if (
-    body.type !== "EGRESO" ||
-    !EXPENSE_REQUIRES_SUPPLIER.has(body.expense_category)
-  ) {
+  if (body.type !== "EGRESO" || body.expense_category !== "SERVICIOS") {
     return null;
   }
   const supplierId = parseInt(body.supplier_id, 10);
   if (!Number.isFinite(supplierId) || supplierId <= 0) {
     return "Proveedor requerido";
   }
-  if (body.expense_category === "SERVICIOS") {
-    const invoiceNumber = String(body.invoice_number || "").trim();
-    if (!invoiceNumber) {
-      return "Número de factura requerido";
-    }
+  const invoiceNumber = String(body.invoice_number || "").trim();
+  if (!invoiceNumber) {
+    return "Número de factura requerido";
   }
   return null;
 }
@@ -43,9 +39,11 @@ function validateEgresoSupplierFields(body) {
 function applyEgresoSupplierFields(movement, body) {
   if (
     body.type === "EGRESO" &&
-    EXPENSE_REQUIRES_SUPPLIER.has(body.expense_category)
+    EXPENSE_WITH_SUPPLIER_FIELDS.has(body.expense_category)
   ) {
-    movement.supplier_id = parseInt(body.supplier_id, 10);
+    const supplierId = parseInt(body.supplier_id, 10);
+    movement.supplier_id =
+      Number.isFinite(supplierId) && supplierId > 0 ? supplierId : null;
     movement.invoice_number =
       body.expense_category === "SERVICIOS"
         ? String(body.invoice_number || "").trim() || null
@@ -103,6 +101,7 @@ function applyDirectPaymentMethod(movement, body) {
 
 module.exports = {
   PAYMENT_METHODS,
+  EXPENSE_WITH_SUPPLIER_FIELDS,
   EXPENSE_REQUIRES_SUPPLIER,
   requiresDirectPaymentMethod,
   validateEgresoSupplierFields,

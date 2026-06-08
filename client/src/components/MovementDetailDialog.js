@@ -43,8 +43,9 @@ export default function MovementDetailDialog({
       Boolean(movement?.supplier_invoice_id));
   const hasEgresoSupplier =
     movement?.type === "EGRESO" &&
-    (movement?.expense_category === "OTRO" ||
-      movement?.expense_category === "SERVICIOS");
+    (movement?.supplier_name ||
+      (movement?.expense_category === "SERVICIOS" &&
+        movement?.invoice_number));
 
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [poViewOpen, setPoViewOpen] = useState(false);
@@ -187,9 +188,9 @@ export default function MovementDetailDialog({
             <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
               Proveedor
             </h3>
-            <DetailRow label="Proveedor">
-              {movement.supplier_name || "—"}
-            </DetailRow>
+            {movement.supplier_name && (
+              <DetailRow label="Proveedor">{movement.supplier_name}</DetailRow>
+            )}
             {movement.expense_category === "SERVICIOS" && movement.invoice_number && (
               <DetailRow label="N° factura">{movement.invoice_number}</DetailRow>
             )}

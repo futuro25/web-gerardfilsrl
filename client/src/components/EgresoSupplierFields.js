@@ -19,6 +19,7 @@ function concatenateInvoiceNumber(letter, first4, last8) {
 const EgresoSupplierFields = forwardRef(function EgresoSupplierFields(
   {
     accountMovement = null,
+    requireSupplier = true,
     requireInvoiceNumber = false,
     showErrors = false,
   },
@@ -79,9 +80,11 @@ const EgresoSupplierFields = forwardRef(function EgresoSupplierFields(
 
   useImperativeHandle(ref, () => ({
     async validate() {
-      await trigger("supplier");
+      if (requireSupplier) {
+        await trigger("supplier");
+      }
       const data = getValues();
-      if (!data.supplier?.id) {
+      if (requireSupplier && !data.supplier?.id) {
         return { ok: false, message: "Seleccione un proveedor" };
       }
       if (requireInvoiceNumber) {
@@ -122,13 +125,18 @@ const EgresoSupplierFields = forwardRef(function EgresoSupplierFields(
         <h3 className="text-sm font-semibold text-slate-800">Proveedor</h3>
         <div>
           <label className="text-xs font-sans text-gray-900 mb-2 block">
-            Proveedor <span className="text-red-500">*</span>
+            Proveedor{" "}
+            {requireSupplier ? (
+              <span className="text-red-500">*</span>
+            ) : (
+              <span className="text-slate-400 font-normal">(opcional)</span>
+            )}
           </label>
           <div className="flex flex-col sm:flex-row gap-2 items-start">
             <Controller
               name="supplier"
               control={control}
-              rules={{ required: true }}
+              rules={{ required: requireSupplier }}
               render={({ field }) => (
                 <SelectComboBox
                   options={supplierOptions}
@@ -148,7 +156,7 @@ const EgresoSupplierFields = forwardRef(function EgresoSupplierFields(
               <ExternalLinkIcon className="ml-1 h-4 w-4" />
             </Button>
           </div>
-          {showErrors && !getValues("supplier")?.id && (
+          {requireSupplier && showErrors && !getValues("supplier")?.id && (
             <p className="text-sm text-red-500 pt-1">Seleccione un proveedor</p>
           )}
         </div>

@@ -456,9 +456,11 @@ export default function AccountControl() {
   const requiresPaymentMethod =
     movementType === "EGRESO" && expenseCategory !== "FACTURA";
 
-  const requiresSupplier =
+  const showsSupplierFields =
     movementType === "EGRESO" &&
     (expenseCategory === "OTRO" || expenseCategory === "SERVICIOS");
+
+  const requiresSupplier = expenseCategory === "SERVICIOS";
 
   const requiresSupplierInvoiceNumber = expenseCategory === "SERVICIOS";
 
@@ -539,7 +541,7 @@ export default function AccountControl() {
       setEgresoPaymentShowErrors(false);
       setEgresoSupplierShowErrors(false);
 
-      if (requiresSupplier) {
+      if (showsSupplierFields && requiresSupplier) {
         const supplierValidation =
           await egresoSupplierFieldsRef.current?.validate();
         if (!supplierValidation?.ok) {
@@ -623,7 +625,7 @@ export default function AccountControl() {
         invoice_number: null,
       };
 
-      if (requiresSupplier) {
+      if (showsSupplierFields && egresoSupplierFieldsRef.current) {
         const supplierPayload = egresoSupplierFieldsRef.current.getPayload();
         body.supplier_id = supplierPayload.supplier_id;
         body.invoice_number = supplierPayload.invoice_number;
@@ -1508,20 +1510,21 @@ export default function AccountControl() {
                   <p className="text-xs text-slate-500 mt-2">
                     {requiresInvoice
                       ? "Registrá la factura y dejala pendiente o pagala con una orden de pago."
-                      : requiresSupplier
-                        ? requiresSupplierInvoiceNumber
-                          ? "Indicá el proveedor, el número de factura y la forma de pago."
-                          : "Indicá el proveedor y la forma de pago con la que se realizó el egreso."
-                        : "Indicá la forma de pago con la que se realizó el egreso."}
+                      : expenseCategory === "SERVICIOS"
+                        ? "Indicá el proveedor, el número de factura y la forma de pago."
+                        : expenseCategory === "OTRO"
+                          ? "Podés indicar un proveedor (opcional). Indicá la forma de pago del egreso."
+                          : "Indicá la forma de pago con la que se realizó el egreso."}
                   </p>
                 </div>
               )}
 
-              {requiresSupplier && (
+              {showsSupplierFields && (
                 <EgresoSupplierFields
                   key={`egreso-supplier-${selectedMovement?.id ?? "new"}-${expenseCategory}`}
                   ref={egresoSupplierFieldsRef}
                   accountMovement={selectedMovement}
+                  requireSupplier={requiresSupplier}
                   requireInvoiceNumber={requiresSupplierInvoiceNumber}
                   showErrors={egresoSupplierShowErrors}
                 />
