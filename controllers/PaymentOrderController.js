@@ -135,21 +135,45 @@ self.getPaymentOrders = async (req, res) => {
       supplier_invoice_id,
     } = req.query;
 
-    let query = supabase
+    if (supplier_invoice_id) {
+      const { data, error } = await supabase
+        .from("payment_orders")
+        .select("*")
+        .eq("supplier_invoice_id", Number(supplier_invoice_id))
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return res.json({ data: data || [] });
+    }
+
+    const movementId = account_movement_id || source_movement_id;
+    if (!movementId) {
+      return res.json({ data: [] });
+    }
+
+    const mid = Number(movementId);
+    const { data: invoices, error: invErr } = await supabase
+      .from("supplier_invoices")
+      .select("id")
+      .eq("account_movement_id", mid)
+      .is("deleted_at", null);
+    if (invErr) throw invErr;
+
+    const invoiceIds = (invoices || []).map((i) => i.id);
+    const orClauses = [
+      `account_movement_id.eq.${mid}`,
+      `source_movement_id.eq.${mid}`,
+    ];
+    if (invoiceIds.length) {
+      orClauses.push(`supplier_invoice_id.in.(${invoiceIds.join(",")})`);
+    }
+
+    const { data, error } = await supabase
       .from("payment_orders")
       .select("*")
       .is("deleted_at", null)
+      .or(orClauses.join(","))
       .order("created_at", { ascending: false });
-
-    const movementId = account_movement_id || source_movement_id;
-    if (movementId) {
-      query = query.eq("account_movement_id", Number(movementId));
-    }
-    if (supplier_invoice_id) {
-      query = query.eq("supplier_invoice_id", Number(supplier_invoice_id));
-    }
-
-    const { data, error } = await query;
     if (error) throw error;
 
     res.json({ data: data || [] });

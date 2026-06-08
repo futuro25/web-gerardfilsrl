@@ -38,7 +38,9 @@ export default function MovementDetailDialog({
 }) {
   const movementId = movement?.id;
   const hasFullInvoice =
-    movement?.type === "EGRESO" && movement?.expense_category === "FACTURA";
+    movement?.type === "EGRESO" &&
+    (movement?.expense_category === "FACTURA" ||
+      Boolean(movement?.supplier_invoice_id));
   const hasEgresoSupplier =
     movement?.type === "EGRESO" &&
     (movement?.expense_category === "OTRO" ||
