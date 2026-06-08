@@ -12,9 +12,10 @@ const {
   getActiveOrderForMovement,
 } = require("../services/supplierInvoiceLifecycle");
 const {
-  validateDirectPaymentMethod,
   applyDirectPaymentMethod,
+  applyEgresoSupplierFields,
 } = require("../services/accountMovementPayment");
+const { validateMovementBody } = require("../services/accountMovementValidation");
 
 const MOVEMENT_KINDS = new Set(["FIJO", "UNICA VEZ"]);
 
@@ -56,6 +57,15 @@ function movementUpdateChangesOnlyKind(existing, update) {
   if ((existing.expense_category || null) !== (update.expense_category || null)) {
     return false;
   }
+  if ((existing.supplier_id || null) !== (update.supplier_id || null)) {
+    return false;
+  }
+  if (
+    normOptionalString(existing.invoice_number) !==
+    normOptionalString(update.invoice_number)
+  ) {
+    return false;
+  }
   const existingPm = existing.payment_method || null;
   const updatePm = update.payment_method || null;
   if (existingPm !== updatePm) return false;
@@ -66,8 +76,8 @@ function movementUpdateChangesOnlyKind(existing, update) {
 }
 
 function buildMovementUpdateFromBody(body) {
-  const paymentErr = validateDirectPaymentMethod(body);
-  if (paymentErr) return { error: paymentErr };
+  const validationErr = validateMovementBody(body);
+  if (validationErr) return { error: validationErr };
 
   const update = applyDirectPaymentMethod(
     {
@@ -89,6 +99,8 @@ function buildMovementUpdateFromBody(body) {
   if (update.type === "INGRESO" && update.is_cheque && update.cheque_due_date) {
     update.date = update.cheque_due_date;
   }
+
+  applyEgresoSupplierFields(update, body);
 
   return { update };
 }
@@ -113,26 +125,31 @@ async function attachSupplierNames(movements) {
     .is("deleted_at", null);
 
   if (error) throw error;
-  if (!invoices?.length) {
-    return movements.map((m) => ({ ...m, supplier_name: null }));
-  }
 
-  const supplierIds = [...new Set(invoices.map((i) => i.supplier_id))];
-  const { data: suppliers, error: suppliersError } = await supabase
-    .from("suppliers")
-    .select("id, fantasy_name, name")
-    .in("id", supplierIds)
-    .is("deleted_at", null);
-
-  if (suppliersError) throw suppliersError;
-
-  const supplierById = {};
-  (suppliers || []).forEach((s) => {
-    supplierById[s.id] = s.fantasy_name || s.name || null;
+  const supplierIds = new Set(
+    (invoices || []).map((i) => i.supplier_id).filter((id) => id != null)
+  );
+  movements.forEach((m) => {
+    if (m.supplier_id != null) supplierIds.add(m.supplier_id);
   });
 
+  let supplierById = {};
+  if (supplierIds.size) {
+    const { data: suppliers, error: suppliersError } = await supabase
+      .from("suppliers")
+      .select("id, fantasy_name, name")
+      .in("id", [...supplierIds])
+      .is("deleted_at", null);
+
+    if (suppliersError) throw suppliersError;
+
+    (suppliers || []).forEach((s) => {
+      supplierById[s.id] = s.fantasy_name || s.name || null;
+    });
+  }
+
   const nameByMovementId = {};
-  invoices.forEach((inv) => {
+  (invoices || []).forEach((inv) => {
     if (inv.account_movement_id != null && !nameByMovementId[inv.account_movement_id]) {
       nameByMovementId[inv.account_movement_id] =
         supplierById[inv.supplier_id] || null;
@@ -141,7 +158,8 @@ async function attachSupplierNames(movements) {
 
   return movements.map((m) => ({
     ...m,
-    supplier_name: nameByMovementId[m.id] || null,
+    supplier_name:
+      nameByMovementId[m.id] || supplierById[m.supplier_id] || null,
   }));
 }
 
@@ -506,23 +524,26 @@ self.getUpcomingCheques = async (req, res) => {
 
 self.createMovement = async (req, res) => {
   try {
-    const paymentErr = validateDirectPaymentMethod(req.body);
-    if (paymentErr) return res.json({ error: paymentErr });
+    const validationErr = validateMovementBody(req.body);
+    if (validationErr) return res.json({ error: validationErr });
 
-    const movement = applyDirectPaymentMethod(
-      {
-        type: req.body.type,
-        responsible: "Sin especificar",
-        movement_kind: normalizeMovementKind(req.body.movement_kind),
-        date: req.body.date,
-        amount: req.body.amount,
-        description: req.body.description || null,
-        is_cheque: req.body.is_cheque || false,
-        cheque_number: req.body.cheque_number || null,
-        cheque_bank: req.body.cheque_bank || null,
-        cheque_due_date: req.body.cheque_due_date || null,
-        expense_category: req.body.expense_category || null,
-      },
+    const movement = applyEgresoSupplierFields(
+      applyDirectPaymentMethod(
+        {
+          type: req.body.type,
+          responsible: "Sin especificar",
+          movement_kind: normalizeMovementKind(req.body.movement_kind),
+          date: req.body.date,
+          amount: req.body.amount,
+          description: req.body.description || null,
+          is_cheque: req.body.is_cheque || false,
+          cheque_number: req.body.cheque_number || null,
+          cheque_bank: req.body.cheque_bank || null,
+          cheque_due_date: req.body.cheque_due_date || null,
+          expense_category: req.body.expense_category || null,
+        },
+        req.body
+      ),
       req.body
     );
 

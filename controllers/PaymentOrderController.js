@@ -16,7 +16,7 @@ const PAYMENT_METHODS = new Set([
   "CHEQUE",
   "EFECTIVO",
   "TARJETA DE CREDITO",
-  "TARJETA DE DEBITO",
+  "DEBITO AUTOMATICO",
 ]);
 
 async function generateNextOrderNumber() {

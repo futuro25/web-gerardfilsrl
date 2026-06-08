@@ -191,6 +191,9 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
     if (!data.due_date) {
       return { ok: false, message: "Ingrese la fecha de vencimiento" };
     }
+    if (!String(data.description || "").trim()) {
+      return { ok: false, message: "Ingrese la descripción de la factura" };
+    }
     if (!withoutInvoice) {
       if (!invoiceLetter || !invoiceFirst4 || !invoiceLast8) {
         return { ok: false, message: "Complete el número de factura" };
@@ -384,7 +387,14 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
           label="Descripción"
           type="text"
           placeholder="Detalle de la factura"
-          {...register("description")}
+          {...register("description", {
+            required: "Ingrese la descripción",
+            validate: (value) =>
+              String(value || "").trim().length > 0 ||
+              "Ingrese la descripción",
+          })}
+          intent={errors.description ? "danger" : "default"}
+          helperText={errors.description?.message}
         />
 
         <Input

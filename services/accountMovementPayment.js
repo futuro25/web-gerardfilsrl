@@ -5,8 +5,10 @@ const PAYMENT_METHODS = new Set([
   "CHEQUE",
   "EFECTIVO",
   "TARJETA DE CREDITO",
-  "TARJETA DE DEBITO",
+  "DEBITO AUTOMATICO",
 ]);
+
+const EXPENSE_REQUIRES_SUPPLIER = new Set(["OTRO", "SERVICIOS"]);
 
 /** Egresos con concepto distinto de factura de proveedor llevan forma de pago en el movimiento. */
 function requiresDirectPaymentMethod(type, expenseCategory) {
@@ -18,7 +20,47 @@ function requiresDirectPaymentMethod(type, expenseCategory) {
   );
 }
 
+function validateEgresoSupplierFields(body) {
+  if (
+    body.type !== "EGRESO" ||
+    !EXPENSE_REQUIRES_SUPPLIER.has(body.expense_category)
+  ) {
+    return null;
+  }
+  const supplierId = parseInt(body.supplier_id, 10);
+  if (!Number.isFinite(supplierId) || supplierId <= 0) {
+    return "Proveedor requerido";
+  }
+  if (body.expense_category === "SERVICIOS") {
+    const invoiceNumber = String(body.invoice_number || "").trim();
+    if (!invoiceNumber) {
+      return "Número de factura requerido";
+    }
+  }
+  return null;
+}
+
+function applyEgresoSupplierFields(movement, body) {
+  if (
+    body.type === "EGRESO" &&
+    EXPENSE_REQUIRES_SUPPLIER.has(body.expense_category)
+  ) {
+    movement.supplier_id = parseInt(body.supplier_id, 10);
+    movement.invoice_number =
+      body.expense_category === "SERVICIOS"
+        ? String(body.invoice_number || "").trim() || null
+        : null;
+  } else {
+    movement.supplier_id = null;
+    movement.invoice_number = null;
+  }
+  return movement;
+}
+
 function validateDirectPaymentMethod(body) {
+  const supplierErr = validateEgresoSupplierFields(body);
+  if (supplierErr) return supplierErr;
+
   if (!requiresDirectPaymentMethod(body.type, body.expense_category)) {
     return null;
   }
@@ -61,7 +103,10 @@ function applyDirectPaymentMethod(movement, body) {
 
 module.exports = {
   PAYMENT_METHODS,
+  EXPENSE_REQUIRES_SUPPLIER,
   requiresDirectPaymentMethod,
+  validateEgresoSupplierFields,
   validateDirectPaymentMethod,
+  applyEgresoSupplierFields,
   applyDirectPaymentMethod,
 };

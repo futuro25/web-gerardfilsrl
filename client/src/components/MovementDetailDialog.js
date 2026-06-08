@@ -18,13 +18,7 @@ import {
   queryInvoiceImageUrlKey,
 } from "../apis/queryKeys";
 
-const PAYMENT_METHOD_LABELS = {
-  TRANSFERENCIA: "Transferencia",
-  CHEQUE: "Cheque",
-  EFECTIVO: "Efectivo",
-  "TARJETA DE CREDITO": "Tarjeta de crédito",
-  "TARJETA DE DEBITO": "Tarjeta de débito",
-};
+import { PAYMENT_METHOD_LABELS } from "./PaymentOrderFields";
 
 function DetailRow({ label, children }) {
   return (
@@ -43,11 +37,12 @@ export default function MovementDetailDialog({
   movement,
 }) {
   const movementId = movement?.id;
-  const hasInvoice =
+  const hasFullInvoice =
+    movement?.type === "EGRESO" && movement?.expense_category === "FACTURA";
+  const hasEgresoSupplier =
     movement?.type === "EGRESO" &&
-    (movement?.expense_category === "FACTURA" ||
-      movement?.supplier_invoice_id ||
-      movement?.supplier_name);
+    (movement?.expense_category === "OTRO" ||
+      movement?.expense_category === "SERVICIOS");
 
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [poViewOpen, setPoViewOpen] = useState(false);
@@ -69,7 +64,7 @@ export default function MovementDetailDialog({
   const { data: invoiceData, isLoading: invoiceLoading } = useQuery({
     queryKey: querySupplierInvoiceByMovementKey(movementId),
     queryFn: () => fetchSupplierInvoiceByAccountMovement(movementId),
-    enabled: open && Boolean(movementId) && Boolean(hasInvoice),
+    enabled: open && Boolean(movementId) && Boolean(hasFullInvoice),
   });
 
   const { data: paymentOrdersData, isLoading: paymentOrdersLoading } = useQuery({
@@ -185,8 +180,22 @@ export default function MovementDetailDialog({
           )}
         </section>
 
+        {hasEgresoSupplier && (
+          <section className="flex flex-col gap-2.5 bg-slate-50 rounded-lg p-4 border border-slate-100">
+            <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Proveedor
+            </h3>
+            <DetailRow label="Proveedor">
+              {movement.supplier_name || "—"}
+            </DetailRow>
+            {movement.expense_category === "SERVICIOS" && movement.invoice_number && (
+              <DetailRow label="N° factura">{movement.invoice_number}</DetailRow>
+            )}
+          </section>
+        )}
+
         {/* Invoice section */}
-        {hasInvoice && (
+        {hasFullInvoice && (
           <section className="flex flex-col gap-2.5 bg-amber-50 rounded-lg p-4 border border-amber-100">
             <h3 className="text-xs font-semibold text-amber-600 uppercase tracking-wide">
               Factura de proveedor
@@ -297,7 +306,7 @@ export default function MovementDetailDialog({
           </section>
         )}
 
-        {hasInvoice && retentionInvoice && (
+        {hasFullInvoice && retentionInvoice && (
           <InvoiceRetentionSection
             invoice={retentionInvoice}
             enabled={open}

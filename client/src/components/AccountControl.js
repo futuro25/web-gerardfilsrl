@@ -33,7 +33,8 @@ import {
   querySupplierAccountKey,
 } from "../apis/queryKeys";
 import InvoiceDataFields from "./InvoiceDataFields";
-import PaymentOrderFields from "./PaymentOrderFields";
+import EgresoSupplierFields from "./EgresoSupplierFields";
+import PaymentOrderFields, { PAYMENT_METHOD_LABELS } from "./PaymentOrderFields";
 import PaymentOrderDialog from "./PaymentOrderDialog";
 import MovementDetailDialog from "./MovementDetailDialog";
 import {
@@ -119,6 +120,7 @@ const EXPENSE_CATEGORY_OPTIONS = [
   { value: "GASTOS_BANCARIOS", label: "Gastos bancarios" },
   { value: "IMPUESTOS", label: "Impuestos" },
   { value: "PAGO_HABERES", label: "Pago de Haberes" },
+  { value: "SERVICIOS", label: "Servicios" },
   { value: "OTRO", label: "Otro" },
 ];
 
@@ -178,10 +180,12 @@ export default function AccountControl() {
   const [payOrderMovement, setPayOrderMovement] = useState(null);
   const [paymentOrderShowErrors, setPaymentOrderShowErrors] = useState(false);
   const [egresoPaymentShowErrors, setEgresoPaymentShowErrors] = useState(false);
+  const [egresoSupplierShowErrors, setEgresoSupplierShowErrors] = useState(false);
   const [invoiceTotalForPo, setInvoiceTotalForPo] = useState(0);
   const invoiceFieldsRef = useRef(null);
   const paymentOrderFieldsRef = useRef(null);
   const egresoPaymentFieldsRef = useRef(null);
+  const egresoSupplierFieldsRef = useRef(null);
   /** Orden de listado por fecha: coincide con el API; default asc (más antiguas primero). */
   const [dateOrder, setDateOrder] = useState("asc");
 
@@ -452,6 +456,12 @@ export default function AccountControl() {
   const requiresPaymentMethod =
     movementType === "EGRESO" && expenseCategory !== "FACTURA";
 
+  const requiresSupplier =
+    movementType === "EGRESO" &&
+    (expenseCategory === "OTRO" || expenseCategory === "SERVICIOS");
+
+  const requiresSupplierInvoiceNumber = expenseCategory === "SERVICIOS";
+
   const movementHasPaymentOrder = Boolean(
     selectedMovement?.has_payment_order
   );
@@ -527,6 +537,20 @@ export default function AccountControl() {
       setInvoiceShowErrors(false);
       setPaymentOrderShowErrors(false);
       setEgresoPaymentShowErrors(false);
+      setEgresoSupplierShowErrors(false);
+
+      if (requiresSupplier) {
+        const supplierValidation =
+          await egresoSupplierFieldsRef.current?.validate();
+        if (!supplierValidation?.ok) {
+          setEgresoSupplierShowErrors(true);
+          setIsLoadingSubmit(false);
+          window.alert(
+            supplierValidation.message || "Revise los datos del proveedor"
+          );
+          return;
+        }
+      }
 
       if (requiresPaymentMethod) {
         const payValidation = await egresoPaymentFieldsRef.current?.validate();
@@ -595,7 +619,15 @@ export default function AccountControl() {
         cheque_due_date: chequeActive ? data.cheque_due_date : null,
         expense_category: movementType === "EGRESO" ? expenseCategory : null,
         payment_method: null,
+        supplier_id: null,
+        invoice_number: null,
       };
+
+      if (requiresSupplier) {
+        const supplierPayload = egresoSupplierFieldsRef.current.getPayload();
+        body.supplier_id = supplierPayload.supplier_id;
+        body.invoice_number = supplierPayload.invoice_number;
+      }
 
       if (requiresPaymentMethod) {
         const payPayload = egresoPaymentFieldsRef.current.getPayload();
@@ -648,9 +680,11 @@ export default function AccountControl() {
       setInvoiceShowErrors(false);
       setPaymentOrderShowErrors(false);
       setEgresoPaymentShowErrors(false);
+      setEgresoSupplierShowErrors(false);
       invoiceFieldsRef.current?.reset();
       paymentOrderFieldsRef.current?.reset?.();
       egresoPaymentFieldsRef.current?.reset?.();
+      egresoSupplierFieldsRef.current?.reset?.();
       setPage(1);
       setStage("LIST");
       await refreshMovementsList();
@@ -702,9 +736,11 @@ export default function AccountControl() {
     setInvoiceShowErrors(false);
     setPaymentOrderShowErrors(false);
     setEgresoPaymentShowErrors(false);
+    setEgresoSupplierShowErrors(false);
     invoiceFieldsRef.current?.reset();
     paymentOrderFieldsRef.current?.reset?.();
     egresoPaymentFieldsRef.current?.reset?.();
+    egresoSupplierFieldsRef.current?.reset?.();
     reset({
       movement_kind: "UNICA VEZ",
       date: DateTime.now().toFormat("yyyy-MM-dd"),
@@ -1129,19 +1165,16 @@ export default function AccountControl() {
                                         {m.payment_order_number}
                                       </span>
                                     )}
+                                    {m.invoice_number &&
+                                      m.expense_category === "SERVICIOS" && (
+                                        <span className="block text-[10px] text-slate-500">
+                                          Factura {m.invoice_number}
+                                        </span>
+                                      )}
                                     {m.payment_method && m.expense_category !== "FACTURA" && (
                                       <span className="block text-[10px] text-slate-500">
-                                        {m.payment_method === "TRANSFERENCIA"
-                                          ? "Transferencia"
-                                          : m.payment_method === "CHEQUE"
-                                            ? "Cheque"
-                                            : m.payment_method === "EFECTIVO"
-                                              ? "Efectivo"
-                                              : m.payment_method === "TARJETA DE CREDITO"
-                                                ? "Tarjeta de crédito"
-                                                : m.payment_method === "TARJETA DE DEBITO"
-                                                  ? "Tarjeta de débito"
-                                                  : m.payment_method}
+                                        {PAYMENT_METHOD_LABELS[m.payment_method] ||
+                                          m.payment_method}
                                       </span>
                                     )}
                                     {m.is_cheque && m.cheque_number && (
@@ -1383,7 +1416,14 @@ export default function AccountControl() {
                 label="Detalle"
                 type="text"
                 placeholder="Descripción del movimiento"
-                {...register("description")}
+                {...register("description", {
+                  required: "Ingrese el detalle del movimiento",
+                  validate: (value) =>
+                    String(value || "").trim().length > 0 ||
+                    "Ingrese el detalle del movimiento",
+                })}
+                intent={errors.description ? "danger" : "default"}
+                helperText={errors.description?.message}
               />
 
               {/* Cheque toggle y campos — solo para INGRESO */}
@@ -1468,9 +1508,23 @@ export default function AccountControl() {
                   <p className="text-xs text-slate-500 mt-2">
                     {requiresInvoice
                       ? "Registrá la factura y dejala pendiente o pagala con una orden de pago."
-                      : "Indicá la forma de pago con la que se realizó el egreso."}
+                      : requiresSupplier
+                        ? requiresSupplierInvoiceNumber
+                          ? "Indicá el proveedor, el número de factura y la forma de pago."
+                          : "Indicá el proveedor y la forma de pago con la que se realizó el egreso."
+                        : "Indicá la forma de pago con la que se realizó el egreso."}
                   </p>
                 </div>
+              )}
+
+              {requiresSupplier && (
+                <EgresoSupplierFields
+                  key={`egreso-supplier-${selectedMovement?.id ?? "new"}-${expenseCategory}`}
+                  ref={egresoSupplierFieldsRef}
+                  accountMovement={selectedMovement}
+                  requireInvoiceNumber={requiresSupplierInvoiceNumber}
+                  showErrors={egresoSupplierShowErrors}
+                />
               )}
 
               {requiresPaymentMethod && (

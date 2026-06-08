@@ -19,13 +19,7 @@ import {
 import { buildRetentionInvoiceInput } from "../utils/retentionInvoice";
 import * as utils from "../utils/utils";
 
-const PAYMENT_METHOD_LABELS = {
-  TRANSFERENCIA: "Transferencia",
-  CHEQUE: "Cheque",
-  EFECTIVO: "Efectivo",
-  "TARJETA DE CREDITO": "Tarjeta de crédito",
-  "TARJETA DE DEBITO": "Tarjeta de débito",
-};
+import { PAYMENT_METHOD_LABELS } from "./PaymentOrderFields";
 
 const SOURCE_LABELS = { control: "Control", cashflow: "Cashflow" };
 

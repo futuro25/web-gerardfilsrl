@@ -9,8 +9,13 @@ export const PAYMENT_METHOD_OPTIONS = [
   { value: "CHEQUE", label: "Cheque" },
   { value: "EFECTIVO", label: "Efectivo" },
   { value: "TARJETA DE CREDITO", label: "Tarjeta de crédito" },
-  { value: "TARJETA DE DEBITO", label: "Tarjeta de débito" },
+  { value: "DEBITO AUTOMATICO", label: "Débito automático" },
 ];
+
+export const PAYMENT_METHOD_LABELS = {
+  ...Object.fromEntries(PAYMENT_METHOD_OPTIONS.map((m) => [m.value, m.label])),
+  "TARJETA DE DEBITO": "Débito automático",
+};
 
 const today = DateTime.now().toFormat("yyyy-MM-dd");
 
@@ -144,7 +149,7 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
 
       <div>
         <label className="text-xs font-sans text-gray-900 mb-2 block">
-          Forma de pago
+          Forma de pago <span className="text-red-500">*</span>
         </label>
         <select
           className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"

@@ -2,13 +2,7 @@ import { DateTime } from "luxon";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import * as utils from "../utils/utils";
 
-const PAYMENT_METHOD_LABELS = {
-  TRANSFERENCIA: "Transferencia",
-  CHEQUE: "Cheque",
-  EFECTIVO: "Efectivo",
-  "TARJETA DE CREDITO": "Tarjeta de crédito",
-  "TARJETA DE DEBITO": "Tarjeta de débito",
-};
+import { PAYMENT_METHOD_LABELS } from "./PaymentOrderFields";
 
 function fmtDate(value) {
   if (!value) return "—";
