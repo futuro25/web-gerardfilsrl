@@ -49,6 +49,18 @@ function canViewPaymentOrder(m) {
   return m.category === "ORDEN_PAGO" && Boolean(m.payment_order);
 }
 
+/** Nº de factura en filas de factura; nº de OP en filas de orden de pago. */
+function formatMovementDocNumber(m) {
+  if (m.category === "ORDEN_PAGO") {
+    const n = m.order_number || m.payment_order?.order_number;
+    return n ? String(n) : "—";
+  }
+  if (m.invoice_number) {
+    return utils.formatInvoiceNumber(m.invoice_number);
+  }
+  return "—";
+}
+
 function supplierDisplayName(supplier) {
   return supplier?.fantasy_name || supplier?.name || "—";
 }
@@ -381,6 +393,9 @@ export default function SupplierCurrentAccounts() {
                           <th className="border-b font-medium p-3 text-slate-400 text-left">
                             Detalle
                           </th>
+                          <th className="border-b font-medium p-3 text-slate-400 text-left">
+                            Factura / OP
+                          </th>
                           <th className="border-b font-medium p-3 text-slate-400 text-right">
                             Monto
                           </th>
@@ -396,7 +411,7 @@ export default function SupplierCurrentAccounts() {
                         {movements.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={6}
+                              colSpan={7}
                               className="p-4 text-center text-slate-500"
                             >
                               No hay movimientos para este proveedor
@@ -436,13 +451,6 @@ export default function SupplierCurrentAccounts() {
                                 <div className="truncate">
                                   {m.description}
                                 </div>
-                                {m.invoice_number && (
-                                  <span className="block text-[10px] text-slate-400">
-                                    {utils.formatInvoiceNumber(
-                                      m.invoice_number
-                                    )}
-                                  </span>
-                                )}
                                 {m.taxes?.length > 0 && (
                                   <span className="block text-[10px] text-slate-400">
                                     {m.taxes
@@ -453,6 +461,9 @@ export default function SupplierCurrentAccounts() {
                                       .join(" · ")}
                                   </span>
                                 )}
+                              </td>
+                              <td className="p-3 text-slate-600 text-xs tabular-nums whitespace-nowrap">
+                                {formatMovementDocNumber(m)}
                               </td>
                               <td
                                 className={utils.cn(
