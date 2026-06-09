@@ -18,11 +18,6 @@ function formatAmount(value) {
   }).format(n);
 }
 
-const SOURCE_LABELS = {
-  control: "Control",
-  cashflow: "Cashflow",
-};
-
 function itemDate(item) {
   if (!item.date) return "—";
   const d = DateTime.fromISO(item.date);
@@ -160,7 +155,6 @@ function buildReportHtml(movements, summary, cheques, chequesSummary) {
               m.invoice_number
                 ? `Factura ${escapeHtml(m.invoice_number)}`
                 : "",
-              SOURCE_LABELS[m.source] || "",
             ].filter(Boolean);
             const subNote = subBits.length
               ? `<br><small style="color:#2563eb;">${subBits.join(" · ")}</small>`
@@ -221,7 +215,6 @@ function buildReportText(movements, summary, cheques, chequesSummary) {
     const detail = [
       m.invoice_number ? `Factura ${m.invoice_number}` : null,
       m.description || null,
-      SOURCE_LABELS[m.source] || null,
     ]
       .filter(Boolean)
       .join(" · ");
