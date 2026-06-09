@@ -8,6 +8,11 @@ const {
   getActiveOrderForInvoice,
   syncPendingMovementFromInvoice,
 } = require("../services/supplierInvoiceLifecycle");
+const {
+  getPaidAmountsByInvoiceIds,
+  getOrdersGroupedByInvoiceIds,
+  buildPaymentSummary,
+} = require("../services/invoicePaymentSummary");
 
 async function fetchTaxesBySupplierInvoiceIds(supplierInvoiceIds) {
   if (!supplierInvoiceIds.length) return {};
@@ -56,26 +61,26 @@ self.getSupplierInvoices = async (req, res) => {
     const rows = data || [];
     const ids = rows.map((r) => r.id);
 
-    let paidSet = new Set();
+    let paidByInvoiceId = {};
+    let ordersByInvoiceId = {};
     if (ids.length) {
-      const { data: orders, error: ordersErr } = await supabase
-        .from("payment_orders")
-        .select("supplier_invoice_id")
-        .is("deleted_at", null)
-        .in("supplier_invoice_id", ids);
-      if (ordersErr) throw ordersErr;
-      paidSet = new Set(
-        (orders || [])
-          .map((o) => o.supplier_invoice_id)
-          .filter((v) => v != null)
-      );
+      paidByInvoiceId = await getPaidAmountsByInvoiceIds(ids);
+      ordersByInvoiceId = await getOrdersGroupedByInvoiceIds(ids);
     }
 
     const withTaxes = await attachTaxes(rows);
-    const result = withTaxes.map((r) => ({
-      ...r,
-      has_payment_order: paidSet.has(r.id),
-    }));
+    const result = withTaxes.map((r) => {
+      const orders = ordersByInvoiceId[r.id] || [];
+      const summary = buildPaymentSummary(r, orders);
+      return {
+        ...r,
+        has_payment_order: summary.orderCount > 0,
+        invoice_fully_paid: summary.fullyPaid,
+        invoice_paid_amount: summary.paidAmount,
+        invoice_remaining_amount: summary.remainingAmount,
+        payment_orders: summary.orders,
+      };
+    });
     res.json({ data: result });
   } catch (e) {
     console.error("getSupplierInvoices error:", e.message);
@@ -131,12 +136,21 @@ self.getPurchaseInvoices = async (req, res) => {
       .is("deleted_at", null);
     if (ordersErr) throw ordersErr;
 
-    const orderByInvoiceId = {};
-    const orderByCashflowId = {};
+    const ordersByInvoiceId = {};
+    const ordersByCashflowId = {};
     (orders || []).forEach((o) => {
-      if (o.supplier_invoice_id != null)
-        orderByInvoiceId[o.supplier_invoice_id] = o;
-      if (o.cashflow_id != null) orderByCashflowId[o.cashflow_id] = o;
+      if (o.supplier_invoice_id != null) {
+        if (!ordersByInvoiceId[o.supplier_invoice_id]) {
+          ordersByInvoiceId[o.supplier_invoice_id] = [];
+        }
+        ordersByInvoiceId[o.supplier_invoice_id].push(o);
+      }
+      if (o.cashflow_id != null) {
+        if (!ordersByCashflowId[o.cashflow_id]) {
+          ordersByCashflowId[o.cashflow_id] = [];
+        }
+        ordersByCashflowId[o.cashflow_id].push(o);
+      }
     });
 
     // Proveedores (nombres)
@@ -190,7 +204,9 @@ self.getPurchaseInvoices = async (req, res) => {
 
     const controlItems = (controlRows || []).map((inv) => {
       const sup = supplierById[inv.supplier_id];
-      const order = orderByInvoiceId[inv.id] || null;
+      const invOrders = ordersByInvoiceId[inv.id] || [];
+      const order = invOrders[invOrders.length - 1] || null;
+      const summary = buildPaymentSummary(inv, invOrders);
       return {
         key: `control-${inv.id}`,
         source: "control",
@@ -204,13 +220,17 @@ self.getPurchaseInvoices = async (req, res) => {
           : null,
         invoice_number: inv.invoice_number || null,
         description: inv.description || null,
-        date: inv.document_date || inv.due_date || inv.created_at?.slice?.(0, 10) || "",
+        date: inv.document_date || inv.created_at?.slice?.(0, 10) || "",
         created_at: inv.created_at || null,
         amount: parseNum(inv.amount),
         total: parseNum(inv.total ?? inv.amount),
         image_key: inv.image_key || null,
-        has_payment_order: Boolean(order),
+        has_payment_order: summary.orderCount > 0,
+        invoice_fully_paid: summary.fullyPaid,
+        invoice_paid_amount: summary.paidAmount,
+        invoice_remaining_amount: summary.remainingAmount,
         payment_order: orderSummary(order),
+        payment_orders: invOrders.map(orderSummary),
         taxes: taxesByInvoice[inv.id] || [],
       };
     });
@@ -218,11 +238,13 @@ self.getPurchaseInvoices = async (req, res) => {
     const cashflowItems = (cashflowRows || [])
       .filter((cf) => String(cf.reference || "").trim().length > 0)
       .map((cf) => {
-        const order = orderByCashflowId[cf.id] || null;
+        const cfOrders = ordersByCashflowId[cf.id] || [];
+        const order = cfOrders[cfOrders.length - 1] || null;
         const sup = supplierById[cf.provider];
         const total = Math.abs(parseNum(cf.amount));
         const net =
           cf.net_amount != null ? Math.abs(parseNum(cf.net_amount)) : total;
+        const summary = buildPaymentSummary({ total, amount: net }, cfOrders);
         return {
           key: `cashflow-${cf.id}`,
           source: "cashflow",
@@ -241,8 +263,12 @@ self.getPurchaseInvoices = async (req, res) => {
           amount: net,
           total,
           image_key: null,
-          has_payment_order: Boolean(order),
+          has_payment_order: summary.orderCount > 0,
+          invoice_fully_paid: summary.fullyPaid,
+          invoice_paid_amount: summary.paidAmount,
+          invoice_remaining_amount: summary.remainingAmount,
           payment_order: orderSummary(order),
+          payment_orders: cfOrders.map(orderSummary),
           taxes: taxesByCashflow[cf.id] || [],
         };
       });
@@ -251,8 +277,8 @@ self.getPurchaseInvoices = async (req, res) => {
 
     // Filtros
     if (sourceFilter) all = all.filter((it) => it.source === sourceFilter);
-    if (status === "con") all = all.filter((it) => it.has_payment_order);
-    if (status === "sin") all = all.filter((it) => !it.has_payment_order);
+    if (status === "con") all = all.filter((it) => it.invoice_fully_paid);
+    if (status === "sin") all = all.filter((it) => !it.invoice_fully_paid);
     if (supplierId)
       all = all.filter((it) => String(it.supplier_id ?? "") === supplierId);
     if (dateFrom) all = all.filter((it) => it.date && it.date >= dateFrom);
@@ -324,8 +350,8 @@ self.createSupplierInvoice = async (req, res) => {
       amount: req.body.amount,
       invoice_number: req.body.invoice_number || "",
       description: req.body.description,
-      document_date: req.body.document_date || req.body.due_date || null,
-      due_date: req.body.due_date,
+      document_date: req.body.document_date || null,
+      due_date: req.body.document_date || req.body.due_date || null,
       total: req.body.total,
       account_movement_id: req.body.account_movement_id || null,
       image_key: req.body.image_key || null,
@@ -409,6 +435,9 @@ self.updateSupplierInvoice = async (req, res) => {
 
     const update = { ...req.body };
     if (update.id) delete update.id;
+    if (update.document_date) {
+      update.due_date = update.document_date;
+    }
 
     const taxes = update.taxes || [];
     delete update.taxes;

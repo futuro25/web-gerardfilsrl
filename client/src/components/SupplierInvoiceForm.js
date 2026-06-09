@@ -77,7 +77,7 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
     getValues,
     formState: { errors },
   } = useForm({
-    defaultValues: { amount: "", description: "", document_date: today, due_date: today },
+    defaultValues: { amount: "", description: "", document_date: today },
   });
 
   const { data: suppliers, isLoading: suppliersLoading } = useQuery({
@@ -113,15 +113,11 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
             "yyyy-MM-dd"
           )
         : today;
-    const defaultDue = inv?.due_date
-      ? DateTime.fromISO(inv.due_date).toFormat("yyyy-MM-dd")
-      : defaultDocument;
 
     reset({
       amount: defaultAmount,
       description: defaultDesc,
       document_date: defaultDocument,
-      due_date: defaultDue,
     });
 
     if (inv?.taxes?.length) {
@@ -188,9 +184,6 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
     if (!data.document_date) {
       return { ok: false, message: "Ingrese la fecha del comprobante" };
     }
-    if (!data.due_date) {
-      return { ok: false, message: "Ingrese la fecha de vencimiento" };
-    }
     if (!String(data.description || "").trim()) {
       return { ok: false, message: "Ingrese la descripción de la factura" };
     }
@@ -214,7 +207,6 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
       description: data.description || null,
       invoice_number: invoiceNumber,
       document_date: data.document_date,
-      due_date: data.due_date,
       total: getInvoiceTotalAmount(taxes, data.amount),
       taxes: taxes.filter((t) => t.value !== ""),
       account_movement_id: accountMovementId ?? null,
@@ -229,7 +221,7 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
     setInvoiceLast8("");
     setWithoutInvoice(false);
     setImageFile(null);
-    reset({ amount: "", description: "", document_date: today, due_date: today });
+    reset({ amount: "", description: "", document_date: today });
     setValue("supplier", null);
   };
 
@@ -403,14 +395,6 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
           {...register("document_date", { required: "Ingrese la fecha del comprobante" })}
           intent={errors.document_date ? "danger" : "default"}
           helperText={errors.document_date?.message}
-        />
-
-        <Input
-          label="Fecha vencimiento"
-          type="date"
-          {...register("due_date", { required: "Ingrese la fecha" })}
-          intent={errors.due_date ? "danger" : "default"}
-          helperText={errors.due_date?.message}
         />
 
         <div>

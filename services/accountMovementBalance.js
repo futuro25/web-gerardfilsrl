@@ -1,35 +1,31 @@
 "use strict";
 
 const supabase = require("../controllers/db");
+const {
+  getPaidAmountsByInvoiceIds,
+  isInvoiceFullyPaid,
+  invoiceTotal,
+} = require("./invoicePaymentSummary");
 
 /**
- * Movimientos vinculados a factura de proveedor sin OP no impactan saldo de caja.
+ * Movimientos vinculados a factura de proveedor sin saldar no impactan saldo de caja.
  */
 async function getBalanceExcludedMovementIds() {
-  const { data: orders, error: ordersErr } = await supabase
-    .from("payment_orders")
-    .select("supplier_invoice_id")
-    .is("deleted_at", null);
-
-  if (ordersErr) throw ordersErr;
-
-  const paidInvoiceIds = new Set(
-    (orders || []).map((o) => o.supplier_invoice_id).filter((v) => v != null)
-  );
-
   const { data: invoices, error: invErr } = await supabase
     .from("supplier_invoices")
-    .select("id, account_movement_id")
+    .select("id, account_movement_id, amount, total")
     .is("deleted_at", null);
 
   if (invErr) throw invErr;
 
+  const invoiceIds = (invoices || []).map((inv) => inv.id);
+  const paidByInvoiceId = await getPaidAmountsByInvoiceIds(invoiceIds);
+
   const excluded = new Set();
   (invoices || []).forEach((inv) => {
-    if (
-      inv.account_movement_id != null &&
-      !paidInvoiceIds.has(inv.id)
-    ) {
+    if (inv.account_movement_id == null) return;
+    const paid = paidByInvoiceId[inv.id] || 0;
+    if (!isInvoiceFullyPaid(inv, paid)) {
       excluded.add(inv.account_movement_id);
     }
   });

@@ -15,7 +15,7 @@ function supplierCashflowRows(rows) {
 }
 
 function effectiveInvoiceDate(row) {
-  return row.due_date || row.created_at?.slice?.(0, 10) || "";
+  return row.document_date || row.created_at?.slice?.(0, 10) || "";
 }
 
 /** Impuestos en cashflow: taxes.invoice_id = cashflow.id */
@@ -299,7 +299,7 @@ self.getAllSupplierAccounts = async (req, res) => {
       await supabase
         .from("supplier_invoices")
         .select(
-          "id, supplier_id, amount, total, due_date, created_at, account_movement_id"
+          "id, supplier_id, amount, total, document_date, due_date, created_at, account_movement_id"
         )
         .is("deleted_at", null);
 
@@ -411,6 +411,7 @@ self.getSupplierAccount = async (req, res) => {
         invoice_number,
         description,
         due_date,
+        document_date,
         account_movement_id,
         created_at
       `

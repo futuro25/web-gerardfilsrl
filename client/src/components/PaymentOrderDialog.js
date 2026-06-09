@@ -12,12 +12,15 @@ import { fetchSupplierInvoiceByAccountMovement } from "../apis/api.supplierinvoi
 import {
   fetchNextOrderNumber,
   createPaymentOrder,
+  fetchPaymentOrdersByMovement,
+  fetchPaymentOrdersByInvoice,
 } from "../apis/api.paymentorders";
 import { fetchRetentionByInvoice } from "../apis/api.retentioncertificates";
 import {
   querySupplierInvoiceByMovementKey,
   queryPaymentOrdersNextNumberKey,
   queryPaymentOrdersByMovementKey,
+  queryPaymentOrdersByInvoiceKey,
   queryPendingPaymentItemsKey,
   queryPurchaseInvoicesKey,
   querySupplierAccountsListKey,
@@ -86,11 +89,30 @@ export default function PaymentOrderDialog({
       total: fetchedInvoice?.total ?? fetchedInvoice?.amount ?? movement.amount ?? "",
       date:
         fetchedInvoice?.document_date ||
-        fetchedInvoice?.due_date ||
         movement.date ||
         null,
     };
   }, [pendingItem, movement, fetchedInvoice]);
+
+  const ordersMovementId = item?.account_movement_id || movementId || null;
+  const ordersInvoiceId = item?.supplier_invoice_id || null;
+
+  const { data: ordersRes, isLoading: ordersLoading } = useQuery({
+    queryKey: ordersMovementId
+      ? queryPaymentOrdersByMovementKey(ordersMovementId)
+      : queryPaymentOrdersByInvoiceKey(ordersInvoiceId),
+    queryFn: () =>
+      ordersMovementId
+        ? fetchPaymentOrdersByMovement(ordersMovementId)
+        : fetchPaymentOrdersByInvoice(ordersInvoiceId),
+    enabled: open && Boolean(ordersMovementId || ordersInvoiceId),
+  });
+
+  const existingOrders = ordersRes?.data || [];
+  const paidSoFar = existingOrders.reduce(
+    (acc, o) => acc + (parseFloat(o.amount) || 0),
+    0
+  );
 
   const retentionLookup = useMemo(
     () =>
@@ -117,10 +139,13 @@ export default function PaymentOrderDialog({
   const retentionPayment = retentionRes?.data?.payment || null;
   const invoiceTotal =
     parseFloat(item?.total ?? item?.amount ?? "") || 0;
+  const remainingAmount = Math.max(0, Math.round((invoiceTotal - paidSoFar) * 100) / 100);
+  const fullyPaid = remainingAmount <= 0.009;
   const suggestedPayAmount =
-    retentionPayment?.total_to_pay != null
-      ? parseFloat(retentionPayment.total_to_pay)
-      : invoiceTotal;
+    retentionPayment?.total_to_pay != null && paidSoFar <= 0.009
+      ? Math.min(parseFloat(retentionPayment.total_to_pay), remainingAmount)
+      : remainingAmount;
+  const amountReadOnly = Boolean(retentionPayment && paidSoFar <= 0.009);
 
   const {
     register,
@@ -136,7 +161,6 @@ export default function PaymentOrderDialog({
       description: "",
       cheque_number: "",
       cheque_bank: "",
-      cheque_due_date: "",
     },
   });
 
@@ -152,21 +176,27 @@ export default function PaymentOrderDialog({
       description: "",
       cheque_number: "",
       cheque_bank: "",
-      cheque_due_date: "",
     });
-  }, [open, item, suggestedPayAmount, reset]);
+  }, [open, item, suggestedPayAmount, remainingAmount, reset]);
 
   const mutation = useMutation({ mutationFn: createPaymentOrder });
 
   const onSubmit = async (data) => {
     if (!item) return;
+    const payAmount = parseFloat(data.amount);
+    if (payAmount > remainingAmount + 0.009) {
+      window.alert(
+        `El monto no puede superar el saldo pendiente (${utils.formatAmount(remainingAmount)})`
+      );
+      return;
+    }
     try {
       const chequeData =
         data.payment_method === "CHEQUE"
           ? {
               cheque_number: data.cheque_number,
               cheque_bank: data.cheque_bank,
-              cheque_due_date: data.cheque_due_date,
+              cheque_due_date: data.payment_date,
             }
           : {};
 
@@ -187,7 +217,9 @@ export default function PaymentOrderDialog({
       }
 
       queryClient.invalidateQueries({
-        queryKey: queryPaymentOrdersByMovementKey(movementId),
+        queryKey: ordersMovementId
+          ? queryPaymentOrdersByMovementKey(ordersMovementId)
+          : queryPaymentOrdersByInvoiceKey(ordersInvoiceId),
       });
       queryClient.invalidateQueries({
         queryKey: queryPaymentOrdersNextNumberKey(),
@@ -206,11 +238,9 @@ export default function PaymentOrderDialog({
     }
   };
 
-  const loading = (needsInvoiceFetch && invoiceLoading) || numberLoading;
+  const loading =
+    (needsInvoiceFetch && invoiceLoading) || numberLoading || ordersLoading;
   const orderNumber = nextNumberData?.number ?? "—";
-  const alreadyPaid = Boolean(
-    movement?.has_payment_order || pendingItem?.has_payment_order
-  );
   const missingInvoice =
     movement && !pendingItem && needsInvoiceFetch && !invoiceLoading && !fetchedInvoice;
 
@@ -227,9 +257,9 @@ export default function PaymentOrderDialog({
           </p>
         </div>
 
-        {alreadyPaid ? (
+        {fullyPaid ? (
           <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
-            Esta factura ya tiene una orden de pago registrada.
+            Esta factura ya está saldada con órdenes de pago.
           </p>
         ) : missingInvoice ? (
           <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-4">
@@ -289,6 +319,43 @@ export default function PaymentOrderDialog({
                     </span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {existingOrders.length > 0 && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex flex-col gap-2">
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  Pagos registrados
+                </p>
+                {existingOrders.map((o) => (
+                  <div
+                    key={o.id}
+                    className="flex justify-between text-sm text-slate-700"
+                  >
+                    <span>{o.order_number || "OP"}</span>
+                    <span className="font-medium">
+                      {utils.formatAmount(o.amount)}
+                    </span>
+                  </div>
+                ))}
+                <div className="border-t border-slate-200 pt-2 flex flex-col gap-1">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500 text-xs">Total factura</span>
+                    <span>{utils.formatAmount(invoiceTotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500 text-xs">Pagado</span>
+                    <span className="text-emerald-700 font-medium">
+                      {utils.formatAmount(paidSoFar)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500 text-xs">Saldo pendiente</span>
+                    <span className="text-amber-800 font-semibold">
+                      {utils.formatAmount(remainingAmount)}
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -384,41 +451,38 @@ export default function PaymentOrderDialog({
                     </p>
                   )}
                 </div>
-                <Input
-                  label="Fecha de vencimiento"
-                  type="date"
-                  {...register("cheque_due_date", {
-                    required: isCheque
-                      ? "Ingrese la fecha de vencimiento"
-                      : false,
-                  })}
-                  intent={errors.cheque_due_date ? "danger" : "default"}
-                  helperText={errors.cheque_due_date?.message}
-                />
               </div>
             )}
 
             {/* Amount */}
             <Input
               label={
-                retentionPayment
+                retentionPayment && paidSoFar <= 0.009
                   ? "Monto (neto después de retención)"
-                  : "Monto"
+                  : amountReadOnly
+                    ? "Monto"
+                    : "Monto (pago parcial permitido)"
               }
               type="number"
               step="0.01"
               placeholder="0.00"
-              readOnly
+              readOnly={amountReadOnly}
               {...register("amount", {
                 required: "Ingrese el monto",
                 min: { value: 0.01, message: "El monto debe ser mayor a 0" },
+                max: {
+                  value: remainingAmount,
+                  message: `No puede superar ${utils.formatAmount(remainingAmount)}`,
+                },
               })}
               intent={errors.amount ? "danger" : "default"}
               helperText={
                 errors.amount?.message ||
-                (retentionPayment && invoiceTotal > 0
-                  ? `Total factura: ${utils.formatAmount(invoiceTotal)}`
-                  : undefined)
+                (remainingAmount < invoiceTotal
+                  ? `Saldo pendiente: ${utils.formatAmount(remainingAmount)}`
+                  : retentionPayment && invoiceTotal > 0
+                    ? `Total factura: ${utils.formatAmount(invoiceTotal)}`
+                    : undefined)
               }
             />
 
@@ -457,7 +521,7 @@ export default function PaymentOrderDialog({
             />
           </form>
         )}
-        {(alreadyPaid || missingInvoice || !item) && (
+        {(fullyPaid || missingInvoice || !item) && (
           <div className="flex justify-end pt-2">
             <Button type="button" variant="outlined" onClick={() => onOpenChange(false)}>
               Cerrar

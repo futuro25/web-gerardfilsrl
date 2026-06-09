@@ -28,6 +28,7 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
     defaultChequeNumber = "",
     defaultChequeBank = "",
     defaultChequeDueDate = "",
+    defaultPaymentDate = "",
     showErrors = false,
   },
   ref
@@ -48,7 +49,6 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
       description: defaultDescription || "",
       cheque_number: "",
       cheque_bank: "",
-      cheque_due_date: "",
     },
   });
 
@@ -56,14 +56,17 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
   const isCheque = paymentMethod === "CHEQUE";
 
   useEffect(() => {
+    const resolvedPaymentDate =
+      defaultPaymentDate ||
+      defaultChequeDueDate ||
+      today;
     reset({
       payment_method: defaultPaymentMethod || "TRANSFERENCIA",
-      payment_date: today,
+      payment_date: resolvedPaymentDate,
       amount: defaultAmount ? String(defaultAmount) : "",
       description: defaultDescription || "",
       cheque_number: defaultChequeNumber || "",
       cheque_bank: defaultChequeBank || "",
-      cheque_due_date: defaultChequeDueDate || "",
     });
   }, [
     defaultAmount,
@@ -72,6 +75,7 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
     defaultChequeNumber,
     defaultChequeBank,
     defaultChequeDueDate,
+    defaultPaymentDate,
     reset,
   ]);
 
@@ -99,11 +103,14 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
         }
       }
       if (data.payment_method === "CHEQUE") {
-        if (!data.cheque_number || !data.cheque_bank || !data.cheque_due_date) {
+        if (!data.cheque_number || !data.cheque_bank) {
           return {
             ok: false,
             message: "Complete los datos del cheque",
           };
+        }
+        if (isEgresoVariant && !data.payment_date) {
+          return { ok: false, message: "Ingrese la fecha de pago" };
         }
       }
       return { ok: true };
@@ -115,13 +122,14 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
           ? {
               cheque_number: data.cheque_number,
               cheque_bank: data.cheque_bank,
-              cheque_due_date: data.cheque_due_date,
+              cheque_due_date: data.payment_date,
             }
           : {};
       if (isEgresoVariant) {
         return {
           payment_method: data.payment_method,
           is_cheque: data.payment_method === "CHEQUE",
+          payment_date: data.payment_date || null,
           ...chequeData,
         };
       }
@@ -202,15 +210,17 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
               <p className="text-sm text-red-500 pt-1">{errors.cheque_bank.message}</p>
             )}
           </div>
-          <Input
-            label="Fecha de vencimiento del cheque"
-            type="date"
-            {...register("cheque_due_date", {
-              required: isCheque ? "Ingrese la fecha de vencimiento" : false,
-            })}
-            intent={errors.cheque_due_date ? "danger" : "default"}
-            helperText={errors.cheque_due_date?.message}
-          />
+          {isEgresoVariant && (
+            <Input
+              label="Fecha de pago"
+              type="date"
+              {...register("payment_date", {
+                required: isCheque ? "Ingrese la fecha de pago" : false,
+              })}
+              intent={errors.payment_date ? "danger" : "default"}
+              helperText={errors.payment_date?.message}
+            />
+          )}
         </div>
       )}
 

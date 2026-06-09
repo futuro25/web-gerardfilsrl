@@ -2,6 +2,7 @@
 
 const supabase = require("../controllers/db");
 const r2 = require("./r2");
+const { getActiveOrdersForInvoice } = require("./invoicePaymentSummary");
 
 function parseAmount(value) {
   const n = parseFloat(value);
@@ -20,14 +21,8 @@ async function getInvoiceByMovementId(movementId) {
 }
 
 async function getActiveOrderForInvoice(supplierInvoiceId) {
-  const { data, error } = await supabase
-    .from("payment_orders")
-    .select("*")
-    .eq("supplier_invoice_id", supplierInvoiceId)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
+  const orders = await getActiveOrdersForInvoice(supplierInvoiceId);
+  return orders.length ? orders[orders.length - 1] : null;
 }
 
 async function getActiveOrderForMovement(movementId) {
@@ -36,20 +31,20 @@ async function getActiveOrderForMovement(movementId) {
     .select("*")
     .eq("account_movement_id", movementId)
     .is("deleted_at", null)
-    .maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(1);
   if (error) throw error;
-  return data;
+  return data?.[0] || null;
 }
 
 async function syncPendingMovementFromInvoice(invoice) {
   if (!invoice?.account_movement_id) return;
 
-  const order = await getActiveOrderForInvoice(invoice.id);
-  if (order) return;
+  const orders = await getActiveOrdersForInvoice(invoice.id);
+  if (orders.length) return;
 
   const documentDate =
     invoice.document_date ||
-    invoice.due_date ||
     invoice.created_at?.slice?.(0, 10) ||
     null;
 
@@ -209,7 +204,6 @@ async function cascadeDeleteMovementAndRelated(movement) {
 
 function buildMovementPaymentFields({
   payment_method,
-  payment_date,
   amount,
   cheque_number,
   cheque_bank,
@@ -222,7 +216,6 @@ function buildMovementPaymentFields({
     cheque_number: isCheque ? cheque_number : null,
     cheque_bank: isCheque ? cheque_bank : null,
     cheque_due_date: isCheque ? cheque_due_date : null,
-    date: isCheque ? cheque_due_date : payment_date,
     amount: parseAmount(amount),
   };
 }

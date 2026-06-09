@@ -97,9 +97,12 @@ export default function MovementDetailDialog({
   if (!movement) return null;
 
   const effectiveDate =
-    movement.is_cheque && movement.cheque_due_date
-      ? movement.cheque_due_date
-      : movement.date;
+    movement.expense_category === "FACTURA" &&
+    (movement.invoice_document_date || invoice?.document_date)
+      ? movement.invoice_document_date || invoice?.document_date
+      : movement.is_cheque && movement.cheque_due_date
+        ? movement.cheque_due_date
+        : movement.date;
 
   return (
     <>
@@ -126,7 +129,13 @@ export default function MovementDetailDialog({
           <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
             Datos del movimiento
           </h3>
-          <DetailRow label="Fecha">
+          <DetailRow
+            label={
+              movement.expense_category === "FACTURA"
+                ? "Fecha comprobante"
+                : "Fecha"
+            }
+          >
             {DateTime.fromISO(effectiveDate).toFormat("dd/MM/yyyy")}
             {movement.is_cheque && (
               <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
@@ -224,11 +233,6 @@ export default function MovementDetailDialog({
                 {invoice.document_date && (
                   <DetailRow label="Fecha comprobante">
                     {DateTime.fromISO(invoice.document_date).toFormat("dd/MM/yyyy")}
-                  </DetailRow>
-                )}
-                {invoice.due_date && (
-                  <DetailRow label="Vencimiento">
-                    {DateTime.fromISO(invoice.due_date).toFormat("dd/MM/yyyy")}
                   </DetailRow>
                 )}
                 {invoice.taxes?.length > 0 && (

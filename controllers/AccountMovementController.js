@@ -8,6 +8,13 @@ const {
   movementCountsInBalance,
 } = require("../services/accountMovementBalance");
 const {
+  getOrdersGroupedByInvoiceIds,
+  buildPaymentSummary,
+  isInvoiceFullyPaid,
+  getPaidAmountsByInvoiceIds,
+  invoiceTotal,
+} = require("../services/invoicePaymentSummary");
+const {
   cascadeDeleteMovementAndRelated,
   getActiveOrderForMovement,
 } = require("../services/supplierInvoiceLifecycle");
@@ -169,7 +176,7 @@ async function attachInvoicePaymentFlags(movements) {
   const movementIds = movements.map((m) => m.id);
   const { data: invoices, error: invErr } = await supabase
     .from("supplier_invoices")
-    .select("id, account_movement_id")
+    .select("id, account_movement_id, amount, total, document_date")
     .in("account_movement_id", movementIds)
     .is("deleted_at", null);
 
@@ -179,23 +186,12 @@ async function attachInvoicePaymentFlags(movements) {
   const invoiceIds = [];
   (invoices || []).forEach((inv) => {
     if (inv.account_movement_id != null) {
-      invoiceByMovementId[inv.account_movement_id] = inv.id;
+      invoiceByMovementId[inv.account_movement_id] = inv;
       invoiceIds.push(inv.id);
     }
   });
 
-  let orderByInvoiceId = {};
-  if (invoiceIds.length) {
-    const { data: orders, error: ordErr } = await supabase
-      .from("payment_orders")
-      .select("id, supplier_invoice_id, order_number")
-      .in("supplier_invoice_id", invoiceIds)
-      .is("deleted_at", null);
-    if (ordErr) throw ordErr;
-    (orders || []).forEach((o) => {
-      orderByInvoiceId[o.supplier_invoice_id] = o;
-    });
-  }
+  const ordersByInvoiceId = await getOrdersGroupedByInvoiceIds(invoiceIds);
 
   const orderByMovementId = {};
   const { data: ordersByMovement, error: ordMovErr } = await supabase
@@ -214,45 +210,61 @@ async function attachInvoicePaymentFlags(movements) {
   });
 
   return movements.map((m) => {
-    const supplierInvoiceId = invoiceByMovementId[m.id] || null;
-    const order =
-      (supplierInvoiceId ? orderByInvoiceId[supplierInvoiceId] : null) ||
-      orderByMovementId[m.id] ||
-      null;
+    const invoice = invoiceByMovementId[m.id] || null;
+    const supplierInvoiceId = invoice?.id || null;
+    const orders = supplierInvoiceId
+      ? ordersByInvoiceId[supplierInvoiceId] || []
+      : [];
+    const summary = invoice
+      ? buildPaymentSummary(invoice, orders)
+      : {
+          invoiceTotal: parseMovementAmount(m.amount),
+          paidAmount: 0,
+          remainingAmount: parseMovementAmount(m.amount),
+          fullyPaid: false,
+          orders: [],
+          orderCount: 0,
+        };
+
     const isInvoiceSource =
       m.expense_category === "FACTURA" && supplierInvoiceId != null;
+    const latestOrder = orders.length ? orders[orders.length - 1] : null;
+    const legacyOrder = latestOrder || orderByMovementId[m.id] || null;
+
     return {
       ...m,
       supplier_invoice_id: supplierInvoiceId,
-      has_payment_order: Boolean(order),
-      payment_order_id: order?.id || null,
-      payment_order_number: order?.order_number || null,
-      invoice_payment_pending: isInvoiceSource && !order,
+      has_payment_order: summary.orderCount > 0,
+      invoice_fully_paid: summary.fullyPaid,
+      invoice_paid_amount: summary.paidAmount,
+      invoice_remaining_amount: summary.remainingAmount,
+      invoice_total_amount: summary.invoiceTotal,
+      invoice_document_date: invoice?.document_date || null,
+      payment_orders: summary.orders,
+      payment_order_id: legacyOrder?.id || null,
+      payment_order_number:
+        summary.orders.map((o) => o.order_number).filter(Boolean).join(", ") ||
+        legacyOrder?.order_number ||
+        null,
+      invoice_payment_pending: isInvoiceSource && !summary.fullyPaid,
     };
   });
 }
 
-/** Movimientos de Control con factura sin orden de pago activa. */
+/** Movimientos de Control con factura con saldo pendiente. */
 async function getPendingMovementIds() {
-  const { data: orders, error: ordersErr } = await supabase
-    .from("payment_orders")
-    .select("supplier_invoice_id")
-    .is("deleted_at", null);
-  if (ordersErr) throw ordersErr;
-
-  const paidInvoiceIds = new Set(
-    (orders || []).map((o) => o.supplier_invoice_id).filter((v) => v != null)
-  );
-
   const { data: invoices, error: invErr } = await supabase
     .from("supplier_invoices")
-    .select("id, account_movement_id")
+    .select("id, account_movement_id, amount, total, document_date")
     .is("deleted_at", null)
     .not("account_movement_id", "is", null);
   if (invErr) throw invErr;
 
+  const invoiceIds = (invoices || []).map((inv) => inv.id);
+  const paidByInvoiceId = await getPaidAmountsByInvoiceIds(invoiceIds);
+
   return (invoices || [])
-    .filter((inv) => !paidInvoiceIds.has(inv.id))
+    .filter((inv) => !isInvoiceFullyPaid(inv, paidByInvoiceId[inv.id] || 0))
     .map((inv) => inv.account_movement_id)
     .filter((id) => id != null);
 }

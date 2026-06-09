@@ -134,7 +134,11 @@ const ROW_ACTION_BTN =
   "inline-flex items-center justify-center min-h-10 min-w-10 p-2 rounded-md shrink-0 touch-manipulation transition-colors";
 
 function effectiveMovementDate(m) {
-  return m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date;
+  if (m?.expense_category === "FACTURA") {
+    return m.invoice_document_date || m.date;
+  }
+  if (m?.is_cheque && m.cheque_due_date) return m.cheque_due_date;
+  return m.date;
 }
 
 function inferExpenseCategory(movement) {
@@ -144,9 +148,19 @@ function inferExpenseCategory(movement) {
   return "FACTURA";
 }
 
-function paymentOrderBlockMessage(orderNumber) {
-  const op = orderNumber ? ` (${orderNumber})` : "";
-  return `Este movimiento tiene una orden de pago activa${op}. Anulá la OP para editarlo y, si corresponde, creá una nueva OP al guardar.`;
+function paymentOrderBlockMessage(movement) {
+  const orders = movement?.payment_orders || [];
+  const numbers =
+    movement?.payment_order_number ||
+    orders.map((o) => o.order_number).filter(Boolean).join(", ");
+  const op = numbers ? ` (${numbers})` : "";
+  const partial =
+    movement?.invoice_payment_pending &&
+    movement?.invoice_remaining_amount > 0.009 &&
+    orders.length > 0
+      ? ` Saldo pendiente: ${utils.formatAmount(movement.invoice_remaining_amount)}.`
+      : "";
+  return `Este movimiento tiene ${orders.length > 1 ? "órdenes de pago activas" : "una orden de pago activa"}${op}.${partial} Anulá la(s) OP para editarlo y, si corresponde, creá nuevas OP al guardar.`;
 }
 
 const MONTHS = [
@@ -358,17 +372,29 @@ export default function AccountControl() {
     }
   };
 
-  const handleCancelPaymentOrder = async (movement, { fromEdit = false } = {}) => {
+  const handleCancelPaymentOrder = async (
+    movement,
+    { fromEdit = false, orderId = null } = {}
+  ) => {
+    const opId = orderId || movement.payment_order_id;
+    const opNumber =
+      movement.payment_orders?.find((o) => o.id === opId)?.order_number ||
+      movement.payment_order_number ||
+      "";
     if (
       !window.confirm(
-        `¿Anular la orden de pago ${movement.payment_order_number || ""}? El movimiento volverá a pendiente.`
+        `¿Anular la orden de pago ${opNumber}?${
+          movement.payment_orders?.length > 1
+            ? " Las demás OP seguirán activas."
+            : " El movimiento volverá a pendiente."
+        }`
       )
     ) {
       return false;
     }
     try {
       setIsCancellingOp(true);
-      const result = await cancelPaymentOrder(movement.payment_order_id);
+      const result = await cancelPaymentOrder(opId);
       if (result?.error) {
         window.alert(result.error);
         return false;
@@ -382,19 +408,43 @@ export default function AccountControl() {
         queryClient.invalidateQueries({
           queryKey: querySupplierInvoiceByMovementKey(movement.id),
         });
+        queryClient.invalidateQueries({
+          queryKey: queryPaymentOrdersByMovementKey(movement.id),
+        });
         setSelectedMovement((prev) => {
           if (prev?.id !== movement.id) return prev;
           const category = inferExpenseCategory(prev);
+          const remainingOrders = (prev.payment_orders || []).filter(
+            (o) => o.id !== opId
+          );
+          const paidAmount = remainingOrders.reduce(
+            (acc, o) => acc + (parseFloat(o.amount) || 0),
+            0
+          );
+          const total =
+            parseFloat(prev.invoice_total_amount ?? prev.amount) || 0;
+          const remainingAmount = Math.max(0, total - paidAmount);
+          const fullyPaid = remainingAmount <= 0.009;
+          const latest = remainingOrders[remainingOrders.length - 1] || null;
           return {
             ...prev,
-            has_payment_order: false,
-            payment_order_id: null,
-            payment_order_number: null,
+            ...(result.movement || {}),
+            payment_orders: remainingOrders,
+            has_payment_order: remainingOrders.length > 0,
+            payment_order_id: latest?.id || null,
+            payment_order_number:
+              remainingOrders.map((o) => o.order_number).filter(Boolean).join(", ") ||
+              null,
+            invoice_paid_amount: paidAmount,
+            invoice_remaining_amount: remainingAmount,
+            invoice_fully_paid: fullyPaid,
             invoice_payment_pending:
-              category === "FACTURA" && Boolean(prev.supplier_invoice_id),
+              category === "FACTURA" && Boolean(prev.supplier_invoice_id) && !fullyPaid,
           };
         });
-        setInvoicePayMode("pending");
+        if (!result.fully_paid) {
+          setInvoicePayMode("pending");
+        }
       }
 
       return true;
@@ -586,9 +636,7 @@ export default function AccountControl() {
 
       if (selectedMovement && movementHasPaymentOrder) {
         setIsLoadingSubmit(false);
-        window.alert(
-          paymentOrderBlockMessage(selectedMovement.payment_order_number)
-        );
+        window.alert(paymentOrderBlockMessage(selectedMovement));
         return;
       }
 
@@ -662,7 +710,7 @@ export default function AccountControl() {
         is_cheque: chequeActive,
         cheque_number: chequeActive ? data.cheque_number : null,
         cheque_bank: chequeActive ? data.cheque_bank : null,
-        cheque_due_date: chequeActive ? data.cheque_due_date : null,
+        cheque_due_date: chequeActive ? data.date : null,
         expense_category: movementType === "EGRESO" ? expenseCategory : null,
         payment_method: null,
         supplier_id: null,
@@ -1151,7 +1199,7 @@ export default function AccountControl() {
                                 aria-label={`Ordenar fechas, actualmente ${dateOrder === "asc" ? "ascendente" : "descendente"}`}
                                 aria-sort={dateOrder === "asc" ? "ascending" : "descending"}
                               >
-                                Fecha
+                                Fecha comprobante
                                 {dateOrder === "asc" ? (
                                   <ArrowUpNarrowWide className="h-4 w-4 text-slate-500 shrink-0" aria-hidden />
                                 ) : (
@@ -1169,7 +1217,7 @@ export default function AccountControl() {
                         <tbody className="bg-white">
                           {filteredMovements.length > 0 ? (
                             filteredMovements.map((m, index) => {
-                              const effectiveDate = m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date;
+                              const effectiveDate = effectiveMovementDate(m);
                               const kind = m.movement_kind || "UNICA VEZ";
                               const rowKindBg =
                                 m.invoice_payment_pending
@@ -1204,12 +1252,14 @@ export default function AccountControl() {
                                     {m.description || "-"}
                                     {m.invoice_payment_pending && (
                                       <span className="block text-[10px] text-amber-700 font-medium">
-                                        Factura pendiente de pago
+                                        {m.has_payment_order && m.invoice_remaining_amount > 0.009
+                                          ? `Saldo pendiente: ${utils.formatAmount(m.invoice_remaining_amount)}`
+                                          : "Factura pendiente de pago"}
                                       </span>
                                     )}
                                     {m.has_payment_order && m.payment_order_number && (
                                       <span className="block text-[10px] text-emerald-700">
-                                        {m.payment_order_number}
+                                        OP: {m.payment_order_number}
                                       </span>
                                     )}
                                     {m.invoice_number &&
@@ -1303,20 +1353,39 @@ export default function AccountControl() {
                                           <Receipt className="w-5 h-5" />
                                         </button>
                                       )}
-                                      {m.has_payment_order && m.payment_order_id && (
-                                        <button
-                                          type="button"
-                                          className={utils.cn(
-                                            ROW_ACTION_BTN,
-                                            "text-amber-700 hover:bg-amber-50 hover:text-amber-900"
-                                          )}
-                                          onClick={() => handleCancelPaymentOrder(m)}
-                                          title="Anular orden de pago"
-                                          aria-label="Anular orden de pago"
-                                        >
-                                          <Undo2 className="w-5 h-5" />
-                                        </button>
-                                      )}
+                                      {m.has_payment_order && m.payment_order_id && (() => {
+                                        const latestOp =
+                                          m.payment_orders?.[m.payment_orders.length - 1];
+                                        const cancelTarget = latestOp
+                                          ? {
+                                              ...m,
+                                              payment_order_id: latestOp.id,
+                                              payment_order_number: latestOp.order_number,
+                                            }
+                                          : m;
+                                        return (
+                                          <button
+                                            type="button"
+                                            className={utils.cn(
+                                              ROW_ACTION_BTN,
+                                              "text-amber-700 hover:bg-amber-50 hover:text-amber-900"
+                                            )}
+                                            onClick={() =>
+                                              handleCancelPaymentOrder(cancelTarget, {
+                                                orderId: cancelTarget.payment_order_id,
+                                              })
+                                            }
+                                            title={
+                                              m.payment_orders?.length > 1
+                                                ? `Anular última OP (${latestOp?.order_number || ""})`
+                                                : "Anular orden de pago"
+                                            }
+                                            aria-label="Anular orden de pago"
+                                          >
+                                            <Undo2 className="w-5 h-5" />
+                                          </button>
+                                        );
+                                      })()}
                                       <button
                                         type="button"
                                         className={utils.cn(
@@ -1388,29 +1457,55 @@ export default function AccountControl() {
               {selectedMovement && movementHasPaymentOrder && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 flex flex-col gap-3">
                   <div>
-                    <p className="font-semibold">Orden de pago activa</p>
+                    <p className="font-semibold">Orden(es) de pago activa(s)</p>
                     <p className="mt-1">
-                      {selectedMovement.payment_order_number
-                        ? `La OP ${selectedMovement.payment_order_number} bloquea la edición de este movimiento.`
-                        : "Hay una orden de pago activa que bloquea la edición de este movimiento."}
-                    </p>
-                    <p className="text-xs mt-2 text-amber-800">
-                      Anulá la OP para habilitar los campos. Después podrás guardar los
-                      cambios y crear una nueva OP si corresponde.
+                      {paymentOrderBlockMessage(selectedMovement)}
                     </p>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outlined"
-                    size="sm"
-                    className="self-start border-amber-400 text-amber-900 hover:bg-amber-100"
-                    disabled={isCancellingOp}
-                    onClick={() =>
-                      handleCancelPaymentOrder(selectedMovement, { fromEdit: true })
-                    }
-                  >
-                    {isCancellingOp ? "Anulando…" : "Anular orden de pago"}
-                  </Button>
+                  {(selectedMovement.payment_orders?.length
+                    ? selectedMovement.payment_orders
+                    : selectedMovement.payment_order_id
+                      ? [
+                          {
+                            id: selectedMovement.payment_order_id,
+                            order_number: selectedMovement.payment_order_number,
+                          },
+                        ]
+                      : []
+                  ).map((op) => (
+                    <div
+                      key={op.id}
+                      className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200/60 pt-2 first:border-t-0 first:pt-0"
+                    >
+                      <span className="font-medium">
+                        {op.order_number || "OP"}
+                        {op.amount != null && (
+                          <span className="font-normal text-amber-800 ml-2">
+                            {utils.formatAmount(op.amount)}
+                          </span>
+                        )}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outlined"
+                        size="sm"
+                        className="border-amber-400 text-amber-900 hover:bg-amber-100"
+                        disabled={isCancellingOp}
+                        onClick={() =>
+                          handleCancelPaymentOrder(
+                            {
+                              ...selectedMovement,
+                              payment_order_id: op.id,
+                              payment_order_number: op.order_number,
+                            },
+                            { fromEdit: true, orderId: op.id }
+                          )
+                        }
+                      >
+                        Anular
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -1460,7 +1555,11 @@ export default function AccountControl() {
               {/* Date — oculto para facturas: la fecha comprobante va en el formulario de factura */}
               {!requiresInvoice && (
                 <Input
-                  label="Fecha"
+                  label={
+                    movementType !== "EGRESO" && isCheque
+                      ? "Fecha de pago"
+                      : "Fecha"
+                  }
                   type="date"
                   {...register("date", { required: "Ingrese la fecha" })}
                   intent={errors.date ? "danger" : "default"}
@@ -1550,15 +1649,6 @@ export default function AccountControl() {
                           <p className="text-sm text-red-500 pt-1">{errors.cheque_bank.message}</p>
                         )}
                       </div>
-                      <Input
-                        label="Fecha de vencimiento"
-                        type="date"
-                        {...register("cheque_due_date", {
-                          required: isCheque ? "Ingrese la fecha de vencimiento" : false,
-                        })}
-                        intent={errors.cheque_due_date ? "danger" : "default"}
-                        helperText={errors.cheque_due_date?.message}
-                      />
                     </div>
                   )}
                 </>
@@ -1612,11 +1702,11 @@ export default function AccountControl() {
                   }
                   defaultChequeNumber={selectedMovement?.cheque_number || ""}
                   defaultChequeBank={selectedMovement?.cheque_bank || ""}
-                  defaultChequeDueDate={
-                    selectedMovement?.cheque_due_date
-                      ? DateTime.fromISO(selectedMovement.cheque_due_date).toFormat(
-                          "yyyy-MM-dd"
-                        )
+                  defaultPaymentDate={
+                    selectedMovement?.cheque_due_date || selectedMovement?.date
+                      ? DateTime.fromISO(
+                          selectedMovement.cheque_due_date || selectedMovement.date
+                        ).toFormat("yyyy-MM-dd")
                       : ""
                   }
                 />

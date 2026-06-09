@@ -4,8 +4,14 @@ const self = {};
 const supabase = require("./db");
 const {
   parseAmount,
+  getActiveOrdersForInvoice,
+  getInvoicePaymentSummary,
+  sumOrderAmounts,
+  invoiceTotal,
+  isInvoiceFullyPaid,
+} = require("../services/invoicePaymentSummary");
+const {
   getInvoiceByMovementId,
-  getActiveOrderForInvoice,
   getActiveOrderForMovement,
   buildMovementPaymentFields,
   buildMovementPendingRevert,
@@ -48,26 +54,24 @@ self.getNextOrderNumber = async (req, res) => {
 };
 
 function controlInvoiceDate(inv) {
-  return (
-    inv.document_date ||
-    inv.due_date ||
-    inv.created_at?.slice?.(0, 10) ||
-    ""
-  );
+  return inv.document_date || inv.created_at?.slice?.(0, 10) || "";
 }
 
-// Facturas de Control sin orden de pago.
+// Facturas de Control con saldo pendiente (total − pagos con OP).
 async function computePendingItems() {
   const { data: orders, error: ordersErr } = await supabase
     .from("payment_orders")
-    .select("supplier_invoice_id")
+    .select("supplier_invoice_id, amount")
     .is("deleted_at", null);
 
   if (ordersErr) throw ordersErr;
 
-  const paidInvoiceIds = new Set(
-    (orders || []).map((o) => o.supplier_invoice_id).filter((v) => v != null)
-  );
+  const paidByInvoiceId = {};
+  (orders || []).forEach((o) => {
+    if (o.supplier_invoice_id == null) return;
+    paidByInvoiceId[o.supplier_invoice_id] =
+      (paidByInvoiceId[o.supplier_invoice_id] || 0) + parseAmount(o.amount);
+  });
 
   const { data: suppliers, error: supErr } = await supabase
     .from("suppliers")
@@ -89,9 +93,16 @@ async function computePendingItems() {
   if (ctrlErr) throw ctrlErr;
 
   const controlItems = (controlInvoices || [])
-    .filter((inv) => !paidInvoiceIds.has(inv.id) && inv.account_movement_id != null)
+    .filter((inv) => {
+      if (inv.account_movement_id == null) return false;
+      const total = invoiceTotal(inv);
+      const paid = paidByInvoiceId[inv.id] || 0;
+      return !isInvoiceFullyPaid(inv, paid);
+    })
     .map((inv) => {
-      const total = parseAmount(inv.total ?? inv.amount);
+      const total = invoiceTotal(inv);
+      const paidAmount = paidByInvoiceId[inv.id] || 0;
+      const remainingAmount = Math.max(0, total - paidAmount);
       return {
         key: `control-${inv.id}`,
         source: "control",
@@ -105,6 +116,8 @@ async function computePendingItems() {
         date: controlInvoiceDate(inv),
         amount: parseAmount(inv.amount),
         total,
+        paid_amount: paidAmount,
+        remaining_amount: remainingAmount,
       };
     });
 
@@ -235,21 +248,18 @@ self.createPaymentOrder = async (req, res) => {
       return res.json({ error: "La factura no corresponde a este movimiento" });
     }
 
-    const invoiceTotal = parseAmount(invoice.total ?? invoice.amount);
+    const invoiceTotalAmount = invoiceTotal(invoice);
     const payAmount = parseAmount(amount);
     if (!payAmount || payAmount <= 0) {
       return res.json({ error: "Monto inválido" });
     }
-    if (Math.abs(payAmount - invoiceTotal) > 0.009) {
-      return res.json({
-        error: "El monto debe coincidir con el total de la factura",
-      });
-    }
 
-    const existingForInvoice = await getActiveOrderForInvoice(supplier_invoice_id);
-    if (existingForInvoice) {
+    const existingOrders = await getActiveOrdersForInvoice(supplier_invoice_id);
+    const paidSoFar = sumOrderAmounts(existingOrders);
+    const remainingBefore = Math.max(0, invoiceTotalAmount - paidSoFar);
+    if (payAmount > remainingBefore + 0.009) {
       return res.json({
-        error: `Esta factura ya tiene la orden de pago ${existingForInvoice.order_number}`,
+        error: `El monto supera el saldo pendiente (${remainingBefore.toFixed(2)})`,
       });
     }
 
@@ -288,62 +298,59 @@ self.createPaymentOrder = async (req, res) => {
     let paycheckId = movement.paycheck_id || null;
 
     if (isCheque) {
-      if (paycheckId) {
-        await supabase
-          .from("paychecks")
-          .update({
-            number: cheque_number,
-            bank: cheque_bank,
-            amount: payAmount,
-            due_date: cheque_due_date,
-            deleted_at: null,
-          })
-          .eq("id", paycheckId);
-      } else {
-        const { data: newPaycheck, error: paycheckError } = await supabase
-          .from("paychecks")
-          .insert({
-            number: cheque_number,
-            bank: cheque_bank,
-            amount: payAmount,
-            due_date: cheque_due_date,
-            type: "OUT",
-            movement_id: movementId,
-          })
-          .select();
-
-        if (paycheckError) throw paycheckError;
-        if (newPaycheck?.length) paycheckId = newPaycheck[0].id;
-      }
-    } else if (paycheckId) {
-      await supabase
+      const { data: newPaycheck, error: paycheckError } = await supabase
         .from("paychecks")
-        .update({ deleted_at: new Date() })
-        .eq("id", paycheckId);
-      paycheckId = null;
+        .insert({
+          number: cheque_number,
+          bank: cheque_bank,
+          amount: payAmount,
+          due_date: cheque_due_date,
+          type: "OUT",
+          movement_id: movementId,
+        })
+        .select();
+
+      if (paycheckError) throw paycheckError;
+      if (newPaycheck?.length) paycheckId = newPaycheck[0].id;
     }
 
-    const paymentFields = buildMovementPaymentFields({
-      payment_method,
-      payment_date,
-      amount: payAmount,
-      cheque_number,
-      cheque_bank,
-      cheque_due_date,
-    });
+    const documentDate =
+      invoice.document_date ||
+      movement.date;
+
+    const paidAfter = paidSoFar + payAmount;
+    const fullyPaid = isInvoiceFullyPaid(invoice, paidAfter);
+
+    let movementUpdate;
+    if (fullyPaid) {
+      const paymentFields = buildMovementPaymentFields({
+        payment_method,
+        amount: invoiceTotalAmount,
+        cheque_number,
+        cheque_bank,
+        cheque_due_date,
+      });
+      movementUpdate = {
+        ...paymentFields,
+        date: documentDate,
+        paycheck_id: isCheque ? paycheckId : null,
+      };
+    } else {
+      movementUpdate = {
+        ...buildMovementPendingRevert(documentDate),
+        paycheck_id: null,
+      };
+    }
 
     const { data: updatedMovement, error: movUpdateErr } = await supabase
       .from("account_movements")
-      .update({
-        ...paymentFields,
-        paycheck_id: paycheckId,
-      })
+      .update(movementUpdate)
       .eq("id", movementId)
       .select();
 
     if (movUpdateErr) throw movUpdateErr;
 
-    if (paycheckId) {
+    if (fullyPaid && paycheckId && isCheque) {
       await supabase
         .from("paychecks")
         .update({ movement_id: movementId })
@@ -371,7 +378,12 @@ self.createPaymentOrder = async (req, res) => {
 
     if (orderErr) throw orderErr;
 
-    res.json({ data: newOrder[0], movement: updatedMovement?.[0] || null });
+    res.json({
+      data: newOrder[0],
+      movement: updatedMovement?.[0] || null,
+      fully_paid: fullyPaid,
+      remaining_amount: Math.max(0, invoiceTotalAmount - paidAfter),
+    });
   } catch (e) {
     console.error("createPaymentOrder error:", e.message);
     res.json({ error: e.message });
@@ -425,7 +437,6 @@ self.cancelPaymentOrder = async (req, res) => {
 
     const documentDate =
       invoice?.document_date ||
-      invoice?.due_date ||
       movement.date;
 
     if (movement.paycheck_id) {
@@ -435,16 +446,6 @@ self.cancelPaymentOrder = async (req, res) => {
         .eq("id", movement.paycheck_id);
     }
 
-    const revertFields = buildMovementPendingRevert(documentDate);
-
-    const { data: updatedMovement, error: updateErr } = await supabase
-      .from("account_movements")
-      .update(revertFields)
-      .eq("id", movementId)
-      .select();
-
-    if (updateErr) throw updateErr;
-
     const { error: deleteOrderErr } = await supabase
       .from("payment_orders")
       .update({ deleted_at: new Date() })
@@ -452,10 +453,48 @@ self.cancelPaymentOrder = async (req, res) => {
 
     if (deleteOrderErr) throw deleteOrderErr;
 
+    const remainingOrders = invoice
+      ? await getActiveOrdersForInvoice(invoice.id)
+      : [];
+    const paidRemaining = sumOrderAmounts(remainingOrders);
+
+    let movementUpdate;
+    if (invoice && isInvoiceFullyPaid(invoice, paidRemaining)) {
+      const latest = remainingOrders[remainingOrders.length - 1];
+      movementUpdate = buildMovementPaymentFields({
+        payment_method: latest.payment_method,
+        amount: invoiceTotal(invoice),
+        cheque_number: latest.cheque_number,
+        cheque_bank: latest.cheque_bank,
+        cheque_due_date: latest.cheque_due_date,
+      });
+      movementUpdate = {
+        ...movementUpdate,
+        date: documentDate,
+        paycheck_id: latest.paycheck_id || null,
+      };
+    } else {
+      movementUpdate = buildMovementPendingRevert(documentDate);
+    }
+
+    const { data: updatedMovement, error: updateErr } = await supabase
+      .from("account_movements")
+      .update(movementUpdate)
+      .eq("id", movementId)
+      .select();
+
+    if (updateErr) throw updateErr;
+
     res.json({
       success: true,
       order_id: orderId,
       movement: updatedMovement?.[0] || null,
+      fully_paid: invoice
+        ? isInvoiceFullyPaid(invoice, paidRemaining)
+        : false,
+      remaining_amount: invoice
+        ? Math.max(0, invoiceTotal(invoice) - paidRemaining)
+        : null,
     });
   } catch (e) {
     console.error("cancelPaymentOrder error:", e.message);
