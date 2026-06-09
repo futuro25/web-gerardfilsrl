@@ -236,6 +236,94 @@ async function generateCertificateNumber() {
   return `${datePrefix}-${nextNumber}`;
 }
 
+async function enrichRetentionPaymentsInvoiceNumbers(payments) {
+  if (!payments?.length) return [];
+
+  const supplierInvoiceIds = [
+    ...new Set(payments.map((p) => p.supplier_invoice_id).filter(Boolean)),
+  ];
+  const movementIds = [
+    ...new Set(payments.map((p) => p.account_movement_id).filter(Boolean)),
+  ];
+  const cashflowIds = [
+    ...new Set(payments.map((p) => p.cashflow_id).filter(Boolean)),
+  ];
+
+  const invoiceBySupplierInvoiceId = {};
+  if (supplierInvoiceIds.length) {
+    const { data, error } = await supabase
+      .from("supplier_invoices")
+      .select("id, invoice_number")
+      .in("id", supplierInvoiceIds)
+      .is("deleted_at", null);
+    if (error) throw error;
+    (data || []).forEach((inv) => {
+      if (inv.invoice_number) {
+        invoiceBySupplierInvoiceId[inv.id] = inv.invoice_number;
+      }
+    });
+  }
+
+  const invoiceByMovementId = {};
+  if (movementIds.length) {
+    const { data: movements, error: movErr } = await supabase
+      .from("account_movements")
+      .select("id, invoice_number")
+      .in("id", movementIds)
+      .is("deleted_at", null);
+    if (movErr) throw movErr;
+    (movements || []).forEach((m) => {
+      if (m.invoice_number) invoiceByMovementId[m.id] = m.invoice_number;
+    });
+
+    const { data: linkedInvoices, error: invErr } = await supabase
+      .from("supplier_invoices")
+      .select("account_movement_id, invoice_number")
+      .in("account_movement_id", movementIds)
+      .is("deleted_at", null);
+    if (invErr) throw invErr;
+    (linkedInvoices || []).forEach((inv) => {
+      if (
+        inv.account_movement_id &&
+        inv.invoice_number &&
+        !invoiceByMovementId[inv.account_movement_id]
+      ) {
+        invoiceByMovementId[inv.account_movement_id] = inv.invoice_number;
+      }
+    });
+  }
+
+  const referenceByCashflowId = {};
+  if (cashflowIds.length) {
+    const { data, error } = await supabase
+      .from("cashflow")
+      .select("id, reference")
+      .in("id", cashflowIds)
+      .is("deleted_at", null);
+    if (error) throw error;
+    (data || []).forEach((cf) => {
+      if (cf.reference) referenceByCashflowId[cf.id] = cf.reference;
+    });
+  }
+
+  return payments.map((payment) => {
+    if (payment.invoice_number) return payment;
+
+    let resolved = "";
+    if (payment.supplier_invoice_id) {
+      resolved = invoiceBySupplierInvoiceId[payment.supplier_invoice_id] || "";
+    }
+    if (!resolved && payment.account_movement_id) {
+      resolved = invoiceByMovementId[payment.account_movement_id] || "";
+    }
+    if (!resolved && payment.cashflow_id) {
+      resolved = referenceByCashflowId[payment.cashflow_id] || "";
+    }
+
+    return resolved ? { ...payment, invoice_number: resolved } : payment;
+  });
+}
+
 self.getRetentionPayments = async (req, res) => {
   try {
     const { data: payments, error } = await supabase
@@ -246,9 +334,13 @@ self.getRetentionPayments = async (req, res) => {
 
     if (error) throw error;
 
+    const withInvoiceNumbers = await enrichRetentionPaymentsInvoiceNumbers(
+      payments || []
+    );
+
     // Obtener información de cashflow para los pagos que tienen cashflow_id
     const formattedData = await Promise.all(
-      (payments || []).map(async (payment) => {
+      withInvoiceNumbers.map(async (payment) => {
         if (payment.cashflow_id) {
           const { data: cashflow, error: cashflowError } = await supabase
             .from("cashflow")
@@ -371,15 +463,21 @@ self.createRetentionPayment = async (req, res) => {
     }
 
     let linkedAccountMovementId = parsedAccountMovementId;
-    if (parsedSupplierInvoiceId && !linkedAccountMovementId) {
+    let resolvedInvoiceNumber = invoiceNumber || "";
+    if (parsedSupplierInvoiceId) {
       const { data: supplierInvoice, error: siErr } = await supabase
         .from("supplier_invoices")
-        .select("account_movement_id")
+        .select("account_movement_id, invoice_number")
         .eq("id", parsedSupplierInvoiceId)
         .is("deleted_at", null)
         .maybeSingle();
       if (siErr) throw siErr;
-      linkedAccountMovementId = supplierInvoice?.account_movement_id ?? null;
+      if (!linkedAccountMovementId) {
+        linkedAccountMovementId = supplierInvoice?.account_movement_id ?? null;
+      }
+      if (!resolvedInvoiceNumber && supplierInvoice?.invoice_number) {
+        resolvedInvoiceNumber = supplierInvoice.invoice_number;
+      }
     }
 
     // Calcular retención considerando el acumulado mensual
@@ -396,7 +494,7 @@ self.createRetentionPayment = async (req, res) => {
 
     // Crear el pago
     const payment = {
-      invoice_number: invoiceNumber || "",
+      invoice_number: resolvedInvoiceNumber,
       category_code: categoryCode,
       category_detail: categoryDetail || "",
       supplier: supplier,
@@ -436,7 +534,7 @@ self.createRetentionPayment = async (req, res) => {
         category_detail: categoryDetail || "",
         supplier_name: supplier,
         supplier_cuit: supplierCuit,
-        invoice_number: invoiceNumber || "",
+        invoice_number: resolvedInvoiceNumber,
         issue_date: issueDate,
         due_date: dueDate || null,
         net_amount: netAmount,

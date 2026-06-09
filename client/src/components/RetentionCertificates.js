@@ -299,6 +299,11 @@ export default function RetentionCertificates() {
     setValue("netAmount", payment?.net_amount || 0);
     setValue("iva", payment?.iva || 0);
     setValue("profitsCondition", payment?.profits_condition || "Inscripto");
+
+    const { letter, first4, last8 } = splitInvoiceNumber(payment?.invoice_number);
+    setInvoiceLetter(letter || "A");
+    setInvoiceFirst4(first4);
+    setInvoiceLast8(last8);
     
     // Buscar y establecer categoría
     if (payment?.category_code) {
@@ -540,6 +545,9 @@ export default function RetentionCertificates() {
     setCalculatedRetention(0);
     setCalculatedTotalToPay(0);
     setIsCalculated(false);
+    setInvoiceLetter("A");
+    setInvoiceFirst4("");
+    setInvoiceLast8("");
     // Establecer valores por defecto antes de reset
     setValue("profitsCondition", "Inscripto");
     reset({
@@ -599,7 +607,7 @@ export default function RetentionCertificates() {
       category_detail: selectedCategory.description,
       supplier_name: selectedSupplier.name,
       supplier_cuit: body.supplierCuit,
-      invoice_number: "",
+      invoice_number: concatenateInvoiceNumber(),
       issue_date: body.issueDate,
       due_date: null,
       total_amount: totalAmount,
@@ -615,7 +623,7 @@ export default function RetentionCertificates() {
 
   const onSave = async (body) => {
     const paymentData = {
-      invoiceNumber: "",
+      invoiceNumber: concatenateInvoiceNumber(),
       categoryCode: selectedCategory.code,
       categoryDetail: selectedCategory.description,
       supplier: selectedSupplier.name,
@@ -696,7 +704,7 @@ export default function RetentionCertificates() {
             <ArrowLeftIcon className="h-5 w-5 cursor-pointer" />
             <div>Certificados de Retención</div>
           </div>
-          {stage === "LIST" && !viewOnly && (
+          {/* {stage === "LIST" && !viewOnly && (
             <Button
               variant="alternative"
               className="ml-auto"
@@ -715,12 +723,15 @@ export default function RetentionCertificates() {
                 setCalculatedTotalToPay(0);
                 setIsCalculated(false);
                 setCalculatedCertificate(null);
+                setInvoiceLetter("A");
+                setInvoiceFirst4("");
+                setInvoiceLast8("");
                 setValue("profitsCondition", "Inscripto");
               }}
             >
               Crear
             </Button>
-          )}
+          )} */}
         </div>
       </div>
 
@@ -910,14 +921,14 @@ export default function RetentionCertificates() {
                                 >
                                   <Download className="w-4 h-4" />
                                 </button>
-                                <button
+                                {/* <button
                                   className="flex items-center justify-center w-8 h-8"
                                   title="Ver detalle"
                                   onClick={() => onView(pago.id)}
                                 >
                                   <EyeIcon />
-                                </button>
-                                <button
+                                </button> */}
+                                {/* <button
                                   className="flex items-center justify-center w-8 h-8"
                                   title="Editar"
                                   onClick={() => onEdit(pago.id)}
@@ -930,7 +941,7 @@ export default function RetentionCertificates() {
                                   onClick={() => removePayment(pago.id)}
                                 >
                                   <TrashIcon />
-                                </button>
+                                </button> */}
                               </div>
                             </td>
                           </tr>
@@ -1021,6 +1032,69 @@ export default function RetentionCertificates() {
                               )}
                               {errors.supplierCuit && (
                                 <span className="px-2 text-red-500">* Obligatorio</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* Número de factura */}
+                        <tr>
+                          <td>
+                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
+                              <label className="text-slate-500 md:w-32 font-bold">
+                                N° Factura:
+                              </label>
+                              {viewOnly ? (
+                                <label className="text-slate-500">
+                                  {selectedPayment?.invoice_number
+                                    ? utils.formatInvoiceNumber(
+                                        selectedPayment.invoice_number
+                                      )
+                                    : "-"}
+                                </label>
+                              ) : (
+                                <div className="flex flex-wrap gap-2 items-center">
+                                  <select
+                                    value={invoiceLetter}
+                                    onChange={(e) =>
+                                      setInvoiceLetter(e.target.value)
+                                    }
+                                    className="rounded border border-slate-200 p-3 text-slate-500 w-16 text-center"
+                                  >
+                                    <option value="A">A</option>
+                                    <option value="B">B</option>
+                                    <option value="C">C</option>
+                                  </select>
+                                  <span className="text-slate-400">-</span>
+                                  <input
+                                    type="text"
+                                    value={invoiceFirst4}
+                                    onChange={(e) =>
+                                      setInvoiceFirst4(
+                                        e.target.value
+                                          .replace(/\D/g, "")
+                                          .slice(0, 4)
+                                      )
+                                    }
+                                    placeholder="0001"
+                                    maxLength={4}
+                                    className="rounded border border-slate-200 p-3 text-slate-500 w-20 text-center"
+                                  />
+                                  <span className="text-slate-400">-</span>
+                                  <input
+                                    type="text"
+                                    value={invoiceLast8}
+                                    onChange={(e) =>
+                                      setInvoiceLast8(
+                                        e.target.value
+                                          .replace(/\D/g, "")
+                                          .slice(0, 8)
+                                      )
+                                    }
+                                    placeholder="00000001"
+                                    maxLength={8}
+                                    className="rounded border border-slate-200 p-3 text-slate-500 w-28 text-center"
+                                  />
+                                </div>
                               )}
                             </div>
                           </td>
