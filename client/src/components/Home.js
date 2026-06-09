@@ -46,12 +46,12 @@ export default function Home() {
       order: 7.54,
     },
     { label: "Aportes", icon: PiggyBank, path: "/aportes", order: 7.55 },
-    {
-      label: "Facturas Compras",
-      icon: FilePlus,
-      path: "/facturas-compras",
-      order: 7.56,
-    },
+    // {
+    //   label: "Facturas Compras",
+    //   icon: FilePlus,
+    //   path: "/facturas-compras",
+    //   order: 7.56,
+    // },
     { label: "Cheques", icon: Banknote, path: "/cheques", order: 8 },
     { label: "Retenciones", icon: CircleDollarSign, path: "/certificados-retencion", order: 9 },
     { label: "Export Fiscal", icon: FileDown, path: "/exportacion-fiscal", order: 11 },

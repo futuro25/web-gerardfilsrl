@@ -83,7 +83,6 @@ export default function PendingInvoicesList() {
   );
 
   const controlCount = items.filter((it) => it.source === "control").length;
-  const cashflowCount = items.filter((it) => it.source === "cashflow").length;
 
   const openPaymentOrder = (it) => {
     queryClient.invalidateQueries({ queryKey: queryPaymentOrdersNextNumberKey() });
@@ -114,7 +113,7 @@ export default function PendingInvoicesList() {
         </p>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
           <div className="bg-white border rounded-lg p-4 shadow-sm">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Pendientes</p>
             <p className="text-2xl font-bold mt-1 text-slate-800">
@@ -131,12 +130,6 @@ export default function PendingInvoicesList() {
             <p className="text-xs text-gray-500 uppercase tracking-wide">De Control</p>
             <p className="text-2xl font-bold mt-1 text-indigo-600">
               {isLoading ? "—" : controlCount}
-            </p>
-          </div>
-          <div className="bg-white border rounded-lg p-4 shadow-sm">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">De Cashflow</p>
-            <p className="text-2xl font-bold mt-1 text-teal-600">
-              {isLoading ? "—" : cashflowCount}
             </p>
           </div>
         </div>

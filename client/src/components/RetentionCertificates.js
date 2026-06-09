@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { DateTime } from "luxon";
 import { useForm, Controller } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { queryRetentionPaymentsKey, queryRetentionCertificateKey, querySuppliersKey } from "../apis/queryKeys";
@@ -53,12 +54,30 @@ const REGIMEN_830_CATEGORIES = [
   { code: "780", description: "Subsidios abonados por los Estados Nacional, provinciales, municipales o el Gobierno de la Ciudad Autónoma de Buenos Aires, en concepto de locaciones de obra y/o servicios, no ejecutados en relación de dependencia." },
 ];
 
+const MONTHS = [
+  { value: 1, label: "Enero" },
+  { value: 2, label: "Febrero" },
+  { value: 3, label: "Marzo" },
+  { value: 4, label: "Abril" },
+  { value: 5, label: "Mayo" },
+  { value: 6, label: "Junio" },
+  { value: 7, label: "Julio" },
+  { value: 8, label: "Agosto" },
+  { value: 9, label: "Septiembre" },
+  { value: 10, label: "Octubre" },
+  { value: 11, label: "Noviembre" },
+  { value: 12, label: "Diciembre" },
+];
+
 export default function RetentionCertificates() {
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [selectedPaymentToEdit, setSelectedPaymentToEdit] = useState(null);
   const [stage, setStage] = useState("LIST");
   const [viewOnly, setViewOnly] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState(DateTime.now().month);
+  const [selectedYear, setSelectedYear] = useState(DateTime.now().year);
+  const [viewAll, setViewAll] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [certificate, setCertificate] = useState(null);
   const [showCertificate, setShowCertificate] = useState(false);
@@ -174,15 +193,44 @@ export default function RetentionCertificates() {
     }
   }, [stage, selectedPaymentToEdit, setValue]);
 
-  const dataFiltered =
-    payments &&
-    payments?.length > 0 &&
-    payments?.filter((d) =>
-      search
-        ? d.supplier.toLowerCase().includes(search.toLowerCase()) ||
-          d.invoice_number.toLowerCase().includes(search.toLowerCase())
-        : d
+  const yearOptions = useMemo(() => {
+    const currentYear = DateTime.now().year;
+    const years = [];
+    for (let y = currentYear - 3; y <= currentYear + 1; y++) {
+      years.push(y);
+    }
+    return years;
+  }, []);
+
+  const listFiltered = useMemo(() => {
+    if (!payments?.length) return [];
+    const q = search.trim().toLowerCase();
+    return payments.filter((p) => {
+      if (q) {
+        const supplier = (p.supplier || "").toLowerCase();
+        const invoice = (p.invoice_number || "").toLowerCase();
+        if (!supplier.includes(q) && !invoice.includes(q)) return false;
+      }
+      if (viewAll) return true;
+      if (!p.issue_date) return false;
+      const dt = DateTime.fromISO(String(p.issue_date).slice(0, 10));
+      if (!dt.isValid) return false;
+      return dt.month === selectedMonth && dt.year === selectedYear;
+    });
+  }, [payments, search, selectedMonth, selectedYear, viewAll]);
+
+  const periodTotals = useMemo(() => {
+    return listFiltered.reduce(
+      (acc, p) => {
+        acc.count += 1;
+        acc.retention += parseFloat(p.retention_amount) || 0;
+        acc.totalAmount += parseFloat(p.total_amount) || 0;
+        acc.totalToPay += parseFloat(p.total_to_pay) || 0;
+        return acc;
+      },
+      { count: 0, retention: 0, totalAmount: 0, totalToPay: 0 }
     );
+  }, [listFiltered]);
 
   const createMutation = useMutation({
     mutationFn: useCreateRetentionPaymentMutation,
@@ -678,20 +726,62 @@ export default function RetentionCertificates() {
 
       <div className="px-4 h-full overflow-auto">
         {stage === "LIST" && (
-          <div className="w-full flex shadow rounded mb-4">
-            <Input
-              rightElement={
-                <div className="cursor-pointer" onClick={() => setSearch("")}>
-                  {search && <CloseIcon />}
-                </div>
-              }
-              type="text"
-              value={search}
-              name="search"
-              id="search"
-              placeholder="Buscador..."
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <select
+              className="h-10 border rounded px-2 text-sm bg-white"
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(parseInt(e.target.value, 10));
+                setViewAll(false);
+              }}
+              disabled={viewAll}
+            >
+              {MONTHS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-10 border rounded px-2 text-sm bg-white"
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(parseInt(e.target.value, 10));
+                setViewAll(false);
+              }}
+              disabled={viewAll}
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              variant={viewAll ? "alternative" : "outlined"}
+              size="sm"
+              className="shrink-0 h-[40px]"
+              onClick={() => setViewAll((v) => !v)}
+            >
+              {viewAll ? "Filtrar por mes" : "Ver todo"}
+            </Button>
+            <div className="flex-1 min-w-[12rem] p-0 -mt-1.5">
+              <Input
+                size="sm"
+                rightElement={
+                  <div className="cursor-pointer" onClick={() => setSearch("")}>
+                    {search && <CloseIcon />}
+                  </div>
+                }
+                type="text"
+                value={search}
+                name="search"
+                id="search"
+                placeholder="Buscador..."
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
           </div>
         )}
 
@@ -705,19 +795,21 @@ export default function RetentionCertificates() {
 
         {stage === "LIST" && payments && (
           <div className="my-4 mb-28">
-            <div className="pl-1 pb-1 text-slate-500 flex items-center gap-2 text-sm">
-              <div>Total de pagos: {payments.length}</div>
+            <div className="pl-1 pb-1 text-slate-500 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
               <div>
-                Importe total:{" "}
-                {utils.formatAmount(
-                  payments.reduce((acc, p) => acc + (p.total_amount || 0), 0)
-                )}
+                {viewAll
+                  ? "Período: todos los meses"
+                  : `Período: ${MONTHS.find((m) => m.value === selectedMonth)?.label} ${selectedYear}`}
+              </div>
+              <div>Retenciones: {periodTotals.count}</div>
+              <div className="font-semibold text-slate-700">
+                Total retenido: {utils.formatAmount(periodTotals.retention)}
               </div>
               <div>
-                Retenciones:{" "}
-                {utils.formatAmount(
-                  payments.reduce((acc, p) => acc + (p.retention_amount || 0), 0)
-                )}
+                Importe facturado: {utils.formatAmount(periodTotals.totalAmount)}
+              </div>
+              <div>
+                Total a pagar: {utils.formatAmount(periodTotals.totalToPay)}
               </div>
             </div>
             <div className="not-prose relative bg-slate-50 rounded-xl overflow-hidden">
@@ -759,8 +851,8 @@ export default function RetentionCertificates() {
                       </tr>
                     </thead>
                     <tbody className="bg-white">
-                      {dataFiltered && dataFiltered.length ? (
-                        dataFiltered.map((pago, index) => (
+                      {listFiltered.length ? (
+                        listFiltered.map((pago, index) => (
                           <tr
                             key={pago.id}
                             className={utils.cn(
