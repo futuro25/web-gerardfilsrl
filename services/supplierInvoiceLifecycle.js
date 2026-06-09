@@ -58,6 +58,23 @@ async function syncPendingMovementFromInvoice(invoice) {
     .is("deleted_at", null);
 }
 
+/** Actualiza solo la fecha del comprobante en el movimiento (aunque haya OP). */
+async function syncMovementDocumentDateFromInvoice(invoice) {
+  if (!invoice?.account_movement_id) return;
+
+  const documentDate =
+    invoice.document_date ||
+    invoice.created_at?.slice?.(0, 10) ||
+    null;
+  if (!documentDate) return;
+
+  await supabase
+    .from("account_movements")
+    .update({ date: documentDate })
+    .eq("id", invoice.account_movement_id)
+    .is("deleted_at", null);
+}
+
 async function softDeletePaymentOrders({ movementId, supplierInvoiceId }) {
   const ids = new Set();
 
@@ -238,6 +255,7 @@ module.exports = {
   getActiveOrderForInvoice,
   getActiveOrderForMovement,
   syncPendingMovementFromInvoice,
+  syncMovementDocumentDateFromInvoice,
   cascadeDeleteSupplierInvoiceForMovement,
   cascadeDeleteMovementAndRelated,
   buildMovementPaymentFields,

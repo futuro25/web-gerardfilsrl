@@ -502,4 +502,62 @@ self.cancelPaymentOrder = async (req, res) => {
   }
 };
 
+self.updatePaymentOrder = async (req, res) => {
+  try {
+    const orderId = req.params.id;
+    const payment_date = req.body.payment_date;
+
+    if (!payment_date) {
+      return res.json({ error: "Ingrese la fecha de pago" });
+    }
+
+    const { data: order, error: orderErr } = await supabase
+      .from("payment_orders")
+      .select("*")
+      .eq("id", orderId)
+      .is("deleted_at", null)
+      .single();
+
+    if (orderErr || !order) {
+      return res.json({ error: "Orden de pago no encontrada" });
+    }
+
+    const isCheque = order.payment_method === "CHEQUE";
+    const orderUpdate = {
+      payment_date,
+      ...(isCheque ? { cheque_due_date: payment_date } : {}),
+    };
+
+    const { data: updatedOrder, error: updateErr } = await supabase
+      .from("payment_orders")
+      .update(orderUpdate)
+      .eq("id", orderId)
+      .select();
+
+    if (updateErr) throw updateErr;
+
+    if (isCheque && order.account_movement_id) {
+      const { data: movement, error: movErr } = await supabase
+        .from("account_movements")
+        .select("id, paycheck_id")
+        .eq("id", order.account_movement_id)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (!movErr && movement?.paycheck_id) {
+        await supabase
+          .from("paychecks")
+          .update({ due_date: payment_date })
+          .eq("id", movement.paycheck_id)
+          .is("deleted_at", null);
+      }
+    }
+
+    res.json({ data: updatedOrder?.[0] || null });
+  } catch (e) {
+    console.error("updatePaymentOrder error:", e.message);
+    res.json({ error: e.message });
+  }
+};
+
 module.exports = self;

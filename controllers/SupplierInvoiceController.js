@@ -7,6 +7,7 @@ const self = {};
 const {
   getActiveOrderForInvoice,
   syncPendingMovementFromInvoice,
+  syncMovementDocumentDateFromInvoice,
 } = require("../services/supplierInvoiceLifecycle");
 const {
   getPaidAmountsByInvoiceIds,
@@ -459,6 +460,39 @@ self.setSupplierInvoiceImage = async (req, res) => {
   } catch (e) {
     console.error("setSupplierInvoiceImage", e.message);
     return res.status(500).json({ error: e.message });
+  }
+};
+
+self.patchSupplierInvoiceDates = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const document_date = req.body.document_date;
+
+    if (!document_date) {
+      return res.status(400).json({ error: "Ingrese la fecha del comprobante" });
+    }
+
+    const { data: updated, error } = await supabase
+      .from("supplier_invoices")
+      .update({
+        document_date,
+        due_date: document_date,
+      })
+      .eq("id", id)
+      .is("deleted_at", null)
+      .select();
+
+    if (error) throw error;
+    if (!updated?.length) {
+      return res.status(404).json({ error: "Factura no encontrada" });
+    }
+
+    await syncMovementDocumentDateFromInvoice(updated[0]);
+
+    return res.json({ invoice: updated[0] });
+  } catch (e) {
+    console.error("patchSupplierInvoiceDates", e.message);
+    return res.status(500).json({ error: e.message || "Error al actualizar la fecha" });
   }
 };
 

@@ -60,3 +60,16 @@ export const cancelPaymentOrder = async (id) => {
   if (!res.ok) throw new Error("Error en la petición");
   return res.json();
 };
+
+export const updatePaymentOrderDate = async (id, paymentDate) => {
+  const res = await fetch(`${BASE_URL}/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payment_date: paymentDate }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) {
+    throw new Error(data.error || "Error al actualizar la fecha de pago");
+  }
+  return data;
+};

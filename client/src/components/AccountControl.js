@@ -40,9 +40,14 @@ import MovementDetailDialog from "./MovementDetailDialog";
 import {
   createSupplierInvoice,
   updateSupplierInvoice,
+  patchSupplierInvoiceDates,
 } from "../apis/api.supplierinvoices";
 import { uploadInvoiceImage } from "../apis/api.uploads";
-import { createPaymentOrder, cancelPaymentOrder } from "../apis/api.paymentorders";
+import {
+  createPaymentOrder,
+  cancelPaymentOrder,
+  updatePaymentOrderDate,
+} from "../apis/api.paymentorders";
 import {
   queryPendingPaymentItemsKey,
   queryPurchaseInvoicesKey,
@@ -148,6 +153,12 @@ function inferExpenseCategory(movement) {
   return "FACTURA";
 }
 
+function toInputDate(value) {
+  if (!value) return "";
+  const d = DateTime.fromISO(String(value).slice(0, 10));
+  return d.isValid ? d.toFormat("yyyy-MM-dd") : "";
+}
+
 function paymentOrderBlockMessage(movement) {
   const orders = movement?.payment_orders || [];
   const numbers =
@@ -160,7 +171,7 @@ function paymentOrderBlockMessage(movement) {
     orders.length > 0
       ? ` Saldo pendiente: ${utils.formatAmount(movement.invoice_remaining_amount)}.`
       : "";
-  return `Este movimiento tiene ${orders.length > 1 ? "órdenes de pago activas" : "una orden de pago activa"}${op}.${partial} Anulá la(s) OP para editarlo y, si corresponde, creá nuevas OP al guardar.`;
+  return `Este movimiento tiene ${orders.length > 1 ? "órdenes de pago activas" : "una orden de pago activa"}${op}.${partial} Podés corregir las fechas abajo. Para cambiar montos u otros datos, anulá la(s) OP primero.`;
 }
 
 const MONTHS = [
@@ -193,6 +204,7 @@ export default function AccountControl() {
   const [expenseCategory, setExpenseCategory] = useState("FACTURA");
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [isCancellingOp, setIsCancellingOp] = useState(false);
+  const [editOpDates, setEditOpDates] = useState({});
   const [selectedMovement, setSelectedMovement] = useState(null);
   const [detailSearch, setDetailSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -561,6 +573,94 @@ export default function AccountControl() {
     selectedMovement?.has_payment_order
   );
 
+  useEffect(() => {
+    if (!selectedMovement) {
+      setEditOpDates({});
+      return;
+    }
+    const opDateMap = {};
+    const ops = selectedMovement.payment_orders?.length
+      ? selectedMovement.payment_orders
+      : selectedMovement.payment_order_id
+        ? [
+            {
+              id: selectedMovement.payment_order_id,
+              payment_date: null,
+            },
+          ]
+        : [];
+    ops.forEach((op) => {
+      opDateMap[op.id] = toInputDate(op.payment_date);
+    });
+    setEditOpDates(opDateMap);
+  }, [selectedMovement]);
+
+  const activePaymentOrders = useMemo(() => {
+    if (!selectedMovement) return [];
+    return selectedMovement.payment_orders?.length
+      ? selectedMovement.payment_orders
+      : selectedMovement.payment_order_id
+        ? [
+            {
+              id: selectedMovement.payment_order_id,
+              order_number: selectedMovement.payment_order_number,
+              amount: null,
+              payment_date: null,
+            },
+          ]
+        : [];
+  }, [selectedMovement]);
+
+  const saveMovementDatesOnly = async () => {
+    if (!selectedMovement) return;
+
+    if (requiresInvoice && invoiceFieldsRef.current) {
+      const validation = await invoiceFieldsRef.current.validate();
+      if (!validation?.ok) {
+        setInvoiceShowErrors(true);
+        throw new Error(validation.message || "Revise la fecha del comprobante");
+      }
+    }
+
+    if (selectedMovement.supplier_invoice_id && invoiceFieldsRef.current) {
+      const docDate = invoiceFieldsRef.current.getValues()?.document_date;
+      if (docDate) {
+        await patchSupplierInvoiceDates(
+          selectedMovement.supplier_invoice_id,
+          docDate
+        );
+      }
+    }
+
+    for (const op of activePaymentOrders) {
+      const newDate = editOpDates[op.id];
+      if (!newDate) continue;
+      if (newDate === toInputDate(op.payment_date)) continue;
+      const result = await updatePaymentOrderDate(op.id, newDate);
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+    }
+
+    invalidateAll();
+    invalidatePaymentQueries();
+    queryClient.invalidateQueries({
+      queryKey: querySupplierAccountsListKey(),
+    });
+    if (selectedMovement.supplier_invoice_id) {
+      queryClient.invalidateQueries({
+        queryKey: querySupplierInvoiceByMovementKey(selectedMovement.id),
+      });
+    }
+    queryClient.invalidateQueries({
+      queryKey: queryPaymentOrdersByMovementKey(selectedMovement.id),
+    });
+    setPage(1);
+    await refreshMovementsList();
+    setSelectedMovement(null);
+    setStage("LIST");
+  };
+
   const saveInvoiceForMovement = async (movementId) => {
     const validation = await invoiceFieldsRef.current?.validate();
     if (!validation?.ok) {
@@ -635,8 +735,17 @@ export default function AccountControl() {
       setEgresoSupplierShowErrors(false);
 
       if (selectedMovement && movementHasPaymentOrder) {
+        await saveMovementDatesOnly();
         setIsLoadingSubmit(false);
-        window.alert(paymentOrderBlockMessage(selectedMovement));
+        reset({
+          movement_kind: "UNICA VEZ",
+          date: DateTime.now().toFormat("yyyy-MM-dd"),
+          amount: "",
+          description: "",
+          cheque_number: "",
+          cheque_bank: "",
+          cheque_due_date: "",
+        });
         return;
       }
 
@@ -1473,61 +1582,6 @@ export default function AccountControl() {
             )}
           >
             <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-              {selectedMovement && movementHasPaymentOrder && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 flex flex-col gap-3">
-                  <div>
-                    <p className="font-semibold">Orden(es) de pago activa(s)</p>
-                    <p className="mt-1">
-                      {paymentOrderBlockMessage(selectedMovement)}
-                    </p>
-                  </div>
-                  {(selectedMovement.payment_orders?.length
-                    ? selectedMovement.payment_orders
-                    : selectedMovement.payment_order_id
-                      ? [
-                          {
-                            id: selectedMovement.payment_order_id,
-                            order_number: selectedMovement.payment_order_number,
-                          },
-                        ]
-                      : []
-                  ).map((op) => (
-                    <div
-                      key={op.id}
-                      className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200/60 pt-2 first:border-t-0 first:pt-0"
-                    >
-                      <span className="font-medium">
-                        {op.order_number || "OP"}
-                        {op.amount != null && (
-                          <span className="font-normal text-amber-800 ml-2">
-                            {utils.formatAmount(op.amount)}
-                          </span>
-                        )}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="outlined"
-                        size="sm"
-                        className="border-amber-400 text-amber-900 hover:bg-amber-100"
-                        disabled={isCancellingOp}
-                        onClick={() =>
-                          handleCancelPaymentOrder(
-                            {
-                              ...selectedMovement,
-                              payment_order_id: op.id,
-                              payment_order_number: op.order_number,
-                            },
-                            { fromEdit: true, orderId: op.id }
-                          )
-                        }
-                      >
-                        Anular
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
               <fieldset
                 disabled={Boolean(selectedMovement && movementHasPaymentOrder)}
                 className="flex flex-col gap-4 min-w-0 border-0 p-0 m-0 disabled:opacity-60"
@@ -1731,16 +1785,82 @@ export default function AccountControl() {
                 />
               )}
 
+              </fieldset>
+
               {requiresInvoice && (
                 <InvoiceDataFields
                   ref={invoiceFieldsRef}
                   accountMovement={selectedMovement}
                   movementDate={watchedDate}
                   movementDescription={watchedDescription}
-                  enabled={requiresInvoice && !movementHasPaymentOrder}
+                  enabled={requiresInvoice}
+                  datesOnlyEdit={Boolean(selectedMovement && movementHasPaymentOrder)}
                   showErrors={invoiceShowErrors}
                   onTotalChange={setInvoiceTotalForPo}
                 />
+              )}
+
+              {selectedMovement && movementHasPaymentOrder && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 flex flex-col gap-3">
+                  <div>
+                    <p className="font-semibold">Orden(es) de pago</p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      {paymentOrderBlockMessage(selectedMovement)}
+                    </p>
+                  </div>
+                  {activePaymentOrders.map((op) => (
+                    <div
+                      key={op.id}
+                      className="rounded-lg border border-amber-300/80 bg-white/70 p-3 flex flex-col gap-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">
+                            {op.order_number || "Orden de pago"}
+                          </p>
+                          {op.amount != null && (
+                            <p className="text-sm font-medium text-slate-800 mt-0.5">
+                              {utils.formatAmount(op.amount)}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outlined"
+                          size="sm"
+                          className="border-amber-400 text-amber-900 hover:bg-amber-100"
+                          disabled={isCancellingOp}
+                          onClick={() =>
+                            handleCancelPaymentOrder(
+                              {
+                                ...selectedMovement,
+                                payment_order_id: op.id,
+                                payment_order_number: op.order_number,
+                              },
+                              { fromEdit: true, orderId: op.id }
+                            )
+                          }
+                        >
+                          Anular
+                        </Button>
+                      </div>
+                      <Input
+                        label="Fecha de pago"
+                        type="date"
+                        value={editOpDates[op.id] || ""}
+                        onChange={(e) =>
+                          setEditOpDates((prev) => ({
+                            ...prev,
+                            [op.id]: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  ))}
+                  <p className="text-xs text-amber-800">
+                    Usá <strong>Actualizar fechas</strong> para guardar los cambios.
+                  </p>
+                </div>
               )}
 
               {requiresInvoice && !movementHasPaymentOrder && (
@@ -1792,16 +1912,19 @@ export default function AccountControl() {
                   />
                 )}
 
-              </fieldset>
-
               {/* Actions */}
               <FormActions
                 className="mt-2"
                 equalWidth
                 onCancel={onCancel}
                 isLoading={isLoadingSubmit}
-                submitLabel={selectedMovement ? "Actualizar" : "Guardar"}
-                disabled={Boolean(selectedMovement && movementHasPaymentOrder)}
+                submitLabel={
+                  selectedMovement && movementHasPaymentOrder
+                    ? "Actualizar fechas"
+                    : selectedMovement
+                      ? "Actualizar"
+                      : "Guardar"
+                }
               />
             </form>
           </div>

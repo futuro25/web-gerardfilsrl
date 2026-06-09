@@ -97,3 +97,16 @@ export const updateSupplierInvoice = async (body) => {
   }
   return res.json();
 };
+
+export const patchSupplierInvoiceDates = async (invoiceId, documentDate) => {
+  const res = await fetch(`${BASE_URL}/${invoiceId}/dates`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ document_date: documentDate }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Error al actualizar la fecha del comprobante");
+  }
+  return res.json();
+};

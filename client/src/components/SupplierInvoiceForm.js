@@ -53,6 +53,7 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
     showErrors = false,
     showImageUpload = true,
     embedded = false,
+    datesOnlyEdit = false,
     onTotalChange = null,
   },
   ref
@@ -175,6 +176,12 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
 
   const validate = async () => {
     const data = getValues();
+    if (datesOnlyEdit) {
+      if (!data.document_date) {
+        return { ok: false, message: "Ingrese la fecha del comprobante" };
+      }
+      return { ok: true };
+    }
     if (!data.supplier?.id) {
       return { ok: false, message: "Seleccione un proveedor" };
     }
@@ -286,6 +293,16 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
   return (
     <>
       <div className={wrapperClass}>
+        {datesOnlyEdit && (
+          <p className="text-xs text-amber-800">
+            Hay órdenes de pago activas: solo puede editar la fecha del comprobante.
+          </p>
+        )}
+
+        <fieldset
+          disabled={datesOnlyEdit}
+          className="flex flex-col gap-4 min-w-0 border-0 p-0 m-0 disabled:opacity-60"
+        >
         <div>
           <label className="text-xs font-sans text-gray-900 mb-2 block">
             Proveedor
@@ -412,6 +429,8 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
           helperText={errors.description?.message}
         />
 
+        </fieldset>
+
         <Input
           label="Fecha comprobante"
           type="date"
@@ -420,6 +439,10 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
           helperText={errors.document_date?.message}
         />
 
+        <fieldset
+          disabled={datesOnlyEdit}
+          className="flex flex-col gap-4 min-w-0 border-0 p-0 m-0 disabled:opacity-60"
+        >
         <div>
           <label className="text-xs font-sans text-gray-900 mb-2 block">
             Impuestos
@@ -540,6 +563,7 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
             )}
           </div>
         )}
+        </fieldset>
       </div>
 
       <SupplierQuickCreateDialog

@@ -463,6 +463,10 @@ router.patch("/supplier-invoices/:id/image", (req, res, next) =>
   SupplierInvoiceController.setSupplierInvoiceImage(req, res, next)
 );
 
+router.patch("/supplier-invoices/:id/dates", (req, res, next) =>
+  SupplierInvoiceController.patchSupplierInvoiceDates(req, res, next)
+);
+
 router.patch("/supplier-invoices/:id", (req, res, next) =>
   SupplierInvoiceController.updateSupplierInvoice(req, res, next)
 );
@@ -486,6 +490,10 @@ router.post("/payment-orders", (req, res, next) =>
 
 router.delete("/payment-orders/:id", (req, res, next) =>
   PaymentOrderController.cancelPaymentOrder(req, res, next)
+);
+
+router.patch("/payment-orders/:id", (req, res, next) =>
+  PaymentOrderController.updatePaymentOrder(req, res, next)
 );
 
 // UPLOADS (Cloudflare R2)
