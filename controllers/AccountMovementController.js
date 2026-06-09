@@ -752,7 +752,7 @@ self.updateMovement = async (req, res) => {
       }
       return res.json({
         error:
-          "No se puede editar un movimiento con orden de pago activa. Anulá la OP primero.",
+          "No se puede editar un movimiento con orden de pago activa. Anulá la OP primero y, si corresponde, creá una nueva al guardar.",
       });
     }
 

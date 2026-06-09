@@ -137,6 +137,18 @@ function effectiveMovementDate(m) {
   return m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date;
 }
 
+function inferExpenseCategory(movement) {
+  if (movement?.expense_category) return movement.expense_category;
+  if (movement?.supplier_invoice_id) return "FACTURA";
+  if (movement?.type === "EGRESO") return "OTRO";
+  return "FACTURA";
+}
+
+function paymentOrderBlockMessage(orderNumber) {
+  const op = orderNumber ? ` (${orderNumber})` : "";
+  return `Este movimiento tiene una orden de pago activa${op}. Anulá la OP para editarlo y, si corresponde, creá una nueva OP al guardar.`;
+}
+
 const MONTHS = [
   { value: 1, label: "Enero" },
   { value: 2, label: "Febrero" },
@@ -166,6 +178,7 @@ export default function AccountControl() {
   const [movementType, setMovementType] = useState("INGRESO");
   const [expenseCategory, setExpenseCategory] = useState("FACTURA");
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
+  const [isCancellingOp, setIsCancellingOp] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState(null);
   const [detailSearch, setDetailSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -345,27 +358,52 @@ export default function AccountControl() {
     }
   };
 
-  const handleCancelPaymentOrder = async (movement) => {
+  const handleCancelPaymentOrder = async (movement, { fromEdit = false } = {}) => {
     if (
       !window.confirm(
         `¿Anular la orden de pago ${movement.payment_order_number || ""}? El movimiento volverá a pendiente.`
       )
     ) {
-      return;
+      return false;
     }
     try {
+      setIsCancellingOp(true);
       const result = await cancelPaymentOrder(movement.payment_order_id);
       if (result?.error) {
         window.alert(result.error);
-        return;
+        return false;
       }
       invalidateAll();
       invalidatePaymentQueries();
       setPage(1);
       await refreshMovementsList();
+
+      if (fromEdit && movement?.id) {
+        queryClient.invalidateQueries({
+          queryKey: querySupplierInvoiceByMovementKey(movement.id),
+        });
+        setSelectedMovement((prev) => {
+          if (prev?.id !== movement.id) return prev;
+          const category = inferExpenseCategory(prev);
+          return {
+            ...prev,
+            has_payment_order: false,
+            payment_order_id: null,
+            payment_order_number: null,
+            invoice_payment_pending:
+              category === "FACTURA" && Boolean(prev.supplier_invoice_id),
+          };
+        });
+        setInvoicePayMode("pending");
+      }
+
+      return true;
     } catch (e) {
       console.error(e);
       window.alert(e.message || "No se pudo anular la orden de pago");
+      return false;
+    } finally {
+      setIsCancellingOp(false);
     }
   };
 
@@ -546,6 +584,14 @@ export default function AccountControl() {
       setEgresoPaymentShowErrors(false);
       setEgresoSupplierShowErrors(false);
 
+      if (selectedMovement && movementHasPaymentOrder) {
+        setIsLoadingSubmit(false);
+        window.alert(
+          paymentOrderBlockMessage(selectedMovement.payment_order_number)
+        );
+        return;
+      }
+
       if (showsSupplierFields && requiresSupplier) {
         const supplierValidation =
           await egresoSupplierFieldsRef.current?.validate();
@@ -572,13 +618,6 @@ export default function AccountControl() {
       }
 
       if (requiresInvoice) {
-        if (movementHasPaymentOrder) {
-          setIsLoadingSubmit(false);
-          window.alert(
-            "Este movimiento tiene una orden de pago activa. Anulá la OP para editarlo."
-          );
-          return;
-        }
         const validation = invoiceFieldsRef.current?.validate();
         if (!validation?.ok) {
           setInvoiceShowErrors(true);
@@ -715,7 +754,7 @@ export default function AccountControl() {
     setSelectedMovement(movement);
     setMovementType(movement.type);
     setIsCheque(movement.is_cheque || false);
-    setExpenseCategory(movement.expense_category || "FACTURA");
+    setExpenseCategory(inferExpenseCategory(movement));
     setInvoicePayMode(
       movement.invoice_payment_pending ? "pending" : "pay_now"
     );
@@ -739,6 +778,7 @@ export default function AccountControl() {
     setExpenseCategory("FACTURA");
     setInvoicePayMode("pending");
     setIsLoadingSubmit(false);
+    setIsCancellingOp(false);
     setSelectedMovement(null);
     setInvoiceShowErrors(false);
     setPaymentOrderShowErrors(false);
@@ -1293,18 +1333,11 @@ export default function AccountControl() {
                                         type="button"
                                         className={utils.cn(
                                           ROW_ACTION_BTN,
-                                          "text-blue-500 hover:bg-blue-50 hover:text-blue-700",
-                                          m.has_payment_order &&
-                                            m.expense_category === "FACTURA" &&
-                                            "opacity-40 pointer-events-none"
+                                          "text-blue-500 hover:bg-blue-50 hover:text-blue-700"
                                         )}
                                         onClick={() => onEdit(m)}
                                         title="Editar"
                                         aria-label="Editar"
-                                        disabled={
-                                          m.has_payment_order &&
-                                          m.expense_category === "FACTURA"
-                                        }
                                       >
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5" aria-hidden>
                                           <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
@@ -1352,6 +1385,39 @@ export default function AccountControl() {
             )}
           >
             <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+              {selectedMovement && movementHasPaymentOrder && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 flex flex-col gap-3">
+                  <div>
+                    <p className="font-semibold">Orden de pago activa</p>
+                    <p className="mt-1">
+                      {selectedMovement.payment_order_number
+                        ? `La OP ${selectedMovement.payment_order_number} bloquea la edición de este movimiento.`
+                        : "Hay una orden de pago activa que bloquea la edición de este movimiento."}
+                    </p>
+                    <p className="text-xs mt-2 text-amber-800">
+                      Anulá la OP para habilitar los campos. Después podrás guardar los
+                      cambios y crear una nueva OP si corresponde.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    size="sm"
+                    className="self-start border-amber-400 text-amber-900 hover:bg-amber-100"
+                    disabled={isCancellingOp}
+                    onClick={() =>
+                      handleCancelPaymentOrder(selectedMovement, { fromEdit: true })
+                    }
+                  >
+                    {isCancellingOp ? "Anulando…" : "Anular orden de pago"}
+                  </Button>
+                </div>
+              )}
+
+              <fieldset
+                disabled={Boolean(selectedMovement && movementHasPaymentOrder)}
+                className="flex flex-col gap-4 min-w-0 border-0 p-0 m-0 disabled:opacity-60"
+              >
               {/* Type toggle */}
               <div>
                 <label className="text-xs font-sans text-gray-900 mb-2 block">Tipo de movimiento</label>
@@ -1556,6 +1622,18 @@ export default function AccountControl() {
                 />
               )}
 
+              {requiresInvoice && (
+                <InvoiceDataFields
+                  ref={invoiceFieldsRef}
+                  accountMovement={selectedMovement}
+                  movementDate={watchedDate}
+                  movementDescription={watchedDescription}
+                  enabled={requiresInvoice && !movementHasPaymentOrder}
+                  showErrors={invoiceShowErrors}
+                  onTotalChange={setInvoiceTotalForPo}
+                />
+              )}
+
               {requiresInvoice && !movementHasPaymentOrder && (
                 <div>
                   <label className="text-xs font-sans text-gray-900 mb-2 block">
@@ -1595,26 +1673,6 @@ export default function AccountControl() {
                 </div>
               )}
 
-              {requiresInvoice && movementHasPaymentOrder && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-                  Esta factura ya tiene orden de pago (
-                  {selectedMovement.payment_order_number}). Anulá la OP para
-                  editar la factura o eliminar el movimiento.
-                </div>
-              )}
-
-              {requiresInvoice && (
-                <InvoiceDataFields
-                  ref={invoiceFieldsRef}
-                  accountMovement={selectedMovement}
-                  movementDate={watchedDate}
-                  movementDescription={watchedDescription}
-                  enabled={requiresInvoice && !movementHasPaymentOrder}
-                  showErrors={invoiceShowErrors}
-                  onTotalChange={setInvoiceTotalForPo}
-                />
-              )}
-
               {requiresInvoice &&
                 invoicePayMode === "pay_now" &&
                 !movementHasPaymentOrder && (
@@ -1625,6 +1683,8 @@ export default function AccountControl() {
                   />
                 )}
 
+              </fieldset>
+
               {/* Actions */}
               <FormActions
                 className="mt-2"
@@ -1632,6 +1692,7 @@ export default function AccountControl() {
                 onCancel={onCancel}
                 isLoading={isLoadingSubmit}
                 submitLabel={selectedMovement ? "Actualizar" : "Guardar"}
+                disabled={Boolean(selectedMovement && movementHasPaymentOrder)}
               />
             </form>
           </div>
