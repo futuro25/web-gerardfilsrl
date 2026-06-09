@@ -168,6 +168,7 @@ export default function AccountControl() {
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [selectedMovement, setSelectedMovement] = useState(null);
   const [detailSearch, setDetailSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [kindListFilter, setKindListFilter] = useState("");
   const [pendingListFilter, setPendingListFilter] = useState("");
   const [futureDialogOpen, setFutureDialogOpen] = useState(false);
@@ -202,15 +203,32 @@ export default function AccountControl() {
     },
   });
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(detailSearch.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [detailSearch]);
+
+  useEffect(() => {
+    setPage(1);
+    setAllData([]);
+  }, [debouncedSearch]);
+
+  const listQueryBase = {
+    page,
+    limit: 50,
+    dateOrder,
+    pending: pendingListFilter === "pending",
+    ...(debouncedSearch ? { search: debouncedSearch } : {}),
+  };
+
   const filterParams = viewAll
-    ? { page, limit: 50, dateOrder, pending: pendingListFilter === "pending" }
+    ? listQueryBase
     : {
+        ...listQueryBase,
         month: selectedMonth,
         year: selectedYear,
-        page,
-        limit: 50,
-        dateOrder,
-        pending: pendingListFilter === "pending",
       };
 
   const { data: movementsRes, isLoading } = useQuery({
@@ -267,21 +285,8 @@ export default function AccountControl() {
   const filteredMovements = useMemo(() => {
     if (!movements || movements.length === 0) return [];
 
-    const q = detailSearch.trim().toLowerCase();
     const filtered = movements.filter((m) => {
       if (kindListFilter && (m.movement_kind || "UNICA VEZ") !== kindListFilter) return false;
-      if (q) {
-        const desc = (m.description || "").toLowerCase();
-        const chequeBits = [
-          m.cheque_number ? String(m.cheque_number).toLowerCase() : "",
-          (m.cheque_bank || "").toLowerCase(),
-        ]
-          .filter(Boolean)
-          .join(" ");
-        const supplierName = (m.supplier_name || "").toLowerCase();
-        const haystack = `${desc} ${chequeBits} ${supplierName}`.trim();
-        if (!haystack.includes(q)) return false;
-      }
       return true;
     });
 
@@ -297,7 +302,7 @@ export default function AccountControl() {
       return [...chrono].reverse();
     }
     return chrono;
-  }, [allData, detailSearch, kindListFilter, dateOrder]);
+  }, [allData, kindListFilter, dateOrder]);
 
   const refreshMovementsList = async () => {
     await queryClient.refetchQueries({ queryKey: ["account-movements"] });
@@ -983,7 +988,7 @@ export default function AccountControl() {
               </select>
               <input
                 type="search"
-                placeholder="Buscar en detalle…"
+                placeholder={viewAll ? "Buscar en todos los meses…" : "Buscar en el mes…"}
                 value={detailSearch}
                 onChange={(e) => setDetailSearch(e.target.value)}
                 className="border rounded px-2 py-1.5 text-sm bg-white flex-1 min-w-[10rem] max-w-md"

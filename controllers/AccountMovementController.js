@@ -197,11 +197,28 @@ async function attachInvoicePaymentFlags(movements) {
     });
   }
 
+  const orderByMovementId = {};
+  const { data: ordersByMovement, error: ordMovErr } = await supabase
+    .from("payment_orders")
+    .select("id, account_movement_id, source_movement_id, order_number")
+    .or(
+      `account_movement_id.in.(${movementIds.join(",")}),source_movement_id.in.(${movementIds.join(",")})`
+    )
+    .is("deleted_at", null);
+  if (ordMovErr) throw ordMovErr;
+  (ordersByMovement || []).forEach((o) => {
+    const mid = o.account_movement_id || o.source_movement_id;
+    if (mid != null && !orderByMovementId[mid]) {
+      orderByMovementId[mid] = o;
+    }
+  });
+
   return movements.map((m) => {
     const supplierInvoiceId = invoiceByMovementId[m.id] || null;
-    const order = supplierInvoiceId
-      ? orderByInvoiceId[supplierInvoiceId]
-      : null;
+    const order =
+      (supplierInvoiceId ? orderByInvoiceId[supplierInvoiceId] : null) ||
+      orderByMovementId[m.id] ||
+      null;
     const isInvoiceSource =
       m.expense_category === "FACTURA" && supplierInvoiceId != null;
     return {
@@ -245,22 +262,118 @@ function isPendingFilter(value) {
   return v === "1" || v === "true" || v === "pending";
 }
 
+/** IDs de movimientos cuyo detalle coincide con el término de búsqueda. */
+async function getSearchMovementIds(search) {
+  const raw = String(search || "").trim();
+  if (!raw) return null;
+
+  const pattern = `%${raw}%`;
+  const ids = new Set();
+
+  const { data: direct, error: directErr } = await supabase
+    .from("account_movements")
+    .select("id")
+    .is("deleted_at", null)
+    .or(
+      `description.ilike.${pattern},cheque_number.ilike.${pattern},cheque_bank.ilike.${pattern},invoice_number.ilike.${pattern}`
+    );
+  if (directErr) throw directErr;
+  (direct || []).forEach((row) => ids.add(row.id));
+
+  const { data: suppliers, error: supplierErr } = await supabase
+    .from("suppliers")
+    .select("id")
+    .is("deleted_at", null)
+    .or(`fantasy_name.ilike.${pattern},name.ilike.${pattern}`);
+  if (supplierErr) throw supplierErr;
+
+  const supplierIds = (suppliers || []).map((s) => s.id);
+  if (supplierIds.length) {
+    const { data: bySupplier, error: bySupplierErr } = await supabase
+      .from("account_movements")
+      .select("id")
+      .is("deleted_at", null)
+      .in("supplier_id", supplierIds);
+    if (bySupplierErr) throw bySupplierErr;
+    (bySupplier || []).forEach((row) => ids.add(row.id));
+
+    const { data: invBySupplier, error: invBySupplierErr } = await supabase
+      .from("supplier_invoices")
+      .select("account_movement_id")
+      .is("deleted_at", null)
+      .in("supplier_id", supplierIds)
+      .not("account_movement_id", "is", null);
+    if (invBySupplierErr) throw invBySupplierErr;
+    (invBySupplier || []).forEach((row) => {
+      if (row.account_movement_id) ids.add(row.account_movement_id);
+    });
+  }
+
+  const { data: invByNumber, error: invByNumberErr } = await supabase
+    .from("supplier_invoices")
+    .select("account_movement_id")
+    .is("deleted_at", null)
+    .ilike("invoice_number", pattern)
+    .not("account_movement_id", "is", null);
+  if (invByNumberErr) throw invByNumberErr;
+  (invByNumber || []).forEach((row) => {
+    if (row.account_movement_id) ids.add(row.account_movement_id);
+  });
+
+  const { data: orders, error: orderErr } = await supabase
+    .from("payment_orders")
+    .select("account_movement_id, source_movement_id")
+    .is("deleted_at", null)
+    .ilike("order_number", pattern);
+  if (orderErr) throw orderErr;
+  (orders || []).forEach((row) => {
+    if (row.account_movement_id) ids.add(row.account_movement_id);
+    if (row.source_movement_id) ids.add(row.source_movement_id);
+  });
+
+  return [...ids];
+}
+
+function emptyMovementsPage(page, limit) {
+  return {
+    data: [],
+    total: 0,
+    page: parseInt(page),
+    limit: parseInt(limit),
+  };
+}
+
 self.getMovements = async (req, res) => {
   try {
-    const { month, year, page = 1, limit = 50, dateOrder: dateOrderParam, pending } = req.query;
+    const {
+      month,
+      year,
+      page = 1,
+      limit = 50,
+      dateOrder: dateOrderParam,
+      pending,
+      search,
+    } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const ascending = String(dateOrderParam || "asc").toLowerCase() !== "desc";
     const pendingOnly = isPendingFilter(pending);
 
+    const searchIds = search ? await getSearchMovementIds(search) : null;
+    if (searchIds && !searchIds.length) {
+      return res.json(emptyMovementsPage(page, limit));
+    }
+
     if (pendingOnly) {
-      const pendingIds = await getPendingMovementIds();
+      let pendingIds = await getPendingMovementIds();
       if (!pendingIds.length) {
-        return res.json({
-          data: [],
-          total: 0,
-          page: parseInt(page),
-          limit: parseInt(limit),
-        });
+        return res.json(emptyMovementsPage(page, limit));
+      }
+      if (searchIds) {
+        const searchSet = new Set(searchIds);
+        pendingIds = pendingIds.filter((id) => searchSet.has(id));
+        if (!pendingIds.length) {
+          return res.json(emptyMovementsPage(page, limit));
+        }
       }
 
       let query = supabase
@@ -306,6 +419,10 @@ self.getMovements = async (req, res) => {
       .order("date", { ascending })
       .order("id", { ascending })
       .range(offset, offset + parseInt(limit) - 1);
+
+    if (searchIds) {
+      query = query.in("id", searchIds);
+    }
 
     if (month && year) {
       const startDate = DateTime.fromObject({ year: parseInt(year), month: parseInt(month), day: 1 }).toISODate();

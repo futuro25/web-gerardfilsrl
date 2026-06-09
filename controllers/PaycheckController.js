@@ -11,23 +11,38 @@ const _ = require("lodash");
 // de Control vinculado (movement_id): puede provenir de una orden de pago o de
 // una factura de proveedor cargada directamente en Control.
 async function attachPaycheckSupplier(paychecks) {
+  if (!paychecks?.length) return paychecks || [];
+
   const movementIds = [
     ...new Set(
-      (paychecks || []).map((p) => p.movement_id).filter((v) => v != null)
+      paychecks.map((p) => p.movement_id).filter((v) => v != null)
     ),
   ];
-  if (movementIds.length === 0) return paychecks || [];
+  const paycheckIds = paychecks.map((p) => p.id);
 
-  const [{ data: orders }, { data: invoices }] = await Promise.all([
+  const [
+    { data: orders },
+    { data: invoices },
+    { data: movementsByPaycheck },
+  ] = await Promise.all([
+    movementIds.length
+      ? supabase
+          .from("payment_orders")
+          .select("account_movement_id, supplier_id, order_number")
+          .in("account_movement_id", movementIds)
+          .is("deleted_at", null)
+      : Promise.resolve({ data: [] }),
+    movementIds.length
+      ? supabase
+          .from("supplier_invoices")
+          .select("account_movement_id, supplier_id")
+          .in("account_movement_id", movementIds)
+          .is("deleted_at", null)
+      : Promise.resolve({ data: [] }),
     supabase
-      .from("payment_orders")
-      .select("account_movement_id, supplier_id, order_number")
-      .in("account_movement_id", movementIds)
-      .is("deleted_at", null),
-    supabase
-      .from("supplier_invoices")
-      .select("account_movement_id, supplier_id")
-      .in("account_movement_id", movementIds)
+      .from("account_movements")
+      .select("id, paycheck_id, supplier_id")
+      .in("paycheck_id", paycheckIds)
       .is("deleted_at", null),
   ]);
 
@@ -41,10 +56,15 @@ async function attachPaycheckSupplier(paychecks) {
     if (inv.account_movement_id != null && !invoiceByMovement[inv.account_movement_id])
       invoiceByMovement[inv.account_movement_id] = inv;
   });
+  const movementByPaycheckId = {};
+  (movementsByPaycheck || []).forEach((m) => {
+    if (m.paycheck_id != null && !movementByPaycheckId[m.paycheck_id])
+      movementByPaycheckId[m.paycheck_id] = m;
+  });
 
   const supplierIds = [
     ...new Set(
-      [...(orders || []), ...(invoices || [])]
+      [...(orders || []), ...(invoices || []), ...(movementsByPaycheck || [])]
         .map((r) => r.supplier_id)
         .filter((v) => v != null)
     ),
@@ -61,11 +81,16 @@ async function attachPaycheckSupplier(paychecks) {
     });
   }
 
-  return (paychecks || []).map((p) => {
-    const order = p.movement_id != null ? orderByMovement[p.movement_id] : null;
-    const invoice =
-      p.movement_id != null ? invoiceByMovement[p.movement_id] : null;
-    const supplierId = order?.supplier_id ?? invoice?.supplier_id ?? null;
+  return paychecks.map((p) => {
+    const linkedMovement = movementByPaycheckId[p.id] || null;
+    const movementId = p.movement_id ?? linkedMovement?.id ?? null;
+    const order = movementId != null ? orderByMovement[movementId] : null;
+    const invoice = movementId != null ? invoiceByMovement[movementId] : null;
+    const supplierId =
+      order?.supplier_id ??
+      invoice?.supplier_id ??
+      linkedMovement?.supplier_id ??
+      null;
     return {
       ...p,
       supplier_id: supplierId,
@@ -199,3 +224,4 @@ self.getPaychecksForNextWeek = async (req, res) => {
 };
 
 module.exports = self;
+module.exports.attachPaycheckSupplier = attachPaycheckSupplier;

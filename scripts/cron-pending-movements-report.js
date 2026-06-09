@@ -2,7 +2,8 @@
 "use strict";
 
 /**
- * Cron: envía por email el detalle de movimientos de Control con clasificación PENDIENTE.
+ * Cron: envía por email facturas pendientes sin orden de pago y cheques a vencer
+ * en los próximos 30 días (nº, importe y proveedor pagado si está vinculado).
  *
  * Uso:
  *   node scripts/cron-pending-movements-report.js
@@ -53,7 +54,10 @@ async function main() {
   }
 
   console.log(
-    `[cron-pending-movements] OK — ${result.summary.count} movimiento(s), total ${result.summary.total}`
+    `[cron-pending-movements] OK — ${result.summary.count} factura(s) pendiente(s), total ${result.summary.total}`
+  );
+  console.log(
+    `[cron-pending-movements] Cheques a vencer — ${result.chequesSummary.count} cheque(s), total ${result.chequesSummary.total}`
   );
   if (result.messageId) {
     console.log(`[cron-pending-movements] messageId: ${result.messageId}`);
