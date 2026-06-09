@@ -487,6 +487,8 @@ export default function AccountControl() {
     cheque_due_date: movement.cheque_due_date || null,
     expense_category: movement.expense_category || null,
     payment_method: movement.payment_method || null,
+    supplier_id: movement.supplier_id || null,
+    invoice_number: movement.invoice_number || null,
     ...overrides,
   });
 

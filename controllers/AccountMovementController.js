@@ -42,45 +42,86 @@ function normOptionalString(value) {
   return String(value).trim() || null;
 }
 
-/** True si el body no altera nada salvo movement_kind (p. ej. marcar gasto fijo con OP activa). */
-function movementUpdateChangesOnlyKind(existing, update) {
-  if (existing.type !== update.type) return false;
-  if (parseMovementAmount(existing.amount) !== parseMovementAmount(update.amount)) {
-    return false;
-  }
-  if ((existing.date || null) !== (update.date || null)) return false;
-  if (normOptionalString(existing.description) !== normOptionalString(update.description)) {
-    return false;
-  }
-  if (Boolean(existing.is_cheque) !== Boolean(update.is_cheque)) return false;
-  if (normOptionalString(existing.cheque_number) !== normOptionalString(update.cheque_number)) {
-    return false;
-  }
-  if (normOptionalString(existing.cheque_bank) !== normOptionalString(update.cheque_bank)) {
-    return false;
-  }
-  if ((existing.cheque_due_date || null) !== (update.cheque_due_date || null)) {
-    return false;
-  }
-  if ((existing.expense_category || null) !== (update.expense_category || null)) {
-    return false;
-  }
-  if ((existing.supplier_id || null) !== (update.supplier_id || null)) {
-    return false;
-  }
+function normalizeDate(value) {
+  if (value == null || value === "") return null;
+  const s = String(value);
+  return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function amountsMatch(a, b) {
+  return Math.abs(parseMovementAmount(a) - parseMovementAmount(b)) <= 0.009;
+}
+
+function supplierFieldsFromBody(body) {
   if (
-    normOptionalString(existing.invoice_number) !==
-    normOptionalString(update.invoice_number)
+    body.type !== "EGRESO" ||
+    !["OTRO", "SERVICIOS"].includes(body.expense_category)
+  ) {
+    return { supplier_id: null, invoice_number: null };
+  }
+  const supplierId = parseInt(body.supplier_id, 10);
+  return {
+    supplier_id:
+      Number.isFinite(supplierId) && supplierId > 0 ? supplierId : null,
+    invoice_number:
+      body.expense_category === "SERVICIOS"
+        ? normOptionalString(body.invoice_number)
+        : null,
+  };
+}
+
+/** True si el body no altera nada salvo movement_kind (p. ej. marcar gasto fijo con OP activa). */
+function movementBodyChangesOnlyKind(existing, body) {
+  const newKind = normalizeMovementKind(body.movement_kind);
+  const oldKind = normalizeMovementKind(existing.movement_kind);
+  if (newKind === oldKind) return false;
+
+  if (existing.type !== body.type) return false;
+  if (!amountsMatch(existing.amount, body.amount)) return false;
+  if (normalizeDate(existing.date) !== normalizeDate(body.date)) return false;
+  if (
+    normOptionalString(existing.description) !==
+    normOptionalString(body.description)
   ) {
     return false;
   }
-  const existingPm = existing.payment_method || null;
-  const updatePm = update.payment_method || null;
-  if (existingPm !== updatePm) return false;
-  return (
-    normalizeMovementKind(existing.movement_kind) !==
-    normalizeMovementKind(update.movement_kind)
-  );
+  if (Boolean(existing.is_cheque) !== Boolean(body.is_cheque)) return false;
+  if (
+    normOptionalString(existing.cheque_number) !==
+    normOptionalString(body.cheque_number)
+  ) {
+    return false;
+  }
+  if (
+    normOptionalString(existing.cheque_bank) !==
+    normOptionalString(body.cheque_bank)
+  ) {
+    return false;
+  }
+  if (
+    normalizeDate(existing.cheque_due_date) !==
+    normalizeDate(body.cheque_due_date)
+  ) {
+    return false;
+  }
+  if ((existing.expense_category || null) !== (body.expense_category || null)) {
+    return false;
+  }
+
+  const bodySupplier = supplierFieldsFromBody(body);
+  if ((existing.supplier_id || null) !== bodySupplier.supplier_id) return false;
+  if (
+    normOptionalString(existing.invoice_number) !== bodySupplier.invoice_number
+  ) {
+    return false;
+  }
+  if (
+    (existing.payment_method || null) !== (body.payment_method || null)
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function buildMovementUpdateFromBody(body) {
@@ -780,10 +821,12 @@ self.updateMovement = async (req, res) => {
 
     const activeOrder = await getActiveOrderForMovement(movementId);
     if (activeOrder) {
-      if (movementUpdateChangesOnlyKind(existing, update)) {
+      if (movementBodyChangesOnlyKind(existing, req.body)) {
         const { data: updated, error } = await supabase
           .from("account_movements")
-          .update({ movement_kind: update.movement_kind })
+          .update({
+            movement_kind: normalizeMovementKind(req.body.movement_kind),
+          })
           .eq("id", movementId)
           .select();
 
