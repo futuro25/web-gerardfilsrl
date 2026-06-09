@@ -441,6 +441,10 @@ router.get("/supplier-invoices", (req, res, next) =>
   SupplierInvoiceController.getSupplierInvoices(req, res, next)
 );
 
+router.get("/supplier-invoices/check-duplicate", (req, res, next) =>
+  SupplierInvoiceController.checkDuplicateSupplierInvoice(req, res, next)
+);
+
 router.get(
   "/supplier-invoices/by-movement/:account_movement_id",
   (req, res, next) =>

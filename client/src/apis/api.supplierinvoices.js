@@ -35,6 +35,30 @@ export const fetchSupplierInvoiceByAccountMovement = async (
   return res.json();
 };
 
+export const checkDuplicateSupplierInvoice = async ({
+  supplierId,
+  invoiceNumber,
+  excludeInvoiceId = null,
+  excludeMovementId = null,
+} = {}) => {
+  const params = new URLSearchParams({
+    supplier_id: String(supplierId),
+    invoice_number: String(invoiceNumber || ""),
+  });
+  if (excludeInvoiceId != null) {
+    params.set("exclude_invoice_id", String(excludeInvoiceId));
+  }
+  if (excludeMovementId != null) {
+    params.set("exclude_movement_id", String(excludeMovementId));
+  }
+  const res = await fetch(`${BASE_URL}/check-duplicate?${params}`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error("Error en la petición");
+  return res.json();
+};
+
 export const createSupplierInvoice = async (body) => {
   const res = await fetch(BASE_URL, {
     method: "POST",

@@ -22,6 +22,7 @@ const {
   applyDirectPaymentMethod,
   applyEgresoSupplierFields,
 } = require("../services/accountMovementPayment");
+const { assertNoDuplicateSupplierInvoice } = require("../services/supplierInvoiceDuplicate");
 const { validateMovementBody } = require("../services/accountMovementValidation");
 
 const MOVEMENT_KINDS = new Set(["FIJO", "UNICA VEZ"]);
@@ -627,8 +628,9 @@ self.getFutureBalances = async (req, res) => {
 
 self.getUpcomingCheques = async (req, res) => {
   try {
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 15, 1), 90);
     const today = DateTime.now().toISODate();
-    const in30Days = DateTime.now().plus({ days: 30 }).toISODate();
+    const until = DateTime.now().plus({ days }).toISODate();
 
     const { data, error } = await supabase
       .from("account_movements")
@@ -636,15 +638,16 @@ self.getUpcomingCheques = async (req, res) => {
       .eq("is_cheque", true)
       .is("deleted_at", null)
       .gte("cheque_due_date", today)
-      .lte("cheque_due_date", in30Days)
+      .lte("cheque_due_date", until)
       .order("cheque_due_date", { ascending: true });
 
     if (error) throw error;
 
-    const toExpire = data.filter((m) => m.type === "EGRESO");
-    const toCredit = data.filter((m) => m.type === "INGRESO");
+    const enriched = await attachSupplierNames(data || []);
+    const toExpire = enriched.filter((m) => m.type === "EGRESO");
+    const toCredit = enriched.filter((m) => m.type === "INGRESO");
 
-    res.json({ toExpire, toCredit });
+    res.json({ toExpire, toCredit, days });
   } catch (e) {
     console.error("getUpcomingCheques error:", e.message);
     res.json({ error: e.message });
@@ -679,6 +682,13 @@ self.createMovement = async (req, res) => {
     // Ingresos con cheque (toggle UI)
     if (movement.type === "INGRESO" && movement.is_cheque && movement.cheque_due_date) {
       movement.date = movement.cheque_due_date;
+    }
+
+    if (movement.supplier_id && movement.invoice_number) {
+      await assertNoDuplicateSupplierInvoice({
+        supplierId: movement.supplier_id,
+        invoiceNumber: movement.invoice_number,
+      });
     }
 
     let paycheckId = null;
@@ -728,6 +738,9 @@ self.createMovement = async (req, res) => {
 
     return res.json(newMovement);
   } catch (e) {
+    if (e.code === "DUPLICATE_INVOICE") {
+      return res.json({ error: e.message });
+    }
     console.error("createMovement error:", e.message);
     return res.json({ error: e.message });
   }
@@ -749,6 +762,21 @@ self.updateMovement = async (req, res) => {
     const built = buildMovementUpdateFromBody(req.body);
     if (built.error) return res.json({ error: built.error });
     const update = built.update;
+
+    if (update.supplier_id && update.invoice_number) {
+      try {
+        await assertNoDuplicateSupplierInvoice({
+          supplierId: update.supplier_id,
+          invoiceNumber: update.invoice_number,
+          excludeMovementId: movementId,
+        });
+      } catch (dupErr) {
+        if (dupErr.code === "DUPLICATE_INVOICE") {
+          return res.json({ error: dupErr.message });
+        }
+        throw dupErr;
+      }
+    }
 
     const activeOrder = await getActiveOrderForMovement(movementId);
     if (activeOrder) {

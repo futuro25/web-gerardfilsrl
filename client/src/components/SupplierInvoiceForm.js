@@ -17,7 +17,7 @@ import Spinner from "./common/Spinner";
 import SupplierQuickCreateDialog from "./SupplierQuickCreateDialog";
 import * as utils from "../utils/utils";
 import { useSuppliersQuery } from "../apis/api.suppliers";
-import { fetchSupplierInvoiceByAccountMovement } from "../apis/api.supplierinvoices";
+import { fetchSupplierInvoiceByAccountMovement, checkDuplicateSupplierInvoice } from "../apis/api.supplierinvoices";
 import {
   querySupplierInvoiceByMovementKey,
   querySuppliersKey,
@@ -173,7 +173,7 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
   const concatenateInvoiceNumber = () =>
     `${invoiceLetter}${invoiceFirst4}${invoiceLast8}`;
 
-  const validate = () => {
+  const validate = async () => {
     const data = getValues();
     if (!data.supplier?.id) {
       return { ok: false, message: "Seleccione un proveedor" };
@@ -190,6 +190,29 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
     if (!withoutInvoice) {
       if (!invoiceLetter || !invoiceFirst4 || !invoiceLast8) {
         return { ok: false, message: "Complete el número de factura" };
+      }
+      const invoiceNumber = concatenateInvoiceNumber();
+      const existingId =
+        linkedInvoice && !linkedInvoice.error ? linkedInvoice.id : null;
+      try {
+        const dup = await checkDuplicateSupplierInvoice({
+          supplierId: data.supplier.id,
+          invoiceNumber,
+          excludeInvoiceId: existingId,
+          excludeMovementId: movementId,
+        });
+        if (dup?.duplicate) {
+          return {
+            ok: false,
+            message: `Ya existe la factura ${utils.formatInvoiceNumber(invoiceNumber)} para este proveedor.`,
+          };
+        }
+      } catch (e) {
+        console.error(e);
+        return {
+          ok: false,
+          message: "No se pudo verificar si la factura ya existe",
+        };
       }
     }
     return { ok: true };

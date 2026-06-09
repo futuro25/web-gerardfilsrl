@@ -47,8 +47,9 @@ export const fetchAccountMovementsSummary = async ({ month, year }) => {
   return res.json();
 };
 
-export const fetchUpcomingCheques = async () => {
-  const res = await fetch(`${BASE_URL}/upcoming-cheques`, {
+export const fetchUpcomingCheques = async (days = 15) => {
+  const params = new URLSearchParams({ days: String(days) });
+  const res = await fetch(`${BASE_URL}/upcoming-cheques?${params}`, {
     method: "GET",
     headers: { "Content-Type": "application/json" },
   });

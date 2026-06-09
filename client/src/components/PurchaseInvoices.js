@@ -132,7 +132,7 @@ export default function PurchaseInvoices() {
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    const validation = invoiceFormRef.current?.validate();
+    const validation = await invoiceFormRef.current?.validate();
     if (!validation?.ok) {
       setShowInvoiceErrors(true);
       return;

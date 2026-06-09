@@ -9,7 +9,9 @@ import Spinner from "./common/Spinner";
 import SupplierQuickCreateDialog from "./SupplierQuickCreateDialog";
 import { splitInvoiceNumber } from "./SupplierInvoiceForm";
 import { useSuppliersQuery } from "../apis/api.suppliers";
+import { checkDuplicateSupplierInvoice } from "../apis/api.supplierinvoices";
 import { querySuppliersKey } from "../apis/queryKeys";
+import * as utils from "../utils/utils";
 
 function concatenateInvoiceNumber(letter, first4, last8) {
   if (!letter || !first4 || !last8) return "";
@@ -90,6 +92,32 @@ const EgresoSupplierFields = forwardRef(function EgresoSupplierFields(
       if (requireInvoiceNumber) {
         if (!invoiceLetter || !invoiceFirst4 || !invoiceLast8) {
           return { ok: false, message: "Complete el número de factura" };
+        }
+        const invoiceNumber = concatenateInvoiceNumber(
+          invoiceLetter,
+          invoiceFirst4,
+          invoiceLast8
+        );
+        if (data.supplier?.id) {
+          try {
+            const dup = await checkDuplicateSupplierInvoice({
+              supplierId: data.supplier.id,
+              invoiceNumber,
+              excludeMovementId: accountMovement?.id ?? null,
+            });
+            if (dup?.duplicate) {
+              return {
+                ok: false,
+                message: `Ya existe la factura ${utils.formatInvoiceNumber(invoiceNumber)} para este proveedor.`,
+              };
+            }
+          } catch (e) {
+            console.error(e);
+            return {
+              ok: false,
+              message: "No se pudo verificar si la factura ya existe",
+            };
+          }
         }
       }
       return { ok: true };

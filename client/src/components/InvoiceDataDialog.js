@@ -35,7 +35,7 @@ export default function InvoiceDataDialog({
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    const validation = formRef.current?.validate();
+    const validation = await formRef.current?.validate();
     if (!validation?.ok) {
       setShowErrors(true);
       return;

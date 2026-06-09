@@ -13,6 +13,10 @@ const {
   getOrdersGroupedByInvoiceIds,
   buildPaymentSummary,
 } = require("../services/invoicePaymentSummary");
+const {
+  findDuplicateSupplierInvoice,
+  assertNoDuplicateSupplierInvoice,
+} = require("../services/supplierInvoiceDuplicate");
 
 async function fetchTaxesBySupplierInvoiceIds(supplierInvoiceIds) {
   if (!supplierInvoiceIds.length) return {};
@@ -314,6 +318,34 @@ self.getPurchaseInvoices = async (req, res) => {
   }
 };
 
+self.checkDuplicateSupplierInvoice = async (req, res) => {
+  try {
+    const supplierId = parseInt(req.query.supplier_id, 10);
+    const invoiceNumber = req.query.invoice_number || "";
+    const excludeInvoiceId = req.query.exclude_invoice_id
+      ? parseInt(req.query.exclude_invoice_id, 10)
+      : null;
+    const excludeMovementId = req.query.exclude_movement_id
+      ? parseInt(req.query.exclude_movement_id, 10)
+      : null;
+
+    const existing = await findDuplicateSupplierInvoice({
+      supplierId,
+      invoiceNumber,
+      excludeInvoiceId,
+      excludeMovementId,
+    });
+
+    return res.json({
+      duplicate: Boolean(existing),
+      existing,
+    });
+  } catch (e) {
+    console.error("checkDuplicateSupplierInvoice", e.message);
+    return res.json({ error: e.message });
+  }
+};
+
 self.getSupplierInvoiceByAccountMovement = async (req, res) => {
   const account_movement_id = req.params.account_movement_id;
   try {
@@ -357,6 +389,12 @@ self.createSupplierInvoice = async (req, res) => {
       image_key: req.body.image_key || null,
     };
 
+    await assertNoDuplicateSupplierInvoice({
+      supplierId: row.supplier_id,
+      invoiceNumber: row.invoice_number,
+      excludeMovementId: row.account_movement_id,
+    });
+
     const { data: created, error } = await supabase
       .from("supplier_invoices")
       .insert(row)
@@ -398,6 +436,9 @@ self.createSupplierInvoice = async (req, res) => {
       taxes: newTaxes,
     });
   } catch (e) {
+    if (e.code === "DUPLICATE_INVOICE") {
+      return res.status(400).json({ error: e.message });
+    }
     console.error("createSupplierInvoice", e.message);
     return res.status(500).json({ error: "Error interno del servidor" });
   }
@@ -439,6 +480,25 @@ self.updateSupplierInvoice = async (req, res) => {
       update.due_date = update.document_date;
     }
 
+    const { data: current, error: currentErr } = await supabase
+      .from("supplier_invoices")
+      .select("supplier_id, invoice_number, account_movement_id")
+      .eq("id", id)
+      .is("deleted_at", null)
+      .single();
+
+    if (currentErr || !current) {
+      return res.status(404).json({ error: "Factura no encontrada" });
+    }
+
+    await assertNoDuplicateSupplierInvoice({
+      supplierId: update.supplier_id ?? current.supplier_id,
+      invoiceNumber: update.invoice_number ?? current.invoice_number,
+      excludeInvoiceId: id,
+      excludeMovementId:
+        update.account_movement_id ?? current.account_movement_id,
+    });
+
     const taxes = update.taxes || [];
     delete update.taxes;
 
@@ -479,6 +539,9 @@ self.updateSupplierInvoice = async (req, res) => {
       taxes: newTaxes,
     });
   } catch (e) {
+    if (e.code === "DUPLICATE_INVOICE") {
+      return res.status(400).json({ error: e.message });
+    }
     console.error("updateSupplierInvoice", e.message);
     res.json({ error: e.message });
   }

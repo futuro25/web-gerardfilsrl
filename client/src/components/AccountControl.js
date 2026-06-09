@@ -298,7 +298,7 @@ export default function AccountControl() {
 
   const { data: upcomingCheques } = useQuery({
     queryKey: queryUpcomingChequesKey(),
-    queryFn: fetchUpcomingCheques,
+    queryFn: () => fetchUpcomingCheques(15),
   });
 
   const { data: futureBalancesRes, isLoading: futureBalancesLoading } = useQuery({
@@ -562,7 +562,7 @@ export default function AccountControl() {
   );
 
   const saveInvoiceForMovement = async (movementId) => {
-    const validation = invoiceFieldsRef.current?.validate();
+    const validation = await invoiceFieldsRef.current?.validate();
     if (!validation?.ok) {
       setInvoiceShowErrors(true);
       throw new Error(validation.message || "Revise los datos de la factura");
@@ -666,7 +666,7 @@ export default function AccountControl() {
       }
 
       if (requiresInvoice) {
-        const validation = invoiceFieldsRef.current?.validate();
+        const validation = await invoiceFieldsRef.current?.validate();
         if (!validation?.ok) {
           setInvoiceShowErrors(true);
           setIsLoadingSubmit(false);
@@ -1002,38 +1002,6 @@ export default function AccountControl() {
               </div>
             </div>
 
-            {/* Upcoming cheques */}
-            {upcomingCheques && (upcomingCheques.toExpire?.length > 0 || upcomingCheques.toCredit?.length > 0) && (
-              <div className="flex flex-col gap-3 mb-4">
-                {upcomingCheques.toExpire?.length > 0 && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                    <p className="text-xs font-semibold text-red-700 uppercase mb-2">Cheques a vencer (Egreso)</p>
-                    {upcomingCheques.toExpire.map((c) => (
-                      <div key={c.id} className="flex justify-between text-xs text-red-800 py-1 border-b border-red-100 last:border-b-0">
-                        <span>#{c.cheque_number} - {c.cheque_bank}</span>
-                        <span className="font-medium">
-                          {utils.formatAmount(c.amount)} - {DateTime.fromISO(c.cheque_due_date).toFormat("dd/MM/yyyy")}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {upcomingCheques.toCredit?.length > 0 && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                    <p className="text-xs font-semibold text-green-700 uppercase mb-2">Cheques a acreditarse (Ingreso)</p>
-                    {upcomingCheques.toCredit.map((c) => (
-                      <div key={c.id} className="flex justify-between text-xs text-green-800 py-1 border-b border-green-100 last:border-b-0">
-                        <span>#{c.cheque_number} - {c.cheque_bank}</span>
-                        <span className="font-medium">
-                          {utils.formatAmount(c.amount)} - {DateTime.fromISO(c.cheque_due_date).toFormat("dd/MM/yyyy")}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Filters */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
               <select
@@ -1167,6 +1135,57 @@ export default function AccountControl() {
 
             {/* Loading */}
             {isLoading && <Spinner />}
+
+            {/* Cheques a vencer — arriba del listado */}
+            {!isLoading &&
+              upcomingCheques?.toExpire?.length > 0 && (
+                <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
+                  <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide px-4 py-2.5 border-b border-amber-200/80">
+                    Cheques a vencer (próximos 15 días)
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="text-left text-slate-500 bg-amber-50/80">
+                          <th className="font-medium px-4 py-2">Fecha de pago</th>
+                          <th className="font-medium px-4 py-2">Proveedor</th>
+                          <th className="font-medium px-4 py-2 text-right">
+                            Importe
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {upcomingCheques.toExpire.map((c) => (
+                          <tr
+                            key={c.id}
+                            className="border-t border-amber-100/80 hover:bg-amber-100/40"
+                          >
+                            <td className="px-4 py-2 text-slate-700 whitespace-nowrap">
+                              {c.cheque_due_date
+                                ? DateTime.fromISO(c.cheque_due_date).toFormat(
+                                    "dd/MM/yyyy"
+                                  )
+                                : "—"}
+                            </td>
+                            <td className="px-4 py-2 text-slate-800">
+                              {c.supplier_name || "—"}
+                              {c.cheque_number && (
+                                <span className="block text-[10px] text-slate-500 mt-0.5">
+                                  Cheque #{c.cheque_number}
+                                  {c.cheque_bank ? ` · ${c.cheque_bank}` : ""}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-right font-medium text-red-700 whitespace-nowrap tabular-nums">
+                              {utils.formatAmount(c.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
             {/* Movements table */}
             {!isLoading && (
