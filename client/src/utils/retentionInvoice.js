@@ -1,3 +1,10 @@
+/** Las retenciones de ganancias solo aplican a facturas tipo A. */
+export function invoiceSupportsRetention(invoiceNumber) {
+  const raw = String(invoiceNumber || "").trim();
+  if (!raw) return false;
+  return raw.charAt(0).toUpperCase() === "A";
+}
+
 /** Normaliza distintas formas de factura al shape usado por retenciones. */
 export function buildRetentionInvoiceInput(source, movement = null) {
   if (!source) return null;

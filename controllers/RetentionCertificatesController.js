@@ -58,6 +58,13 @@ function calculateNetAndIVA(totalAmount) {
   };
 }
 
+/** Las retenciones de ganancias solo aplican a facturas tipo A. */
+function invoiceSupportsRetention(invoiceNumber) {
+  const raw = String(invoiceNumber || "").trim();
+  if (!raw) return false;
+  return raw.charAt(0).toUpperCase() === "A";
+}
+
 /**
  * Aplica la escala progresiva (RG 4525) sobre el monto sujeto a retención.
  * El monto no sujeto ya viene restado en `montoSujeto`.
@@ -478,6 +485,12 @@ self.createRetentionPayment = async (req, res) => {
       if (!resolvedInvoiceNumber && supplierInvoice?.invoice_number) {
         resolvedInvoiceNumber = supplierInvoice.invoice_number;
       }
+    }
+
+    if (!invoiceSupportsRetention(resolvedInvoiceNumber)) {
+      return res.json({
+        error: "Las retenciones solo aplican a facturas tipo A.",
+      });
     }
 
     // Calcular retención considerando el acumulado mensual

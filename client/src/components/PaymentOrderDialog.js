@@ -26,7 +26,7 @@ import {
   querySupplierAccountsListKey,
   queryRetentionByInvoiceKey,
 } from "../apis/queryKeys";
-import { retentionLookupParams } from "../utils/retentionInvoice";
+import { retentionLookupParams, invoiceSupportsRetention } from "../utils/retentionInvoice";
 import { PAYMENT_METHOD_OPTIONS } from "./PaymentOrderFields";
 
 const today = DateTime.now().toFormat("yyyy-MM-dd");
@@ -114,6 +114,8 @@ export default function PaymentOrderDialog({
     0
   );
 
+  const supportsRetention = invoiceSupportsRetention(item?.invoice_number);
+
   const retentionLookup = useMemo(
     () =>
       retentionLookupParams({
@@ -132,6 +134,7 @@ export default function PaymentOrderDialog({
     queryKey: queryRetentionByInvoiceKey(retentionLookup),
     queryFn: () => fetchRetentionByInvoice(retentionLookup),
     enabled:
+      supportsRetention &&
       open &&
       Boolean(item?.supplier_invoice_id || item?.account_movement_id || movementId),
   });
@@ -359,7 +362,7 @@ export default function PaymentOrderDialog({
               </div>
             )}
 
-            {!retentionLoading && retentionPayment && (
+            {supportsRetention && !retentionLoading && retentionPayment && (
               <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 flex flex-col gap-1.5">
                 <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
                   Retención registrada
@@ -382,7 +385,10 @@ export default function PaymentOrderDialog({
               </div>
             )}
 
-            {!retentionLoading && !retentionPayment && item?.supplier_invoice_id && (
+            {supportsRetention &&
+              !retentionLoading &&
+              !retentionPayment &&
+              item?.supplier_invoice_id && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 No hay retención registrada para esta factura. Si corresponde,
                 registrá la retención desde el detalle del movimiento antes de

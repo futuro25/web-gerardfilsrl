@@ -10,7 +10,7 @@ import {
   queryRetentionByInvoiceKey,
   queryRetentionPaymentsKey,
 } from "../apis/queryKeys";
-import { retentionLookupParams } from "../utils/retentionInvoice";
+import { retentionLookupParams, invoiceSupportsRetention } from "../utils/retentionInvoice";
 import * as utils from "../utils/utils";
 
 export default function InvoiceRetentionSection({
@@ -25,6 +25,7 @@ export default function InvoiceRetentionSection({
   const [createdRetention, setCreatedRetention] = useState(null);
 
   const lookup = retentionLookupParams(invoice);
+  const supportsRetention = invoiceSupportsRetention(invoice?.invoice_number);
   const canLookup = Boolean(
     lookup.supplierInvoiceId ||
       lookup.accountMovementId ||
@@ -35,7 +36,7 @@ export default function InvoiceRetentionSection({
   const { data: retentionRes, isLoading: retentionLoading } = useQuery({
     queryKey: queryRetentionByInvoiceKey(lookup),
     queryFn: () => fetchRetentionByInvoice(lookup),
-    enabled: enabled && canLookup,
+    enabled: enabled && supportsRetention && canLookup,
   });
 
   const retentionPayment = retentionRes?.data?.payment || null;
@@ -56,7 +57,7 @@ export default function InvoiceRetentionSection({
     onRetentionCreated?.(result);
   };
 
-  if (!invoice) return null;
+  if (!invoice || !supportsRetention) return null;
 
   return (
     <>
