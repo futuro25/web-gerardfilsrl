@@ -242,69 +242,38 @@ export default function MovementDetailDialog({
                       .join(" · ")}
                   </DetailRow>
                 )}
-                {invoice?.image_key && (
-                  <div className="mt-2 pt-3 border-t border-amber-200/80">
-                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">
-                      Comprobante adjunto
-                    </p>
-                    {imageLoading && (
-                      <div className="py-3 flex justify-center">
-                        <Spinner />
-                      </div>
-                    )}
-                    {imageError && (
-                      <p className="text-xs text-red-500">
-                        No se pudo cargar la imagen
-                      </p>
-                    )}
-                    {!imageLoading && !imageError && imageUrl && (
-                      <div className="flex flex-col gap-2">
+                {invoice.image_key && (
+                  <DetailRow label="Comprobante">
+                    {imageLoading ? (
+                      <span className="text-xs text-slate-400">Cargando enlace...</span>
+                    ) : imageError ? (
+                      <span className="text-xs text-red-500">
+                        No se pudo cargar la factura
+                      </span>
+                    ) : imageUrl ? (
+                      <span className="inline-flex flex-wrap items-center gap-3">
+                        <a
+                          href={imageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+                        >
+                          Abrir factura
+                          <ExternalLinkIcon className="h-3.5 w-3.5" />
+                        </a>
                         <button
                           type="button"
                           onClick={() => setImagePreviewOpen(true)}
-                          className="group relative block w-fit max-w-full rounded-lg border border-amber-200 bg-white overflow-hidden hover:border-amber-300 transition-colors"
-                          title="Ver en grande"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-950"
                         >
-                          {isPdf ? (
-                            <div className="flex h-28 w-40 flex-col items-center justify-center gap-1 bg-slate-50 text-slate-500">
-                              <span className="text-2xl font-bold text-red-600">PDF</span>
-                              <span className="text-[10px] uppercase tracking-wide">
-                                Factura
-                              </span>
-                            </div>
-                          ) : (
-                            <img
-                              src={imageUrl}
-                              alt="Miniatura de factura"
-                              className="h-28 w-auto max-w-[11rem] object-cover object-top"
-                            />
-                          )}
-                          <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/25 transition-colors">
-                            <Maximize2 className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 drop-shadow" />
-                          </span>
+                          <Maximize2 className="h-3.5 w-3.5" />
+                          Ver en grande
                         </button>
-                        <div className="flex flex-wrap gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setImagePreviewOpen(true)}
-                            className="inline-flex items-center gap-1 text-xs font-medium text-amber-800 hover:text-amber-950"
-                          >
-                            <Maximize2 className="h-3.5 w-3.5" />
-                            Ver en grande
-                          </button>
-                          <a
-                            href={imageUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
-                          >
-                            Abrir en nueva pestaña
-                            <ExternalLinkIcon className="h-3.5 w-3.5" />
-                          </a>
-                        </div>
-                      </div>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">Sin enlace disponible</span>
                     )}
-                  </div>
+                  </DetailRow>
                 )}
               </>
             ) : (
