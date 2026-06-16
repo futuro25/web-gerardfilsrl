@@ -148,7 +148,20 @@ export default function PaymentOrderDialog({
     retentionPayment?.total_to_pay != null && paidSoFar <= 0.009
       ? Math.min(parseFloat(retentionPayment.total_to_pay), remainingAmount)
       : remainingAmount;
-  const amountReadOnly = Boolean(retentionPayment && paidSoFar <= 0.009);
+
+  const itemKey =
+    item?.supplier_invoice_id ?? item?.account_movement_id ?? "";
+
+  const retentionStillLoading =
+    supportsRetention &&
+    Boolean(item?.supplier_invoice_id || item?.account_movement_id || movementId) &&
+    retentionLoading;
+
+  const loading =
+    (needsInvoiceFetch && invoiceLoading) ||
+    numberLoading ||
+    ordersLoading ||
+    retentionStillLoading;
 
   const {
     register,
@@ -171,7 +184,7 @@ export default function PaymentOrderDialog({
   const isCheque = paymentMethod === "CHEQUE";
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || loading) return;
     reset({
       payment_method: "TRANSFERENCIA",
       payment_date: today,
@@ -180,7 +193,9 @@ export default function PaymentOrderDialog({
       cheque_number: "",
       cheque_bank: "",
     });
-  }, [open, item, suggestedPayAmount, remainingAmount, reset]);
+    // Solo al abrir o cambiar de factura, cuando terminó de cargar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, loading, itemKey, reset]);
 
   const mutation = useMutation({ mutationFn: createPaymentOrder });
 
@@ -241,8 +256,6 @@ export default function PaymentOrderDialog({
     }
   };
 
-  const loading =
-    (needsInvoiceFetch && invoiceLoading) || numberLoading || ordersLoading;
   const orderNumber = nextNumberData?.number ?? "—";
   const missingInvoice =
     movement && !pendingItem && needsInvoiceFetch && !invoiceLoading && !fetchedInvoice;
@@ -380,7 +393,8 @@ export default function PaymentOrderDialog({
                   </span>
                 </div>
                 <p className="text-[11px] text-violet-700">
-                  El monto de la orden se completó con el neto después de retención.
+                  Se sugiere el neto después de retención como monto inicial. Podés
+                  modificarlo para pagos parciales.
                 </p>
               </div>
             )}
@@ -464,15 +478,12 @@ export default function PaymentOrderDialog({
             <Input
               label={
                 retentionPayment && paidSoFar <= 0.009
-                  ? "Monto (neto después de retención)"
-                  : amountReadOnly
-                    ? "Monto"
-                    : "Monto (pago parcial permitido)"
+                  ? "Monto (sugerido: neto después de retención)"
+                  : "Monto (pago parcial permitido)"
               }
               type="number"
               step="0.01"
               placeholder="0.00"
-              readOnly={amountReadOnly}
               {...register("amount", {
                 required: "Ingrese el monto",
                 min: { value: 0.01, message: "El monto debe ser mayor a 0" },
@@ -485,10 +496,10 @@ export default function PaymentOrderDialog({
               helperText={
                 errors.amount?.message ||
                 (remainingAmount < invoiceTotal
-                  ? `Saldo pendiente: ${utils.formatAmount(remainingAmount)}`
+                  ? `Saldo pendiente: ${utils.formatAmount(remainingAmount)}. Podés pagar un monto menor.`
                   : retentionPayment && invoiceTotal > 0
-                    ? `Total factura: ${utils.formatAmount(invoiceTotal)}`
-                    : undefined)
+                    ? `Total factura: ${utils.formatAmount(invoiceTotal)}. Neto sugerido: ${utils.formatAmount(suggestedPayAmount)}.`
+                    : `Máximo: ${utils.formatAmount(remainingAmount)}`)
               }
             />
 
