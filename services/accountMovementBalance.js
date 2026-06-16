@@ -3,6 +3,7 @@
 const supabase = require("../controllers/db");
 const {
   getPaidAmountsByInvoiceIds,
+  getRetentionAmountsByInvoiceIds,
   isInvoiceFullyPaid,
   invoiceTotal,
 } = require("./invoicePaymentSummary");
@@ -20,12 +21,14 @@ async function getBalanceExcludedMovementIds() {
 
   const invoiceIds = (invoices || []).map((inv) => inv.id);
   const paidByInvoiceId = await getPaidAmountsByInvoiceIds(invoiceIds);
+  const retentionByInvoiceId = await getRetentionAmountsByInvoiceIds(invoiceIds);
 
   const excluded = new Set();
   (invoices || []).forEach((inv) => {
     if (inv.account_movement_id == null) return;
     const paid = paidByInvoiceId[inv.id] || 0;
-    if (!isInvoiceFullyPaid(inv, paid)) {
+    const retention = retentionByInvoiceId[inv.id] || 0;
+    if (!isInvoiceFullyPaid(inv, paid, retention)) {
       excluded.add(inv.account_movement_id);
     }
   });

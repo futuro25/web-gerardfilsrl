@@ -6,6 +6,7 @@ const {
   parseAmount,
   getActiveOrdersForInvoice,
   getInvoicePaymentSummary,
+  getRetentionAmountsByInvoiceIds,
   sumOrderAmounts,
   invoiceTotal,
   isInvoiceFullyPaid,
@@ -92,17 +93,23 @@ async function computePendingItems() {
 
   if (ctrlErr) throw ctrlErr;
 
+  const invoiceIds = (controlInvoices || [])
+    .filter((inv) => inv.account_movement_id != null)
+    .map((inv) => inv.id);
+  const retentionByInvoiceId = await getRetentionAmountsByInvoiceIds(invoiceIds);
+
   const controlItems = (controlInvoices || [])
     .filter((inv) => {
       if (inv.account_movement_id == null) return false;
-      const total = invoiceTotal(inv);
       const paid = paidByInvoiceId[inv.id] || 0;
-      return !isInvoiceFullyPaid(inv, paid);
+      const retention = retentionByInvoiceId[inv.id] || 0;
+      return !isInvoiceFullyPaid(inv, paid, retention);
     })
     .map((inv) => {
       const total = invoiceTotal(inv);
       const paidAmount = paidByInvoiceId[inv.id] || 0;
-      const remainingAmount = Math.max(0, total - paidAmount);
+      const retentionAmount = retentionByInvoiceId[inv.id] || 0;
+      const remainingAmount = Math.max(0, total - paidAmount - retentionAmount);
       return {
         key: `control-${inv.id}`,
         source: "control",
@@ -117,6 +124,7 @@ async function computePendingItems() {
         amount: parseAmount(inv.amount),
         total,
         paid_amount: paidAmount,
+        retention_amount: retentionAmount,
         remaining_amount: remainingAmount,
       };
     });
@@ -256,7 +264,14 @@ self.createPaymentOrder = async (req, res) => {
 
     const existingOrders = await getActiveOrdersForInvoice(supplier_invoice_id);
     const paidSoFar = sumOrderAmounts(existingOrders);
-    const remainingBefore = Math.max(0, invoiceTotalAmount - paidSoFar);
+    const retentionById = await getRetentionAmountsByInvoiceIds([
+      supplier_invoice_id,
+    ]);
+    const retentionAmount = retentionById[supplier_invoice_id] || 0;
+    const remainingBefore = Math.max(
+      0,
+      invoiceTotalAmount - paidSoFar - retentionAmount
+    );
     if (payAmount > remainingBefore + 0.009) {
       return res.json({
         error: `El monto supera el saldo pendiente (${remainingBefore.toFixed(2)})`,
@@ -319,7 +334,7 @@ self.createPaymentOrder = async (req, res) => {
       movement.date;
 
     const paidAfter = paidSoFar + payAmount;
-    const fullyPaid = isInvoiceFullyPaid(invoice, paidAfter);
+    const fullyPaid = isInvoiceFullyPaid(invoice, paidAfter, retentionAmount);
 
     let movementUpdate;
     if (fullyPaid) {
@@ -382,7 +397,10 @@ self.createPaymentOrder = async (req, res) => {
       data: newOrder[0],
       movement: updatedMovement?.[0] || null,
       fully_paid: fullyPaid,
-      remaining_amount: Math.max(0, invoiceTotalAmount - paidAfter),
+      remaining_amount: Math.max(
+        0,
+        invoiceTotalAmount - paidAfter - retentionAmount
+      ),
     });
   } catch (e) {
     console.error("createPaymentOrder error:", e.message);
@@ -457,9 +475,13 @@ self.cancelPaymentOrder = async (req, res) => {
       ? await getActiveOrdersForInvoice(invoice.id)
       : [];
     const paidRemaining = sumOrderAmounts(remainingOrders);
+    const retentionById = invoice
+      ? await getRetentionAmountsByInvoiceIds([invoice.id])
+      : {};
+    const retentionAmount = invoice ? retentionById[invoice.id] || 0 : 0;
 
     let movementUpdate;
-    if (invoice && isInvoiceFullyPaid(invoice, paidRemaining)) {
+    if (invoice && isInvoiceFullyPaid(invoice, paidRemaining, retentionAmount)) {
       const latest = remainingOrders[remainingOrders.length - 1];
       movementUpdate = buildMovementPaymentFields({
         payment_method: latest.payment_method,
@@ -490,10 +512,10 @@ self.cancelPaymentOrder = async (req, res) => {
       order_id: orderId,
       movement: updatedMovement?.[0] || null,
       fully_paid: invoice
-        ? isInvoiceFullyPaid(invoice, paidRemaining)
+        ? isInvoiceFullyPaid(invoice, paidRemaining, retentionAmount)
         : false,
       remaining_amount: invoice
-        ? Math.max(0, invoiceTotal(invoice) - paidRemaining)
+        ? Math.max(0, invoiceTotal(invoice) - paidRemaining - retentionAmount)
         : null,
     });
   } catch (e) {

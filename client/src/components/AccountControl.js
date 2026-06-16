@@ -438,8 +438,16 @@ export default function AccountControl() {
           );
           const total =
             parseFloat(prev.invoice_total_amount ?? prev.amount) || 0;
-          const remainingAmount = Math.max(0, total - paidAmount);
-          const fullyPaid = remainingAmount <= 0.009;
+          const retentionAmount =
+            parseFloat(prev.invoice_retention_amount) || 0;
+          const remainingAmount =
+            result.remaining_amount != null
+              ? parseFloat(result.remaining_amount) || 0
+              : Math.max(0, total - paidAmount - retentionAmount);
+          const fullyPaid =
+            result.fully_paid != null
+              ? Boolean(result.fully_paid)
+              : remainingAmount <= 0.009;
           const latest = remainingOrders[remainingOrders.length - 1] || null;
           return {
             ...prev,

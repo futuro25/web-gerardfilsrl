@@ -22,15 +22,19 @@ function roundMoney(value) {
   return Math.round(parseAmount(value) * 100) / 100;
 }
 
-function buildPaymentSummary(invoice, orders) {
+function buildPaymentSummary(invoice, orders, retentionAmount = 0) {
   const total = invoiceTotal(invoice);
   const paidAmount = roundMoney(sumOrderAmounts(orders));
-  const remainingAmount = roundMoney(Math.max(0, total - paidAmount));
+  const retention = roundMoney(retentionAmount);
+  const settledAmount = roundMoney(paidAmount + retention);
+  const remainingAmount = roundMoney(Math.max(0, total - settledAmount));
   const fullyPaid = remainingAmount <= 0.009;
 
   return {
     invoiceTotal: total,
     paidAmount,
+    retentionAmount: retention,
+    settledAmount,
     remainingAmount,
     fullyPaid,
     orders: orders || [],
@@ -52,12 +56,36 @@ async function getActiveOrdersForInvoice(supplierInvoiceId) {
   return data || [];
 }
 
+async function getRetentionAmountsByInvoiceIds(invoiceIds) {
+  if (!invoiceIds?.length) return {};
+  const { data, error } = await supabase
+    .from("retention_payments")
+    .select("supplier_invoice_id, retention_amount")
+    .in("supplier_invoice_id", invoiceIds)
+    .is("deleted_at", null);
+  if (error) throw error;
+
+  const map = {};
+  (data || []).forEach((row) => {
+    if (row.supplier_invoice_id == null) return;
+    map[row.supplier_invoice_id] = roundMoney(
+      (map[row.supplier_invoice_id] || 0) + parseAmount(row.retention_amount)
+    );
+  });
+  return map;
+}
+
 async function getInvoicePaymentSummary(invoice) {
   if (!invoice?.id) {
     return buildPaymentSummary(invoice, []);
   }
   const orders = await getActiveOrdersForInvoice(invoice.id);
-  return buildPaymentSummary(invoice, orders);
+  const retentionById = await getRetentionAmountsByInvoiceIds([invoice.id]);
+  return buildPaymentSummary(
+    invoice,
+    orders,
+    retentionById[invoice.id] || 0
+  );
 }
 
 async function getPaidAmountsByInvoiceIds(invoiceIds) {
@@ -99,8 +127,10 @@ async function getOrdersGroupedByInvoiceIds(invoiceIds) {
   return map;
 }
 
-function isInvoiceFullyPaid(invoice, paidAmount) {
-  return roundMoney(Math.max(0, invoiceTotal(invoice) - paidAmount)) <= 0.009;
+function isInvoiceFullyPaid(invoice, paidAmount, retentionAmount = 0) {
+  const total = invoiceTotal(invoice);
+  const settled = roundMoney(parseAmount(paidAmount) + parseAmount(retentionAmount));
+  return roundMoney(Math.max(0, total - settled)) <= 0.009;
 }
 
 module.exports = {
@@ -112,6 +142,7 @@ module.exports = {
   getActiveOrdersForInvoice,
   getInvoicePaymentSummary,
   getPaidAmountsByInvoiceIds,
+  getRetentionAmountsByInvoiceIds,
   getOrdersGroupedByInvoiceIds,
   isInvoiceFullyPaid,
 };

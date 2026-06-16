@@ -12,6 +12,7 @@ const {
 const {
   getPaidAmountsByInvoiceIds,
   getOrdersGroupedByInvoiceIds,
+  getRetentionAmountsByInvoiceIds,
   buildPaymentSummary,
 } = require("../services/invoicePaymentSummary");
 const {
@@ -68,20 +69,28 @@ self.getSupplierInvoices = async (req, res) => {
 
     let paidByInvoiceId = {};
     let ordersByInvoiceId = {};
+    let retentionByInvoiceId = {};
     if (ids.length) {
       paidByInvoiceId = await getPaidAmountsByInvoiceIds(ids);
       ordersByInvoiceId = await getOrdersGroupedByInvoiceIds(ids);
+      retentionByInvoiceId = await getRetentionAmountsByInvoiceIds(ids);
     }
 
     const withTaxes = await attachTaxes(rows);
     const result = withTaxes.map((r) => {
       const orders = ordersByInvoiceId[r.id] || [];
-      const summary = buildPaymentSummary(r, orders);
+      const summary = buildPaymentSummary(
+        r,
+        orders,
+        retentionByInvoiceId[r.id] || 0
+      );
       return {
         ...r,
         has_payment_order: summary.orderCount > 0,
         invoice_fully_paid: summary.fullyPaid,
         invoice_paid_amount: summary.paidAmount,
+        invoice_retention_amount: summary.retentionAmount,
+        invoice_settled_amount: summary.settledAmount,
         invoice_remaining_amount: summary.remainingAmount,
         payment_orders: summary.orders,
       };
@@ -193,6 +202,9 @@ self.getPurchaseInvoices = async (req, res) => {
     const taxesByCashflow = await fetchTaxesByCashflowIds(
       (cashflowRows || []).map((r) => r.id)
     );
+    const retentionByInvoiceId = await getRetentionAmountsByInvoiceIds(
+      (controlRows || []).map((r) => r.id)
+    );
 
     const orderSummary = (o) =>
       o
@@ -211,7 +223,11 @@ self.getPurchaseInvoices = async (req, res) => {
       const sup = supplierById[inv.supplier_id];
       const invOrders = ordersByInvoiceId[inv.id] || [];
       const order = invOrders[invOrders.length - 1] || null;
-      const summary = buildPaymentSummary(inv, invOrders);
+      const summary = buildPaymentSummary(
+        inv,
+        invOrders,
+        retentionByInvoiceId[inv.id] || 0
+      );
       return {
         key: `control-${inv.id}`,
         source: "control",
@@ -233,6 +249,8 @@ self.getPurchaseInvoices = async (req, res) => {
         has_payment_order: summary.orderCount > 0,
         invoice_fully_paid: summary.fullyPaid,
         invoice_paid_amount: summary.paidAmount,
+        invoice_retention_amount: summary.retentionAmount,
+        invoice_settled_amount: summary.settledAmount,
         invoice_remaining_amount: summary.remainingAmount,
         payment_order: orderSummary(order),
         payment_orders: invOrders.map(orderSummary),

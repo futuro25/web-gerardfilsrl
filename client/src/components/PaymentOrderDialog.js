@@ -140,9 +140,14 @@ export default function PaymentOrderDialog({
   });
 
   const retentionPayment = retentionRes?.data?.payment || null;
+  const retentionAmount =
+    parseFloat(retentionPayment?.retention_amount) || 0;
   const invoiceTotal =
     parseFloat(item?.total ?? item?.amount ?? "") || 0;
-  const remainingAmount = Math.max(0, Math.round((invoiceTotal - paidSoFar) * 100) / 100);
+  const remainingAmount = Math.max(
+    0,
+    Math.round((invoiceTotal - paidSoFar - retentionAmount) * 100) / 100
+  );
   const fullyPaid = remainingAmount <= 0.009;
   const suggestedPayAmount =
     retentionPayment?.total_to_pay != null && paidSoFar <= 0.009

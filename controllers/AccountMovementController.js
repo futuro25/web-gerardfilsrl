@@ -12,6 +12,7 @@ const {
   buildPaymentSummary,
   isInvoiceFullyPaid,
   getPaidAmountsByInvoiceIds,
+  getRetentionAmountsByInvoiceIds,
   invoiceTotal,
 } = require("../services/invoicePaymentSummary");
 const {
@@ -238,6 +239,7 @@ async function attachInvoicePaymentFlags(movements) {
   });
 
   const ordersByInvoiceId = await getOrdersGroupedByInvoiceIds(invoiceIds);
+  const retentionByInvoiceId = await getRetentionAmountsByInvoiceIds(invoiceIds);
 
   const orderByMovementId = {};
   const { data: ordersByMovement, error: ordMovErr } = await supabase
@@ -261,11 +263,16 @@ async function attachInvoicePaymentFlags(movements) {
     const orders = supplierInvoiceId
       ? ordersByInvoiceId[supplierInvoiceId] || []
       : [];
+    const retentionAmount = supplierInvoiceId
+      ? retentionByInvoiceId[supplierInvoiceId] || 0
+      : 0;
     const summary = invoice
-      ? buildPaymentSummary(invoice, orders)
+      ? buildPaymentSummary(invoice, orders, retentionAmount)
       : {
           invoiceTotal: parseMovementAmount(m.amount),
           paidAmount: 0,
+          retentionAmount: 0,
+          settledAmount: 0,
           remainingAmount: parseMovementAmount(m.amount),
           fullyPaid: false,
           orders: [],
@@ -283,6 +290,8 @@ async function attachInvoicePaymentFlags(movements) {
       has_payment_order: summary.orderCount > 0,
       invoice_fully_paid: summary.fullyPaid,
       invoice_paid_amount: summary.paidAmount,
+      invoice_retention_amount: summary.retentionAmount,
+      invoice_settled_amount: summary.settledAmount,
       invoice_remaining_amount: summary.remainingAmount,
       invoice_total_amount: summary.invoiceTotal,
       invoice_document_date: invoice?.document_date || null,
@@ -308,9 +317,17 @@ async function getPendingMovementIds() {
 
   const invoiceIds = (invoices || []).map((inv) => inv.id);
   const paidByInvoiceId = await getPaidAmountsByInvoiceIds(invoiceIds);
+  const retentionByInvoiceId = await getRetentionAmountsByInvoiceIds(invoiceIds);
 
   return (invoices || [])
-    .filter((inv) => !isInvoiceFullyPaid(inv, paidByInvoiceId[inv.id] || 0))
+    .filter(
+      (inv) =>
+        !isInvoiceFullyPaid(
+          inv,
+          paidByInvoiceId[inv.id] || 0,
+          retentionByInvoiceId[inv.id] || 0
+        )
+    )
     .map((inv) => inv.account_movement_id)
     .filter((id) => id != null);
 }

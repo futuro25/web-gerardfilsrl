@@ -25,6 +25,7 @@ function categoryLabel(m) {
   if (m.category === "FACTURA_CONTROL") return "Factura";
   if (m.category === "FACTURA") return "Factura (Cashflow)";
   if (m.category === "ORDEN_PAGO") return "Orden de Pago";
+  if (m.category === "RETENCION") return "Retención";
   if (m.category === "INGRESO") return "Ingreso";
   if (m.category === "EGRESO") return "Egreso";
   return m.movement_type === "INGRESO" ? "Ingreso" : "Egreso";
@@ -54,6 +55,13 @@ function formatMovementDocNumber(m) {
   if (m.category === "ORDEN_PAGO") {
     const n = m.order_number || m.payment_order?.order_number;
     return n ? String(n) : "—";
+  }
+  if (m.category === "RETENCION") {
+    if (m.invoice_number) {
+      return utils.formatInvoiceNumber(m.invoice_number);
+    }
+    if (m.category_code) return m.category_code;
+    return "—";
   }
   if (m.invoice_number) {
     return utils.formatInvoiceNumber(m.invoice_number);
@@ -439,6 +447,8 @@ export default function SupplierCurrentAccounts() {
                                     "px-2 py-0.5 rounded text-xs font-medium text-white",
                                     m.category === "ORDEN_PAGO"
                                       ? "bg-blue-500"
+                                      : m.category === "RETENCION"
+                                      ? "bg-violet-600"
                                       : shownAmount(m) >= 0
                                       ? "bg-amber-500"
                                       : "bg-emerald-600"

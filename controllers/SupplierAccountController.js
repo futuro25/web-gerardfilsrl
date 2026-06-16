@@ -94,6 +94,51 @@ function cashflowMovementItems(cashflowRows, taxesByCashflowId) {
   });
 }
 
+async function fetchRetentionsBySupplierInvoiceIds(supplierInvoiceIds) {
+  if (!supplierInvoiceIds.length) return [];
+  const { data, error } = await supabase
+    .from("retention_payments")
+    .select(
+      "id, supplier_invoice_id, account_movement_id, retention_amount, issue_date, category_code, invoice_number"
+    )
+    .in("supplier_invoice_id", supplierInvoiceIds)
+    .is("deleted_at", null);
+  if (error) throw error;
+  return data || [];
+}
+
+function retentionMovementItems(retentions) {
+  return (retentions || []).map((rp) => {
+    const amt = Math.abs(parseAmount(rp.retention_amount));
+    const invoiceKey =
+      rp.supplier_invoice_id != null
+        ? `supplier-invoice-${rp.supplier_invoice_id}`
+        : null;
+    const categoryCode = rp.category_code
+      ? String(rp.category_code).trim()
+      : "";
+    return {
+      id: `retention-${rp.id}`,
+      source: "retention",
+      source_id: rp.id,
+      invoice_key: invoiceKey,
+      supplier_invoice_id: rp.supplier_invoice_id ?? null,
+      movement_type: "EGRESO",
+      category: "RETENCION",
+      date: rp.issue_date,
+      description: categoryCode
+        ? `Retención ${categoryCode}`
+        : "Retención",
+      invoice_number: rp.invoice_number || null,
+      category_code: categoryCode || null,
+      amount: amt,
+      signed_amount: -amt,
+      display_amount: -amt,
+      taxes: [],
+    };
+  });
+}
+
 function paymentOrderItems(orders) {
   return (orders || []).map((po) => {
     const amt = Math.abs(parseAmount(po.amount));
@@ -171,16 +216,16 @@ function sortAndApplyBalance(movements) {
   // Cada movimiento recibe una clave de orden:
   //   _chrono : fecha que define la posición cronológica
   //   _anchor : agrupa la factura con su orden de pago
-  //   _seq    : 0 = factura/movimiento, 1 = orden de pago (va después)
+  //   _seq    : 0 = factura, 1 = retención, 2 = orden de pago
   const enriched = movements.map((m) => {
-    if (m.source === "payment_order") {
+    if (m.source === "payment_order" || m.source === "retention") {
       const anchorDate =
         (m.invoice_key && dateByKey[m.invoice_key]) || m.date;
       return {
         ...m,
         _chrono: String(anchorDate || ""),
         _anchor: m.invoice_key || m.id,
-        _seq: 1,
+        _seq: m.source === "retention" ? 1 : 2,
       };
     }
     return {
@@ -208,10 +253,16 @@ function sortAndApplyBalance(movements) {
   });
 }
 
-function computeSummary(cashflowRows, supplierInvoices, paymentOrders) {
+function computeSummary(
+  cashflowRows,
+  supplierInvoices,
+  paymentOrders,
+  retentions
+) {
   const cf = supplierCashflowRows(cashflowRows);
   const inv = supplierInvoices || [];
   const po = paymentOrders || [];
+  const ret = retentions || [];
 
   const totalCashflowEgresos = cf
     .filter((r) => r.type === "EGRESO")
@@ -228,6 +279,10 @@ function computeSummary(cashflowRows, supplierInvoices, paymentOrders) {
     (acc, p) => acc + Math.abs(parseAmount(p.amount)),
     0
   );
+  const totalRetentions = ret.reduce(
+    (acc, r) => acc + Math.abs(parseAmount(r.retention_amount)),
+    0
+  );
 
   let balance = 0;
   cf.forEach((r) => {
@@ -239,12 +294,14 @@ function computeSummary(cashflowRows, supplierInvoices, paymentOrders) {
   });
   balance += totalControlInvoices;
   balance -= totalPaymentOrders;
+  balance -= totalRetentions;
 
   return {
     totalCashflowEgresos,
     totalCashflowIngresos,
     totalControlInvoices,
     totalPaymentOrders,
+    totalRetentions,
     totalInvoices: totalCashflowEgresos + totalControlInvoices,
     totalPayments: totalCashflowEgresos,
     totalCredits: totalCashflowIngresos,
@@ -255,23 +312,37 @@ function computeSummary(cashflowRows, supplierInvoices, paymentOrders) {
 async function buildMergedAccountData(
   cashflowRows,
   supplierInvoices,
-  paymentOrders
+  paymentOrders,
+  retentions
 ) {
+  const invoiceIds = (supplierInvoices || []).map((inv) => inv.id);
+  const retentionRows =
+    retentions ??
+    (invoiceIds.length
+      ? await fetchRetentionsBySupplierInvoiceIds(invoiceIds)
+      : []);
+
   const taxesByCashflowId = await fetchTaxesByCashflowIds(
     supplierCashflowRows(cashflowRows).map((cf) => cf.id)
   );
   const taxesBySupplierInvoiceId = await fetchTaxesBySupplierInvoiceIds(
-    (supplierInvoices || []).map((inv) => inv.id)
+    invoiceIds
   );
 
   const cfRows = supplierCashflowRows(cashflowRows);
   const movements = sortAndApplyBalance([
     ...cashflowMovementItems(cfRows, taxesByCashflowId),
     ...supplierInvoiceMovementItems(supplierInvoices, taxesBySupplierInvoiceId),
+    ...retentionMovementItems(retentionRows),
     ...paymentOrderItems(paymentOrders),
   ]);
 
-  const summary = computeSummary(cfRows, supplierInvoices, paymentOrders);
+  const summary = computeSummary(
+    cfRows,
+    supplierInvoices,
+    paymentOrders,
+    retentionRows
+  );
 
   return { movements, summary };
 }
@@ -314,6 +385,22 @@ self.getAllSupplierAccounts = async (req, res) => {
 
     if (paymentOrdersError) throw paymentOrdersError;
 
+    const invoiceIds = (supplierInvoices || []).map((inv) => inv.id);
+    const allRetentions = invoiceIds.length
+      ? await fetchRetentionsBySupplierInvoiceIds(invoiceIds)
+      : [];
+    const supplierIdByInvoiceId = {};
+    (supplierInvoices || []).forEach((inv) => {
+      supplierIdByInvoiceId[inv.id] = inv.supplier_id;
+    });
+    const retentionsBySupplier = {};
+    allRetentions.forEach((rp) => {
+      const sid = supplierIdByInvoiceId[rp.supplier_invoice_id];
+      if (sid == null) return;
+      if (!retentionsBySupplier[sid]) retentionsBySupplier[sid] = [];
+      retentionsBySupplier[sid].push(rp);
+    });
+
     const ordersBySupplier = {};
     (paymentOrders || []).forEach((po) => {
       if (po.supplier_id == null) return;
@@ -340,10 +427,12 @@ self.getAllSupplierAccounts = async (req, res) => {
       const supplierCashflow = cashflowByProvider[supplier.id] || [];
       const supplierControlInvoices = invoicesBySupplier[supplier.id] || [];
       const supplierOrders = ordersBySupplier[supplier.id] || [];
+      const supplierRetentions = retentionsBySupplier[supplier.id] || [];
       const summary = computeSummary(
         supplierCashflow,
         supplierControlInvoices,
-        supplierOrders
+        supplierOrders,
+        supplierRetentions
       );
 
       return {
@@ -352,7 +441,8 @@ self.getAllSupplierAccounts = async (req, res) => {
         movement_count:
           supplierCashflow.length +
           supplierControlInvoices.length +
-          supplierOrders.length,
+          supplierOrders.length +
+          supplierRetentions.length,
       };
     });
 
@@ -444,10 +534,16 @@ self.getSupplierAccount = async (req, res) => {
 
     if (paymentOrdersError) throw paymentOrdersError;
 
+    const invoiceIds = (supplierInvoices || []).map((inv) => inv.id);
+    const retentions = invoiceIds.length
+      ? await fetchRetentionsBySupplierInvoiceIds(invoiceIds)
+      : [];
+
     const { movements, summary } = await buildMergedAccountData(
       cashflowRows,
       supplierInvoices,
-      paymentOrders
+      paymentOrders,
+      retentions
     );
 
     return res.json({
