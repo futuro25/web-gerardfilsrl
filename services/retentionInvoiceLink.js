@@ -36,10 +36,15 @@ function buildInvoiceLinkMeta(invoices, cuitBySupplierId = {}) {
       normNum: normalizeInvoiceNumber(inv.invoice_number),
       normCuit: normalizeCuit(cuit),
       movementId: inv.account_movement_id ?? null,
+      total: roundMoney(parseAmount(inv.total ?? inv.amount)),
     });
   });
 
   return { invoiceById, invoiceIdByMovementId, meta };
+}
+
+function amountsRoughlyEqual(a, b, tolerance = 1) {
+  return Math.abs(parseAmount(a) - parseAmount(b)) <= tolerance;
 }
 
 function resolveInvoiceIdForRetention(row, invoiceIdByMovementId, meta) {
@@ -54,15 +59,35 @@ function resolveInvoiceIdForRetention(row, invoiceIdByMovementId, meta) {
   }
   const rpNum = normalizeInvoiceNumber(row.invoice_number);
   const rpCuit = normalizeCuit(row.supplier_cuit);
-  if (!rpNum) return null;
-  for (const inv of meta) {
-    if (inv.normNum === rpNum && inv.normCuit === rpCuit) {
-      return inv.id;
-    }
-    if (inv.normNum === rpNum && !inv.normCuit && !rpCuit) {
-      return inv.id;
+  if (rpNum) {
+    for (const inv of meta) {
+      if (inv.normNum === rpNum && inv.normCuit === rpCuit) {
+        return inv.id;
+      }
+      if (inv.normNum === rpNum && !inv.normCuit && !rpCuit) {
+        return inv.id;
+      }
     }
   }
+
+  if (!rpCuit) return null;
+
+  const rpTotal = parseAmount(row.total_amount);
+  const rpSettled = roundMoney(
+    parseAmount(row.total_to_pay) + parseAmount(row.retention_amount)
+  );
+
+  const amountCandidates = meta.filter((inv) => {
+    if (inv.normCuit !== rpCuit) return false;
+    if (rpTotal > 0 && amountsRoughlyEqual(inv.total, rpTotal)) return true;
+    if (rpSettled > 0 && amountsRoughlyEqual(inv.total, rpSettled)) return true;
+    return false;
+  });
+
+  if (amountCandidates.length === 1) {
+    return amountCandidates[0].id;
+  }
+
   return null;
 }
 
@@ -125,7 +150,7 @@ async function loadInvoicesForRetentionLink(invoiceIds) {
   const { data, error } = await supabase
     .from("supplier_invoices")
     .select(
-      "id, supplier_id, account_movement_id, invoice_number, supplier:suppliers(cuit)"
+      "id, supplier_id, account_movement_id, invoice_number, total, amount, supplier:suppliers(cuit)"
     )
     .in("id", invoiceIds)
     .is("deleted_at", null);
@@ -146,7 +171,7 @@ async function fetchRetentionPaymentRowsForInvoices(invoices) {
   ];
 
   const selectFields =
-    "id, supplier_invoice_id, account_movement_id, retention_amount, issue_date, category_code, invoice_number, supplier_cuit";
+    "id, supplier_invoice_id, account_movement_id, retention_amount, total_amount, total_to_pay, issue_date, category_code, invoice_number, supplier_cuit";
 
   const rowsById = new Map();
 
@@ -176,7 +201,7 @@ async function fetchRetentionPaymentRowsForInvoices(invoices) {
   const normNums = [...new Set(meta.map((m) => m.normNum).filter(Boolean))];
   const normCuits = [...new Set(meta.map((m) => m.normCuit).filter(Boolean))];
 
-  if (normNums.length) {
+  if (normNums.length || normCuits.length) {
     const { data: orphans, error: orphanErr } = await supabase
       .from("retention_payments")
       .select(selectFields)
@@ -188,9 +213,21 @@ async function fetchRetentionPaymentRowsForInvoices(invoices) {
     (orphans || []).forEach((row) => {
       const rpNum = normalizeInvoiceNumber(row.invoice_number);
       const rpCuit = normalizeCuit(row.supplier_cuit);
-      if (!rpNum || !normNums.includes(rpNum)) return;
-      if (normCuits.length && rpCuit && !normCuits.includes(rpCuit)) return;
-      rowsById.set(row.id, row);
+      if (rpNum && normNums.includes(rpNum)) {
+        if (normCuits.length && rpCuit && !normCuits.includes(rpCuit)) return;
+        rowsById.set(row.id, row);
+        return;
+      }
+      if (!rpNum && rpCuit && normCuits.includes(rpCuit)) {
+        const invoiceId = resolveInvoiceIdForRetention(
+          row,
+          {},
+          meta.filter((m) => m.normCuit === rpCuit)
+        );
+        if (invoiceId != null) {
+          rowsById.set(row.id, row);
+        }
+      }
     });
   }
 
@@ -261,6 +298,7 @@ async function resolveControlInvoiceLink({
   accountMovementId = null,
   invoiceNumber = null,
   supplierCuit = null,
+  totalAmount = null,
 }) {
   if (supplierInvoiceId) {
     const { data, error } = await supabase
@@ -299,7 +337,7 @@ async function resolveControlInvoiceLink({
 
   const norm = normalizeInvoiceNumber(invoiceNumber);
   const cuit = normalizeCuit(supplierCuit);
-  if (!norm || !cuit) return null;
+  if (!cuit) return null;
 
   const { data: suppliers, error: supErr } = await supabase
     .from("suppliers")
@@ -314,21 +352,40 @@ async function resolveControlInvoiceLink({
 
   const { data: invoices, error: invErr } = await supabase
     .from("supplier_invoices")
-    .select("id, account_movement_id, invoice_number")
+    .select("id, account_movement_id, invoice_number, total, amount")
     .eq("supplier_id", supplier.id)
     .is("deleted_at", null);
   if (invErr) throw invErr;
 
-  const match = (invoices || []).find(
-    (inv) => normalizeInvoiceNumber(inv.invoice_number) === norm
-  );
-  if (!match) return null;
+  if (norm) {
+    const match = (invoices || []).find(
+      (inv) => normalizeInvoiceNumber(inv.invoice_number) === norm
+    );
+    if (match) {
+      return {
+        supplierInvoiceId: match.id,
+        accountMovementId: match.account_movement_id ?? null,
+        invoiceNumber: match.invoice_number || invoiceNumber,
+      };
+    }
+  }
 
-  return {
-    supplierInvoiceId: match.id,
-    accountMovementId: match.account_movement_id ?? null,
-    invoiceNumber: match.invoice_number || invoiceNumber,
-  };
+  const totalHint = parseAmount(totalAmount);
+  if (totalHint > 0) {
+    const amountMatches = (invoices || []).filter((inv) =>
+      amountsRoughlyEqual(inv.total ?? inv.amount, totalHint)
+    );
+    if (amountMatches.length === 1) {
+      const match = amountMatches[0];
+      return {
+        supplierInvoiceId: match.id,
+        accountMovementId: match.account_movement_id ?? null,
+        invoiceNumber: match.invoice_number || invoiceNumber,
+      };
+    }
+  }
+
+  return null;
 }
 
 async function persistRetentionInvoiceLink(retentionId, supplierInvoiceId) {

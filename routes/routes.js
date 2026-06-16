@@ -501,6 +501,10 @@ router.post("/uploads/invoice-image", upload.single("file"), (req, res, next) =>
   UploadController.uploadInvoiceImage(req, res, next)
 );
 
+router.post("/uploads/delivery-document", upload.single("file"), (req, res, next) =>
+  UploadController.uploadDeliveryDocument(req, res, next)
+);
+
 router.get("/uploads/invoice-image-url", (req, res, next) =>
   UploadController.getInvoiceImageUrl(req, res, next)
 );

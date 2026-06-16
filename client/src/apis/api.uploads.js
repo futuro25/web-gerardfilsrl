@@ -15,6 +15,21 @@ export const uploadInvoiceImage = async (file) => {
   return res.json();
 };
 
+export const uploadDeliveryDocument = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${BASE_URL}/delivery-document`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Error al subir el comprobante");
+  }
+  return res.json();
+};
+
 export const fetchInvoiceImageUrl = async (key) => {
   const res = await fetch(
     `${BASE_URL}/invoice-image-url?key=${encodeURIComponent(key)}`,

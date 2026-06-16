@@ -27,3 +27,19 @@ WHERE rp.deleted_at IS NULL
   AND rp.supplier_invoice_id IS NULL
   AND rp.account_movement_id IS NOT NULL
   AND si.account_movement_id = rp.account_movement_id;
+
+-- Sin número de factura: vincular por importe total + CUIT (tolerancia $1).
+UPDATE retention_payments rp
+SET
+  supplier_invoice_id = si.id,
+  account_movement_id = COALESCE(rp.account_movement_id, si.account_movement_id)
+FROM supplier_invoices si
+JOIN suppliers s ON s.id = si.supplier_id
+WHERE rp.deleted_at IS NULL
+  AND si.deleted_at IS NULL
+  AND rp.supplier_invoice_id IS NULL
+  AND (rp.invoice_number IS NULL OR btrim(rp.invoice_number) = '')
+  AND rp.total_amount IS NOT NULL
+  AND abs(rp.total_amount - COALESCE(si.total, si.amount)) <= 1
+  AND regexp_replace(rp.supplier_cuit, '[^0-9]', '', 'g')
+    = regexp_replace(s.cuit, '[^0-9]', '', 'g');

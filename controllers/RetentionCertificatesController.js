@@ -480,6 +480,7 @@ self.createRetentionPayment = async (req, res) => {
         accountMovementId: linkedAccountMovementId,
         invoiceNumber: resolvedInvoiceNumber,
         supplierCuit,
+        totalAmount,
       });
       if (link) {
         parsedSupplierInvoiceId = link.supplierInvoiceId;

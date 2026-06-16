@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { EditIcon, TrashIcon, EyeIcon, CloseIcon } from "./icons";
@@ -8,6 +8,7 @@ import { Input } from "./common/Input";
 import Button from "./common/Button";
 import Spinner from "./common/Spinner";
 import SelectComboBox from "./common/SelectComboBox";
+import MovementDocumentUpload from "./MovementDocumentUpload";
 import { get, sortBy } from "lodash";
 
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
@@ -20,6 +21,10 @@ import {
 import { useDeliveryNotesQuery } from "../apis/api.deliverynotes";
 import { useOrdersQuery } from "../apis/api.orders";
 import { useClientsQuery } from "../apis/api.clients";
+import {
+  uploadDeliveryDocument,
+  fetchInvoiceImageUrl,
+} from "../apis/api.uploads";
 import {
   queryDeliveryKey,
   queryClientsKey,
@@ -37,6 +42,9 @@ export default function Deliveries() {
   const [amountWithTaxes, setAmountWithTaxes] = useState(0);
   const [client, setClient] = useState(null);
   const [deliveryNote, setDeliveryNote] = useState(null);
+  const [withoutRemito, setWithoutRemito] = useState(false);
+  const [documentUrl, setDocumentUrl] = useState(null);
+  const documentUploadRef = useRef(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -111,20 +119,68 @@ export default function Deliveries() {
     setAmountWithTaxes(getTotalAmount(taxes, watchedAmount));
   }, [watchedAmount, taxes]);
 
-  const getDeliverynoteDefaultValue = () => {
-    // buscar en deliveryNotes el invoice_id del selectedDelivery
-    if (selectedDelivery && deliveryNotes) {
-      const deliveryNoteFound = deliveryNotes.find(
-        (dn) => dn.invoice_id === selectedDelivery.id
-      );
-      if (deliveryNoteFound) {
-        return {
-          id: deliveryNoteFound.id,
-          name: getLabelDeliveryNote(deliveryNoteFound),
-          label: getLabelDeliveryNote(deliveryNoteFound),
-        };
-      }
+  useEffect(() => {
+    if (!viewOnly || !selectedDelivery?.image_key) {
+      setDocumentUrl(null);
+      return;
     }
+    let cancelled = false;
+    fetchInvoiceImageUrl(selectedDelivery.image_key)
+      .then((res) => {
+        if (!cancelled) setDocumentUrl(res.url);
+      })
+      .catch(() => {
+        if (!cancelled) setDocumentUrl(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewOnly, selectedDelivery?.image_key]);
+
+  const getLinkedDeliveryNote = (delivery) =>
+    deliveryNotes?.find((dn) => dn.invoice_id === delivery?.id) || null;
+
+  const getLabelDeliveryNote = (note) => {
+    const remitoLabel = note.remito_number || note.number || note.id;
+    return `Remito ${remitoLabel}${note.order_number ? ` · Pedido ${note.order_number}` : ""}`;
+  };
+
+  const deliveryNoteOptions = useMemo(() => {
+    if (!deliveryNotes?.length || !client?.id || withoutRemito) return [];
+    return deliveryNotes
+      .filter((dn) => {
+        const order = orders?.find((o) => o.id === dn.order_id);
+        if (order?.client_id !== client.id) return false;
+        if (!dn.invoice_id) return true;
+        if (selectedDelivery && dn.invoice_id === selectedDelivery.id) return true;
+        return false;
+      })
+      .map((dn) => ({
+        id: dn.id,
+        name: getLabelDeliveryNote(dn),
+        orderNumber: dn.order_number,
+        label: getLabelDeliveryNote(dn),
+      }));
+  }, [
+    deliveryNotes,
+    orders,
+    client?.id,
+    withoutRemito,
+    selectedDelivery?.id,
+  ]);
+
+  const getDeliverynoteDefaultValue = (delivery) => {
+    const deliveryNoteFound = delivery
+      ? getLinkedDeliveryNote(delivery)
+      : null;
+    if (deliveryNoteFound) {
+      return {
+        id: deliveryNoteFound.id,
+        name: getLabelDeliveryNote(deliveryNoteFound),
+        label: getLabelDeliveryNote(deliveryNoteFound),
+      };
+    }
+    return null;
   };
 
   const createMutation = useMutation({
@@ -175,53 +231,68 @@ export default function Deliveries() {
     try {
       setFormSubmitted(true);
 
-      // Validar que todos los campos del número de factura estén completos
       if (!deliveryLetter || !deliveryFirst4 || !deliveryLast8) {
         return;
       }
 
-      // Validar que hay un cliente seleccionado
       if (!data.client || !data.client.id) {
+        return;
+      }
+
+      if (!withoutRemito && !data.deliverynote?.id && !deliveryNote?.id) {
         return;
       }
 
       setIsLoadingSubmit(true);
 
       const concatenatedDeliveryNumber = concatenateDeliveryNumber();
+      const selectedDnId = withoutRemito
+        ? null
+        : data.deliverynote?.id || deliveryNote?.id || null;
+      const linkedOrder = selectedDnId
+        ? deliveryNotes?.find((dn) => dn.id === selectedDnId)
+        : null;
       const orderType =
-        orders?.find((o) => o.order_number === deliveryNote?.orderNumber)
-          ?.order_type || null;
+        orders?.find((o) => o.id === linkedOrder?.order_id)?.order_type || null;
 
       const body = {
         client_id: data.client.id,
         amount: data.amount,
         description: data.description,
         invoice_number: concatenatedDeliveryNumber,
-        delivery_note: deliveryNote.id || null,
+        delivery_note: selectedDnId,
         type: orderType,
         total: getTotalAmount(taxes, data.amount),
+        taxes: taxes.filter((t) => t.value !== ""),
       };
 
-      if (selectedDelivery) {
-        updateMutation.mutate({ ...body, id: selectedDelivery.id });
-      } else {
-        createMutation.mutate(body);
+      const docFile = documentUploadRef.current?.getImageFile?.();
+      if (docFile) {
+        const uploadRes = await uploadDeliveryDocument(docFile);
+        body.image_key = uploadRes?.key || null;
+      } else if (selectedDelivery?.image_key) {
+        body.image_key = selectedDelivery.image_key;
       }
+
+      if (selectedDelivery) {
+        const prevDn = getLinkedDeliveryNote(selectedDelivery);
+        await updateMutation.mutateAsync({
+          ...body,
+          id: selectedDelivery.id,
+          previous_delivery_note: prevDn?.id || null,
+        });
+      } else {
+        await createMutation.mutateAsync(body);
+      }
+
+      documentUploadRef.current?.reset();
       setIsLoadingSubmit(false);
       setStage("LIST");
     } catch (e) {
       console.log(e);
+      setIsLoadingSubmit(false);
+      window.alert(e.message || "No se pudo guardar la factura");
     }
-  };
-
-  const getLabelDeliveryNote = (deliveryNote) => {
-    console.log(deliveryNote);
-    return (
-      "Nro: " +
-      deliveryNote.id +
-      " - " +
-      utils.formatAmount(deliveryNote.amount)
-    );
   };
 
   const getClientFantasyName = (id) =>
@@ -285,6 +356,22 @@ export default function Deliveries() {
       }
     }
 
+    const linkedDn = getLinkedDeliveryNote(delivery);
+    if (linkedDn) {
+      setWithoutRemito(false);
+      const dnOption = {
+        id: linkedDn.id,
+        name: getLabelDeliveryNote(linkedDn),
+        label: getLabelDeliveryNote(linkedDn),
+      };
+      setDeliveryNote(dnOption);
+      setValue("deliverynote", dnOption);
+    } else {
+      setWithoutRemito(true);
+      setDeliveryNote(null);
+      setValue("deliverynote", null);
+    }
+
     setStage("CREATE");
   };
 
@@ -303,6 +390,9 @@ export default function Deliveries() {
     setDeliveryLast8("");
     setFormSubmitted(false);
     setClient(null);
+    setDeliveryNote(null);
+    setWithoutRemito(false);
+    documentUploadRef.current?.reset();
     setStage("CREATE");
   };
 
@@ -315,7 +405,11 @@ export default function Deliveries() {
     setDeliveryLast8("");
     setFormSubmitted(false);
     setClient(null);
+    setDeliveryNote(null);
+    setWithoutRemito(false);
+    setDocumentUrl(null);
     setTaxes([{ type: "IVA", value: "" }]);
+    documentUploadRef.current?.reset();
     reset();
     setStage("LIST");
   };
@@ -547,56 +641,79 @@ export default function Deliveries() {
                         {/* ================ */}
                         <tr>
                           <td>
-                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
+                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-start">
                               <label className="text-slate-500 md:w-20 font-bold">
                                 Remito:
                               </label>
-                              <div className="flex flex-col gap-2">
+                              <div className="flex flex-col gap-2 w-full">
                                 {viewOnly ? (
-                                  <>{selectedDelivery?.id}</>
+                                  <>
+                                    {getLinkedDeliveryNote(selectedDelivery)
+                                      ? getLabelDeliveryNote(
+                                          getLinkedDeliveryNote(selectedDelivery)
+                                        )
+                                      : "Sin remito asociado"}
+                                  </>
                                 ) : (
-                                  <Controller
-                                    name="deliverynote"
-                                    control={control}
-                                    rules={{ required: true }}
-                                    defaultValue={getDeliverynoteDefaultValue(
-                                      selectedDelivery
-                                    )}
-                                    render={({ field }) => (
-                                      <SelectComboBox
-                                        options={deliveryNotes
-                                          .filter(
-                                            (dn) => dn.client_id === client?.id
-                                          )
-                                          .map((deliveryNote) => ({
-                                            id: deliveryNote.id,
-                                            name: getLabelDeliveryNote(
-                                              deliveryNote
-                                            ),
-                                            orderNumber:
-                                              deliveryNote.order_number,
-                                            label:
-                                              getLabelDeliveryNote(
-                                                deliveryNote
-                                              ),
-                                          }))}
-                                        value={field.value}
-                                        onChange={(option) => {
-                                          field.onChange(option);
-                                          setValue("deliverynote", option);
-                                          setDeliveryNote(option);
-                                          trigger("deliverynote");
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter") {
-                                            e.preventDefault();
+                                  <>
+                                    <label className="flex items-center gap-2 text-sm text-slate-600">
+                                      <input
+                                        type="checkbox"
+                                        checked={withoutRemito}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setWithoutRemito(checked);
+                                          if (checked) {
+                                            setDeliveryNote(null);
+                                            setValue("deliverynote", null);
                                           }
                                         }}
                                       />
+                                      Emitir sin remito asociado
+                                    </label>
+                                    {!withoutRemito && (
+                                      <Controller
+                                        name="deliverynote"
+                                        control={control}
+                                        rules={{
+                                          required: !withoutRemito
+                                            ? "Seleccioná un remito"
+                                            : false,
+                                        }}
+                                        defaultValue={getDeliverynoteDefaultValue(
+                                          selectedDelivery
+                                        )}
+                                        render={({ field }) => (
+                                          <SelectComboBox
+                                            options={deliveryNoteOptions}
+                                            value={field.value}
+                                            onChange={(option) => {
+                                              field.onChange(option);
+                                              setValue("deliverynote", option);
+                                              setDeliveryNote(option);
+                                              trigger("deliverynote");
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                              }
+                                            }}
+                                          />
+                                        )}
+                                      />
                                     )}
-                                  />
+                                    {!withoutRemito &&
+                                      formSubmitted &&
+                                      !deliveryNote?.id &&
+                                      !watch("deliverynote")?.id && (
+                                        <span className="text-red-500 text-sm">
+                                          * Seleccioná un remito o marcá emitir
+                                          sin remito
+                                        </span>
+                                      )}
+                                  </>
                                 )}
-                                {errors.deliverynote && (
+                                {errors.deliverynote && !withoutRemito && (
                                   <span className="text-red-500 text-sm">
                                     * Obligatorio
                                   </span>
@@ -824,6 +941,49 @@ export default function Deliveries() {
                                       * Obligatorio
                                     </span>
                                   )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* ================ */}
+                        <tr>
+                          <td>
+                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-start">
+                              <label className="text-slate-500 md:w-20 font-bold">
+                                PDF:
+                              </label>
+                              {viewOnly ? (
+                                <div className="flex flex-col gap-2">
+                                  {selectedDelivery?.image_key && documentUrl ? (
+                                    <a
+                                      href={documentUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm text-blue-600 underline"
+                                    >
+                                      Ver comprobante PDF
+                                    </a>
+                                  ) : selectedDelivery?.image_key ? (
+                                    <span className="text-sm text-slate-500">
+                                      Comprobante cargado
+                                    </span>
+                                  ) : (
+                                    <span className="text-sm text-slate-400">
+                                      Sin comprobante
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="flex-1 max-w-md">
+                                  <MovementDocumentUpload
+                                    ref={documentUploadRef}
+                                    savedImageKey={
+                                      selectedDelivery?.image_key || null
+                                    }
+                                    label="Factura PDF (opcional)"
+                                    hint="Arrastrá el PDF acá o hacé click para subir"
+                                  />
                                 </div>
                               )}
                             </div>
