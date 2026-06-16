@@ -151,6 +151,10 @@ function buildMovementUpdateFromBody(body) {
 
   applyEgresoSupplierFields(update, body);
 
+  if (body.image_key != null && body.image_key !== "") {
+    update.image_key = body.image_key;
+  }
+
   return { update };
 }
 
@@ -723,6 +727,10 @@ self.createMovement = async (req, res) => {
     // Ingresos con cheque (toggle UI)
     if (movement.type === "INGRESO" && movement.is_cheque && movement.cheque_due_date) {
       movement.date = movement.cheque_due_date;
+    }
+
+    if (req.body.image_key) {
+      movement.image_key = req.body.image_key;
     }
 
     if (movement.supplier_id && movement.invoice_number) {

@@ -200,6 +200,14 @@ async function cascadeDeleteMovementAndRelated(movement) {
     });
   }
 
+  if (!invoice && movement.image_key) {
+    try {
+      await r2.deleteObject(movement.image_key);
+    } catch (e) {
+      console.error("Error deleting movement image:", e.message);
+    }
+  }
+
   if (movement.paycheck_id) {
     const { error: paycheckError } = await supabase
       .from("paychecks")

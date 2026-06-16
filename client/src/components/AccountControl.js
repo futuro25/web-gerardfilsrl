@@ -33,6 +33,7 @@ import {
   querySupplierAccountKey,
 } from "../apis/queryKeys";
 import InvoiceDataFields from "./InvoiceDataFields";
+import MovementDocumentUpload from "./MovementDocumentUpload";
 import EgresoSupplierFields from "./EgresoSupplierFields";
 import PaymentOrderFields, { PAYMENT_METHOD_LABELS } from "./PaymentOrderFields";
 import PaymentOrderDialog from "./PaymentOrderDialog";
@@ -41,6 +42,7 @@ import {
   createSupplierInvoice,
   updateSupplierInvoice,
   patchSupplierInvoiceDates,
+  setSupplierInvoiceImage,
 } from "../apis/api.supplierinvoices";
 import { uploadInvoiceImage } from "../apis/api.uploads";
 import {
@@ -226,6 +228,7 @@ export default function AccountControl() {
   const paymentOrderFieldsRef = useRef(null);
   const egresoPaymentFieldsRef = useRef(null);
   const egresoSupplierFieldsRef = useRef(null);
+  const movementDocumentRef = useRef(null);
   /** Orden de listado por fecha: coincide con el API; default asc (más antiguas primero). */
   const [dateOrder, setDateOrder] = useState("asc");
 
@@ -571,6 +574,9 @@ export default function AccountControl() {
 
   const requiresSupplierInvoiceNumber = expenseCategory === "SERVICIOS";
 
+  const showsMovementDocumentUpload =
+    movementType === "EGRESO" && !requiresInvoice;
+
   const movementHasPaymentOrder = Boolean(
     selectedMovement?.has_payment_order
   );
@@ -630,6 +636,14 @@ export default function AccountControl() {
         await patchSupplierInvoiceDates(
           selectedMovement.supplier_invoice_id,
           docDate
+        );
+      }
+      const imageFile = invoiceFieldsRef.current.getImageFile?.();
+      if (imageFile) {
+        const uploadRes = await uploadInvoiceImage(imageFile);
+        await setSupplierInvoiceImage(
+          selectedMovement.supplier_invoice_id,
+          uploadRes?.key || null
         );
       }
     }
@@ -848,6 +862,14 @@ export default function AccountControl() {
         body.payment_method = null;
       }
 
+      if (showsMovementDocumentUpload && movementDocumentRef.current) {
+        const imageFile = movementDocumentRef.current.getImageFile?.();
+        if (imageFile) {
+          const uploadRes = await uploadInvoiceImage(imageFile);
+          body.image_key = uploadRes?.key || null;
+        }
+      }
+
       let movementId;
       if (selectedMovement) {
         const updated = await updateMutation.mutateAsync({ ...body, id: selectedMovement.id });
@@ -890,6 +912,7 @@ export default function AccountControl() {
       paymentOrderFieldsRef.current?.reset?.();
       egresoPaymentFieldsRef.current?.reset?.();
       egresoSupplierFieldsRef.current?.reset?.();
+      movementDocumentRef.current?.reset?.();
       setPage(1);
       setStage("LIST");
       await refreshMovementsList();
@@ -947,6 +970,7 @@ export default function AccountControl() {
     paymentOrderFieldsRef.current?.reset?.();
     egresoPaymentFieldsRef.current?.reset?.();
     egresoSupplierFieldsRef.current?.reset?.();
+    movementDocumentRef.current?.reset?.();
     reset({
       movement_kind: "UNICA VEZ",
       date: DateTime.now().toFormat("yyyy-MM-dd"),
@@ -1788,6 +1812,16 @@ export default function AccountControl() {
               )}
 
               </fieldset>
+
+              {showsMovementDocumentUpload && (
+                <div className="border-t border-slate-200 pt-4">
+                  <MovementDocumentUpload
+                    key={`movement-doc-${selectedMovement?.id ?? "new"}-${expenseCategory}`}
+                    ref={movementDocumentRef}
+                    savedImageKey={selectedMovement?.image_key || null}
+                  />
+                </div>
+              )}
 
               {requiresInvoice && (
                 <InvoiceDataFields

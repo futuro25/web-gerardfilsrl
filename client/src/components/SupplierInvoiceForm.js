@@ -3,18 +3,20 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
 import { sortBy } from "lodash";
-import { ExternalLinkIcon, UploadIcon } from "lucide-react";
+import { ExternalLinkIcon } from "lucide-react";
 import { DateTime } from "luxon";
 import { Input } from "./common/Input";
 import Button from "./common/Button";
 import SelectComboBox from "./common/SelectComboBox";
 import Spinner from "./common/Spinner";
 import SupplierQuickCreateDialog from "./SupplierQuickCreateDialog";
+import MovementDocumentUpload from "./MovementDocumentUpload";
 import * as utils from "../utils/utils";
 import { useSuppliersQuery } from "../apis/api.suppliers";
 import { fetchSupplierInvoiceByAccountMovement, checkDuplicateSupplierInvoice } from "../apis/api.supplierinvoices";
@@ -66,8 +68,7 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
   const [invoiceLast8, setInvoiceLast8] = useState("");
   const [withoutInvoice, setWithoutInvoice] = useState(false);
   const [supplierQuickOpen, setSupplierQuickOpen] = useState(false);
-  const [imageFile, setImageFile] = useState(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const documentUploadRef = useRef(null);
 
   const {
     register,
@@ -158,7 +159,7 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
       setValue("supplier", null);
     }
 
-    setImageFile(null);
+    documentUploadRef.current?.reset();
   };
 
   useEffect(() => {
@@ -250,7 +251,7 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
     setInvoiceFirst4("");
     setInvoiceLast8("");
     setWithoutInvoice(false);
-    setImageFile(null);
+    documentUploadRef.current?.reset();
     reset({ amount: "", description: "", document_date: today });
     setValue("supplier", null);
   };
@@ -266,7 +267,7 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
     },
     getTotalAmount: () => amountWithTaxes,
     getNetAmount: () => parseFloat(getValues("amount")) || 0,
-    getImageFile: () => imageFile,
+    getImageFile: () => documentUploadRef.current?.getImageFile() ?? null,
     getValues,
   }));
 
@@ -295,7 +296,8 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
       <div className={wrapperClass}>
         {datesOnlyEdit && (
           <p className="text-xs text-amber-800">
-            Hay órdenes de pago activas: solo puede editar la fecha del comprobante.
+            Hay órdenes de pago activas: solo puede editar la fecha del comprobante
+            y adjuntar o cambiar la imagen de la factura.
           </p>
         )}
 
@@ -501,69 +503,20 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
           </div>
         </div>
 
-        {showImageUpload && (
-          <div>
-            <label className="text-xs font-sans text-gray-900 mb-2 block">
-              Imagen de la factura (opcional)
-            </label>
-            <label
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragEnter={(e) => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                setIsDragging(false);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                setIsDragging(false);
-                const f = e.dataTransfer?.files?.[0];
-                if (f) setImageFile(f);
-              }}
-              className={utils.cn(
-                "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors",
-                isDragging
-                  ? "border-blue-400 bg-blue-50 text-blue-600"
-                  : "border-slate-300 bg-slate-50 text-slate-400 hover:border-blue-300 hover:bg-blue-50/40"
-              )}
-            >
-              <UploadIcon className="h-7 w-7" />
-              <span className="text-sm font-medium">
-                Arrastrá la factura acá o hacé click para subir
-              </span>
-              <span className="text-xs">Imagen o PDF</span>
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                className="hidden"
-                onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-              />
-            </label>
-            {imageFile && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                <span className="truncate">{imageFile.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setImageFile(null)}
-                  className="text-red-500 font-bold px-1"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-            {hasSavedInvoice && linkedInvoice?.image_key && !imageFile && (
-              <p className="text-xs text-slate-500 mt-2">
-                Ya hay una imagen cargada para esta factura.
-              </p>
-            )}
-          </div>
-        )}
         </fieldset>
+
+        {showImageUpload && (
+          <MovementDocumentUpload
+            ref={documentUploadRef}
+            savedImageKey={
+              hasSavedInvoice && linkedInvoice?.image_key
+                ? linkedInvoice.image_key
+                : null
+            }
+            label="Imagen de la factura (opcional)"
+            hint="Arrastrá la factura acá o hacé click para subir"
+          />
+        )}
       </div>
 
       <SupplierQuickCreateDialog
