@@ -11,7 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { sortBy } from "lodash";
 import { ExternalLinkIcon } from "lucide-react";
 import { DateTime } from "luxon";
-import { Input } from "./common/Input";
+import { Input, NativeNumberInput } from "./common/Input";
 import Button from "./common/Button";
 import SelectComboBox from "./common/SelectComboBox";
 import Spinner from "./common/Spinner";
@@ -466,8 +466,7 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
                   </option>
                 ))}
               </select>
-              <input
-                type="number"
+              <NativeNumberInput
                 placeholder="Valor"
                 value={tax.value}
                 onChange={(e) => {

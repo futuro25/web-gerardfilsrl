@@ -1,5 +1,5 @@
 import {VariantPropsOf, variantProps} from 'classname-variants/react';
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 import {cn, tw} from '../../utils/utils';
 
@@ -40,8 +40,58 @@ const helperTextStyle = variantProps({
   },
 });
 
+function mergeRefs(...refs) {
+  return (value) => {
+    refs.forEach((ref) => {
+      if (typeof ref === 'function') {
+        ref(value);
+      } else if (ref != null) {
+        ref.current = value;
+      }
+    });
+  };
+}
+
+/** Listener nativo (non-passive) para bloquear scroll que altera inputs numéricos. */
+function useNumberInputWheelGuard(enabled) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !enabled) return;
+
+    const handler = (e) => {
+      if (document.activeElement === el) {
+        e.preventDefault();
+      }
+    };
+
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, [enabled]);
+
+  return ref;
+}
+
+/** Input numérico nativo con protección contra scroll (p. ej. impuestos en facturas). */
+export const NativeNumberInput = React.forwardRef(function NativeNumberInput(
+  { className, ...props },
+  ref
+) {
+  const wheelGuardRef = useNumberInputWheelGuard(true);
+
+  return (
+    <input
+      ref={mergeRefs(ref, wheelGuardRef)}
+      type="number"
+      className={className}
+      {...props}
+    />
+  );
+});
+
 export const Input = React.forwardRef(
-  ({srOnly, className, leftElement, rightElement, helperText, intent = 'default', size = 'md', ...props}, ref) => {
+  ({srOnly, className, leftElement, rightElement, helperText, intent = 'default', size = 'md', type, ...props}, ref) => {
     const inputStyles = inputStyle({
       intent,
       size,
@@ -49,6 +99,7 @@ export const Input = React.forwardRef(
       hasLeftElement: !!leftElement,
     });
     const helperTextStyles = helperTextStyle({intent});
+    const wheelGuardRef = useNumberInputWheelGuard(type === 'number');
 
     return (
       <div className="w-full">
@@ -63,7 +114,13 @@ export const Input = React.forwardRef(
         </label>
         <div className="relative">
           {!!leftElement && <div className="absolute top-1/2 left-0 ml-2 -translate-y-1/2">{leftElement}</div>}
-          <input autoComplete='false' className={`${inputStyles.className} ${className}`} {...props} ref={ref} />
+          <input
+            autoComplete='false'
+            className={`${inputStyles.className} ${className}`}
+            type={type}
+            {...props}
+            ref={mergeRefs(ref, wheelGuardRef)}
+          />
           {!!rightElement && <div className="absolute top-1/2 right-0 mr-2 -translate-y-1/2">{rightElement}</div>}
         </div>
         {helperText && <p className={helperTextStyles.className}>{helperText}</p>}
