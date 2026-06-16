@@ -1,6 +1,9 @@
 "use strict";
 
 const supabase = require("../controllers/db");
+const {
+  getRetentionAmountsByInvoiceIds,
+} = require("./retentionInvoiceLink");
 
 function parseAmount(value) {
   const n = parseFloat(value);
@@ -54,25 +57,6 @@ async function getActiveOrdersForInvoice(supplierInvoiceId) {
     .order("created_at", { ascending: true });
   if (error) throw error;
   return data || [];
-}
-
-async function getRetentionAmountsByInvoiceIds(invoiceIds) {
-  if (!invoiceIds?.length) return {};
-  const { data, error } = await supabase
-    .from("retention_payments")
-    .select("supplier_invoice_id, retention_amount")
-    .in("supplier_invoice_id", invoiceIds)
-    .is("deleted_at", null);
-  if (error) throw error;
-
-  const map = {};
-  (data || []).forEach((row) => {
-    if (row.supplier_invoice_id == null) return;
-    map[row.supplier_invoice_id] = roundMoney(
-      (map[row.supplier_invoice_id] || 0) + parseAmount(row.retention_amount)
-    );
-  });
-  return map;
 }
 
 async function getInvoicePaymentSummary(invoice) {

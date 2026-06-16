@@ -1,6 +1,7 @@
 "use strict";
 
 const supabase = require("./db");
+const { fetchRetentionsForInvoices } = require("../services/retentionInvoiceLink");
 
 const self = {};
 
@@ -92,19 +93,6 @@ function cashflowMovementItems(cashflowRows, taxesByCashflowId) {
       taxes: taxesByCashflowId[cf.id] || [],
     };
   });
-}
-
-async function fetchRetentionsBySupplierInvoiceIds(supplierInvoiceIds) {
-  if (!supplierInvoiceIds.length) return [];
-  const { data, error } = await supabase
-    .from("retention_payments")
-    .select(
-      "id, supplier_invoice_id, account_movement_id, retention_amount, issue_date, category_code, invoice_number"
-    )
-    .in("supplier_invoice_id", supplierInvoiceIds)
-    .is("deleted_at", null);
-  if (error) throw error;
-  return data || [];
 }
 
 function retentionMovementItems(retentions) {
@@ -318,8 +306,8 @@ async function buildMergedAccountData(
   const invoiceIds = (supplierInvoices || []).map((inv) => inv.id);
   const retentionRows =
     retentions ??
-    (invoiceIds.length
-      ? await fetchRetentionsBySupplierInvoiceIds(invoiceIds)
+    (supplierInvoices?.length
+      ? await fetchRetentionsForInvoices(supplierInvoices)
       : []);
 
   const taxesByCashflowId = await fetchTaxesByCashflowIds(
@@ -370,7 +358,7 @@ self.getAllSupplierAccounts = async (req, res) => {
       await supabase
         .from("supplier_invoices")
         .select(
-          "id, supplier_id, amount, total, document_date, due_date, created_at, account_movement_id"
+          "id, supplier_id, amount, total, document_date, due_date, created_at, account_movement_id, invoice_number"
         )
         .is("deleted_at", null);
 
@@ -385,9 +373,8 @@ self.getAllSupplierAccounts = async (req, res) => {
 
     if (paymentOrdersError) throw paymentOrdersError;
 
-    const invoiceIds = (supplierInvoices || []).map((inv) => inv.id);
-    const allRetentions = invoiceIds.length
-      ? await fetchRetentionsBySupplierInvoiceIds(invoiceIds)
+    const allRetentions = (supplierInvoices || []).length
+      ? await fetchRetentionsForInvoices(supplierInvoices)
       : [];
     const supplierIdByInvoiceId = {};
     (supplierInvoices || []).forEach((inv) => {
@@ -534,9 +521,8 @@ self.getSupplierAccount = async (req, res) => {
 
     if (paymentOrdersError) throw paymentOrdersError;
 
-    const invoiceIds = (supplierInvoices || []).map((inv) => inv.id);
-    const retentions = invoiceIds.length
-      ? await fetchRetentionsBySupplierInvoiceIds(invoiceIds)
+    const retentions = (supplierInvoices || []).length
+      ? await fetchRetentionsForInvoices(supplierInvoices)
       : [];
 
     const { movements, summary } = await buildMergedAccountData(

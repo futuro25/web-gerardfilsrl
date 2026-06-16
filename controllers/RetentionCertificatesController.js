@@ -3,6 +3,10 @@
 const self = {};
 const supabase = require("./db.js");
 const _ = require("lodash");
+const {
+  resolveControlInvoiceLink,
+  persistRetentionInvoiceLink,
+} = require("../services/retentionInvoiceLink");
 
 // Escalas para cálculo de retenciones según RG 4525.
 // Fuente única: debe coincidir con client/src/utils/retention.js para que el
@@ -445,32 +449,16 @@ self.createRetentionPayment = async (req, res) => {
       accountMovementId,
     } = req.body;
 
-    const parsedSupplierInvoiceId =
+    let parsedSupplierInvoiceId =
       supplierInvoiceId != null && supplierInvoiceId !== ""
         ? Number(supplierInvoiceId)
         : null;
-    const parsedAccountMovementId =
+    let linkedAccountMovementId =
       accountMovementId != null && accountMovementId !== ""
         ? Number(accountMovementId)
         : null;
-
-    if (parsedSupplierInvoiceId) {
-      const { data: existing, error: existingErr } = await supabase
-        .from("retention_payments")
-        .select("id")
-        .eq("supplier_invoice_id", parsedSupplierInvoiceId)
-        .is("deleted_at", null)
-        .maybeSingle();
-      if (existingErr) throw existingErr;
-      if (existing) {
-        return res.json({
-          error: "Ya existe una retención registrada para esta factura.",
-        });
-      }
-    }
-
-    let linkedAccountMovementId = parsedAccountMovementId;
     let resolvedInvoiceNumber = invoiceNumber || "";
+
     if (parsedSupplierInvoiceId) {
       const { data: supplierInvoice, error: siErr } = await supabase
         .from("supplier_invoices")
@@ -484,6 +472,35 @@ self.createRetentionPayment = async (req, res) => {
       }
       if (!resolvedInvoiceNumber && supplierInvoice?.invoice_number) {
         resolvedInvoiceNumber = supplierInvoice.invoice_number;
+      }
+    }
+
+    if (!parsedSupplierInvoiceId) {
+      const link = await resolveControlInvoiceLink({
+        accountMovementId: linkedAccountMovementId,
+        invoiceNumber: resolvedInvoiceNumber,
+        supplierCuit,
+      });
+      if (link) {
+        parsedSupplierInvoiceId = link.supplierInvoiceId;
+        linkedAccountMovementId =
+          linkedAccountMovementId ?? link.accountMovementId ?? null;
+        resolvedInvoiceNumber = link.invoiceNumber || resolvedInvoiceNumber;
+      }
+    }
+
+    if (parsedSupplierInvoiceId) {
+      const { data: existing, error: existingErr } = await supabase
+        .from("retention_payments")
+        .select("id")
+        .eq("supplier_invoice_id", parsedSupplierInvoiceId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (existingErr) throw existingErr;
+      if (existing) {
+        return res.json({
+          error: "Ya existe una retención registrada para esta factura.",
+        });
       }
     }
 
@@ -531,6 +548,20 @@ self.createRetentionPayment = async (req, res) => {
       .single();
 
     if (paymentError) throw paymentError;
+
+    if (
+      parsedSupplierInvoiceId &&
+      newPayment.supplier_invoice_id == null
+    ) {
+      await persistRetentionInvoiceLink(
+        newPayment.id,
+        parsedSupplierInvoiceId
+      );
+      newPayment.supplier_invoice_id = parsedSupplierInvoiceId;
+      if (linkedAccountMovementId) {
+        newPayment.account_movement_id = linkedAccountMovementId;
+      }
+    }
 
     // No crear cashflow ni invoices - solo guardar datos del certificado
 
