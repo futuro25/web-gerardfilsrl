@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
@@ -182,9 +182,19 @@ export default function PaymentOrderDialog({
 
   const paymentMethod = watch("payment_method");
   const isCheque = paymentMethod === "CHEQUE";
+  const formInitializedFor = useRef(null);
 
   useEffect(() => {
-    if (!open || loading) return;
+    if (!open) {
+      formInitializedFor.current = null;
+      return;
+    }
+    if (loading) return;
+
+    const initKey = String(itemKey);
+    if (formInitializedFor.current === initKey) return;
+    formInitializedFor.current = initKey;
+
     reset({
       payment_method: "TRANSFERENCIA",
       payment_date: today,
@@ -193,9 +203,7 @@ export default function PaymentOrderDialog({
       cheque_number: "",
       cheque_bank: "",
     });
-    // Solo al abrir o cambiar de factura, cuando terminó de cargar.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, loading, itemKey, reset]);
+  }, [open, loading, itemKey, reset, suggestedPayAmount]);
 
   const mutation = useMutation({ mutationFn: createPaymentOrder });
 
