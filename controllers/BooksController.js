@@ -2,38 +2,16 @@
 
 const self = {};
 const supabase = require("./db");
-const { DateTime } = require("luxon");
-
-const _ = require("lodash");
+const {
+  buildComprasComprobantes,
+  buildVentasComprobantes,
+} = require("../services/fiscalBooksData");
 
 self.getVentasComprobantes = async (req, res) => {
   try {
     const { from, to } = req.query;
-    const { data: cashflows, error: cashflowsError } = await supabase
-      .from("cashflow")
-      .select("*, taxes(*)")
-      .like("type", "INGRESO")
-      .gte("date", from)
-      .lte("date", to)
-      .order("date", { ascending: false });
-
-    if (cashflowsError) throw cashflowsError;
-
-    const { data: clients, error: clientsError } = await supabase
-      .from("clients")
-      .select("*");
-
-    if (clientsError) throw clientsError;
-
-    const cashflowsWithSuppliers = cashflows.map((cf) => {
-      const client = clients.find((s) => s.id === +cf.provider);
-      return {
-        ...cf,
-        client: client || {},
-      };
-    });
-
-    res.json(cashflowsWithSuppliers);
+    const data = await buildVentasComprobantes(from, to);
+    res.json(data);
   } catch (e) {
     res.json({ error: e.message });
   }
@@ -42,38 +20,31 @@ self.getVentasComprobantes = async (req, res) => {
 self.getComprasComprobantes = async (req, res) => {
   try {
     const { from, to } = req.query;
-    const { data: cashflows, error: cashflowsError } = await supabase
-      .from("cashflow")
-      .select("*, taxes(*)")
-      .like("type", "EGRESO")
-      .gte("date", from)
-      .lte("date", to)
-      .order("date", { ascending: false });
-
-    if (cashflowsError) throw cashflowsError;
-
-    const { data: suppliers, error: suppliersError } = await supabase
-      .from("suppliers")
-      .select("*");
-
-    if (suppliersError) throw suppliersError;
-
-    const cashflowsWithSuppliers = cashflows.map((cf) => {
-      const supplier = suppliers.find((s) => s.id === +cf.provider);
-      return {
-        ...cf,
-        supplier: supplier || {},
-      };
-    });
-
-    res.json(cashflowsWithSuppliers);
+    const data = await buildComprasComprobantes(from, to);
+    res.json(data);
   } catch (e) {
     res.json({ error: e.message });
   }
 };
 
-self.getComprasAlicuotas = async (req, res) => {};
+self.getComprasAlicuotas = async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const data = await buildComprasComprobantes(from, to);
+    res.json(data);
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+};
 
-self.getVentasAlicuotas = async (req, res) => {};
+self.getVentasAlicuotas = async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const data = await buildVentasComprobantes(from, to);
+    res.json(data);
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+};
 
 module.exports = self;

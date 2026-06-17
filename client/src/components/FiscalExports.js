@@ -2,6 +2,13 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeftIcon, DocumentArrowDownIcon } from "@heroicons/react/24/solid";
 import React from "react";
 import { saveAs } from "file-saver";
+import {
+  formatSupplierCuit,
+  formatClientCuit,
+  getComprobanteTotal,
+  getNetoGravado,
+  getAlicuotaCodeFromRate,
+} from "../utils/fiscalExportFormat";
 
 const START_YEAR = 2025;
 
@@ -62,11 +69,7 @@ const FiscalExports = () => {
     return "000";
   };
 
-  const getAlicuotaCode = (valor) => {
-    if (valor === 0.105) return "0005";
-    if (valor === 0.27) return "0003";
-    return "0004";
-  };
+  const getAlicuotaCode = (valor) => getAlicuotaCodeFromRate(valor);
 
   const fetchComprasAnual = async () => {
     const fromDate = `${selectedYear}-01-01`;
@@ -104,16 +107,16 @@ const FiscalExports = () => {
       if (data.error) throw new Error(data.error);
 
       const lines = data.map((item) => {
-        const { reference, date, supplier, amount, taxes } = item;
+        const { reference, date, supplier, taxes } = item;
 
         const tipoComprobante = getTipoComprobante(reference);
         const puntoVenta = reference?.slice(1, 5) || "0000";
         const numeroComprobante = reference?.slice(6) || "0";
 
-        const cuit = pad(supplier?.id?.toString(), 11, "number");
+        const cuit = pad(formatSupplierCuit(supplier), 11, "number");
         const nombre = pad(supplier?.name || "", 30);
 
-        const total = formatNumber(amount);
+        const total = formatNumber(getComprobanteTotal(item));
         const noGravado = formatNumber(0);
         const exento = formatNumber(0);
 
@@ -198,14 +201,16 @@ const FiscalExports = () => {
         const numeroComprobante = reference?.slice(6) || "0";
 
         const tipoDoc = "80";
-        const cuit = pad(supplier?.id?.toString(), 11, "number");
+        const cuit = pad(formatSupplierCuit(supplier), 11, "number");
 
         const iva = taxes?.find((t) => t.name === "IVA");
         if (!iva) return [];
 
         const impuestoLiquidado = iva.amount;
-        const netoGravado = item.amount + impuestoLiquidado;
-        const alicuota = getAlicuotaCode(impuestoLiquidado / netoGravado);
+        const netoGravado = getNetoGravado(item, impuestoLiquidado);
+        const alicuota = getAlicuotaCode(
+          netoGravado > 0 ? impuestoLiquidado / netoGravado : 0
+        );
 
         return [
           tipoComprobante.padStart(3, "0"),
@@ -243,17 +248,18 @@ const FiscalExports = () => {
       if (data.error) throw new Error(data.error);
 
       const lines = data.map((item) => {
-        const { reference, date, client, amount, taxes } = item;
+        const { reference, date, client, taxes } = item;
 
         const tipoComprobante = getTipoComprobante(reference);
         const puntoVenta = reference?.slice(1, 5) || "0000";
         const numeroComprobante = reference?.slice(6) || "0";
 
-        const tipoDoc = client?.cuit ? "80" : "99";
-        const cuit = pad(client?.cuit?.toString() || client?.id?.toString() || "", 20, "number");
+        const clientCuit = formatClientCuit(client);
+        const tipoDoc = clientCuit ? "80" : "99";
+        const cuit = pad(clientCuit || client?.id?.toString() || "", 20, "number");
         const nombre = pad(client?.name || "", 30);
 
-        const total = formatNumber(amount);
+        const total = formatNumber(getComprobanteTotal(item));
         const noGravado = formatNumber(0);
         const exento = formatNumber(0);
 
@@ -332,8 +338,10 @@ const FiscalExports = () => {
         if (!iva) return [];
 
         const impuestoLiquidado = iva.amount;
-        const netoGravado = item.amount + impuestoLiquidado;
-        const alicuota = getAlicuotaCode(impuestoLiquidado / netoGravado);
+        const netoGravado = getNetoGravado(item, impuestoLiquidado);
+        const alicuota = getAlicuotaCode(
+          netoGravado > 0 ? impuestoLiquidado / netoGravado : 0
+        );
 
         return [
           tipoComprobante.padStart(3, "0"),

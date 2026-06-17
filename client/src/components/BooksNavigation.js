@@ -2,6 +2,12 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import React from "react";
 import { saveAs } from "file-saver";
+import {
+  formatSupplierCuit,
+  getComprobanteTotal,
+  getNetoGravado,
+  getAlicuotaCodeFromRate,
+} from "../utils/fiscalExportFormat";
 
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
@@ -178,7 +184,7 @@ const LibroIVAExport = () => {
     }
 
     return reportData.map((item, index) => {
-      const counterparty = item?.supplier || item?.customer || {};
+      const counterparty = item?.supplier || item?.client || item?.customer || {};
       const identifier =
         item?.id ||
         item?.reference ||
@@ -189,7 +195,7 @@ const LibroIVAExport = () => {
         date: item?.date,
         reference: item?.reference || "-",
         counterpartyName: counterparty?.name || "-",
-        amount: item?.amount ?? 0,
+        amount: getComprobanteTotal(item),
         taxes: Array.isArray(item?.taxes) ? item.taxes : [],
       };
     });
@@ -201,8 +207,10 @@ const LibroIVAExport = () => {
     }
 
     return reportData.map((item, index) => {
-      const counterparty = item?.supplier || item?.customer || {};
+      const counterparty = item?.supplier || item?.client || item?.customer || {};
       const taxesArray = Array.isArray(item?.taxes) ? item.taxes : [];
+      const ivaAmount =
+        taxesArray.find((tax) => tax?.name === "IVA")?.amount || 0;
 
       const taxes = taxesArray.reduce((acc, tax) => {
         const label = tax?.name || "Impuesto";
@@ -219,7 +227,7 @@ const LibroIVAExport = () => {
         date: item?.date,
         reference: item?.reference || "-",
         counterpartyName: counterparty?.name || "-",
-        baseAmount: Number(item?.amount) || 0,
+        baseAmount: getNetoGravado(item, ivaAmount),
         taxes,
       };
     });
@@ -373,12 +381,7 @@ const LibroIVAExport = () => {
     return "000";
   };
 
-  const getAlicuotaCode = (valor) => {
-    // Puedes adaptar si tenés más tasas diferenciadas
-    if (valor === 0.105) return "0005";
-    if (valor === 0.27) return "0003";
-    return "0004"; // 21% (por defecto)
-  };
+  const getAlicuotaCode = (valor) => getAlicuotaCodeFromRate(valor);
 
   const exportComprasTxt = (data) => {
     if (fromDate === "" || toDate === "") {
@@ -386,16 +389,16 @@ const LibroIVAExport = () => {
       return;
     }
     const lines = data.map((item) => {
-      const { reference, date, supplier, amount, taxes } = item;
+      const { reference, date, supplier, taxes } = item;
 
       const tipoComprobante = getTipoComprobante(reference);
       const puntoVenta = reference?.slice(1, 5) || "0000";
       const numeroComprobante = reference?.slice(6) || "0";
 
-      const cuit = pad(supplier?.id?.toString(), 11, "number");
+      const cuit = pad(formatSupplierCuit(supplier), 11, "number");
       const nombre = pad(supplier?.name || "", 30);
 
-      const total = formatNumber(amount);
+      const total = formatNumber(getComprobanteTotal(item));
       const noGravado = formatNumber(0);
       const exento = formatNumber(0);
 
@@ -470,14 +473,16 @@ const LibroIVAExport = () => {
       const numeroComprobante = reference?.slice(6) || "0";
 
       const tipoDoc = "80"; // CUIT
-      const cuit = pad(supplier?.id?.toString(), 11, "number");
+      const cuit = pad(formatSupplierCuit(supplier), 11, "number");
 
       const iva = taxes.find((t) => t.name === "IVA");
       if (!iva) return [];
 
       const impuestoLiquidado = iva.amount;
-      const netoGravado = item.amount + impuestoLiquidado;
-      const alicuota = getAlicuotaCode(impuestoLiquidado / netoGravado);
+      const netoGravado = getNetoGravado(item, impuestoLiquidado);
+      const alicuota = getAlicuotaCode(
+        netoGravado > 0 ? impuestoLiquidado / netoGravado : 0
+      );
 
       return [
         tipoComprobante.padStart(3, "0"), // 1 Tipo comprobante

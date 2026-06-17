@@ -388,6 +388,154 @@ async function resolveControlInvoiceLink({
   return null;
 }
 
+async function resolveCashflowInvoiceReference(supplierCuit, totalAmount) {
+  const cuit = normalizeCuit(supplierCuit);
+  const totalHint = parseAmount(totalAmount);
+  if (!cuit || totalHint <= 0) return null;
+
+  const { data: suppliers, error: supErr } = await supabase
+    .from("suppliers")
+    .select("id, cuit")
+    .is("deleted_at", null);
+  if (supErr) throw supErr;
+
+  const supplier = (suppliers || []).find(
+    (s) => normalizeCuit(s.cuit) === cuit
+  );
+  if (!supplier) return null;
+
+  const { data: cashflows, error: cfErr } = await supabase
+    .from("cashflow")
+    .select("id, reference, amount")
+    .eq("type", "EGRESO")
+    .eq("provider", supplier.id)
+    .not("reference", "is", null)
+    .is("deleted_at", null);
+  if (cfErr) throw cfErr;
+
+  const matches = (cashflows || []).filter((cf) =>
+    amountsRoughlyEqual(Math.abs(parseAmount(cf.amount)), totalHint)
+  );
+  if (matches.length !== 1) return null;
+
+  return {
+    cashflowId: matches[0].id,
+    invoiceNumber: String(matches[0].reference || "").trim() || null,
+  };
+}
+
+async function batchResolveRetentionInvoiceNumbers(payments) {
+  if (!payments?.length) return [];
+
+  const unresolved = payments.filter((p) => !p.invoice_number);
+  if (!unresolved.length) return payments;
+
+  const [{ data: suppliers, error: supErr }, { data: invoices, error: invErr }, { data: cashflows, error: cfErr }] =
+    await Promise.all([
+      supabase.from("suppliers").select("id, cuit").is("deleted_at", null),
+      supabase
+        .from("supplier_invoices")
+        .select(
+          "id, invoice_number, total, amount, supplier_id, account_movement_id, supplier:suppliers(cuit)"
+        )
+        .is("deleted_at", null),
+      supabase
+        .from("cashflow")
+        .select("id, reference, amount, provider")
+        .eq("type", "EGRESO")
+        .not("reference", "is", null)
+        .is("deleted_at", null),
+    ]);
+
+  if (supErr) throw supErr;
+  if (invErr) throw invErr;
+  if (cfErr) throw cfErr;
+
+  const cuitBySupplierId = {};
+  (suppliers || []).forEach((s) => {
+    cuitBySupplierId[s.id] = s.cuit;
+  });
+
+  const { invoiceIdByMovementId, meta } = buildInvoiceLinkMeta(
+    invoices || [],
+    cuitBySupplierId
+  );
+  const invoiceById = {};
+  (invoices || []).forEach((inv) => {
+    invoiceById[inv.id] = inv;
+  });
+
+  const supplierIdByCuit = {};
+  (suppliers || []).forEach((s) => {
+    supplierIdByCuit[normalizeCuit(s.cuit)] = s.id;
+  });
+
+  const cashflowByProviderAmount = {};
+  (cashflows || []).forEach((cf) => {
+    const amountKey = roundMoney(Math.abs(parseAmount(cf.amount)));
+    const key = `${cf.provider}:${amountKey}`;
+    if (!cashflowByProviderAmount[key]) cashflowByProviderAmount[key] = [];
+    cashflowByProviderAmount[key].push(cf);
+  });
+
+  return payments.map((payment) => {
+    if (payment.invoice_number) return payment;
+
+    const invoiceId = resolveInvoiceIdForRetention(
+      payment,
+      invoiceIdByMovementId,
+      meta
+    );
+    if (invoiceId && invoiceById[invoiceId]?.invoice_number) {
+      return {
+        ...payment,
+        invoice_number: invoiceById[invoiceId].invoice_number,
+      };
+    }
+
+    const supplierId = supplierIdByCuit[normalizeCuit(payment.supplier_cuit)];
+    if (supplierId) {
+      const amountKey = roundMoney(parseAmount(payment.total_amount));
+      const matches = cashflowByProviderAmount[`${supplierId}:${amountKey}`];
+      if (matches?.length === 1 && matches[0].reference) {
+        return {
+          ...payment,
+          invoice_number: String(matches[0].reference).trim(),
+        };
+      }
+    }
+
+    return payment;
+  });
+}
+
+async function resolveRetentionInvoiceNumber(payment) {
+  if (payment.invoice_number) {
+    return payment.invoice_number;
+  }
+
+  const controlLink = await resolveControlInvoiceLink({
+    supplierInvoiceId: payment.supplier_invoice_id,
+    accountMovementId: payment.account_movement_id,
+    invoiceNumber: payment.invoice_number,
+    supplierCuit: payment.supplier_cuit,
+    totalAmount: payment.total_amount,
+  });
+  if (controlLink?.invoiceNumber) {
+    return controlLink.invoiceNumber;
+  }
+
+  const cashflowLink = await resolveCashflowInvoiceReference(
+    payment.supplier_cuit,
+    payment.total_amount
+  );
+  if (cashflowLink?.invoiceNumber) {
+    return cashflowLink.invoiceNumber;
+  }
+
+  return null;
+}
+
 async function persistRetentionInvoiceLink(retentionId, supplierInvoiceId) {
   if (retentionId == null || supplierInvoiceId == null) return;
 
@@ -416,6 +564,9 @@ module.exports = {
   getRetentionAmountsByInvoiceIds,
   fetchRetentionsForInvoices,
   resolveControlInvoiceLink,
+  resolveCashflowInvoiceReference,
+  resolveRetentionInvoiceNumber,
+  batchResolveRetentionInvoiceNumbers,
   persistRetentionInvoiceLink,
   linkRetentionsToInvoices,
 };

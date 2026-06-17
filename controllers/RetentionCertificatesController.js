@@ -6,6 +6,7 @@ const _ = require("lodash");
 const {
   resolveControlInvoiceLink,
   persistRetentionInvoiceLink,
+  batchResolveRetentionInvoiceNumbers,
 } = require("../services/retentionInvoiceLink");
 
 // Escalas para cálculo de retenciones según RG 4525.
@@ -317,7 +318,7 @@ async function enrichRetentionPaymentsInvoiceNumbers(payments) {
     });
   }
 
-  return payments.map((payment) => {
+  const withDirectLinks = payments.map((payment) => {
     if (payment.invoice_number) return payment;
 
     let resolved = "";
@@ -333,6 +334,8 @@ async function enrichRetentionPaymentsInvoiceNumbers(payments) {
 
     return resolved ? { ...payment, invoice_number: resolved } : payment;
   });
+
+  return batchResolveRetentionInvoiceNumbers(withDirectLinks);
 }
 
 self.getRetentionPayments = async (req, res) => {
