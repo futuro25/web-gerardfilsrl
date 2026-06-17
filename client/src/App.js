@@ -41,6 +41,7 @@ import SupplierCurrentAccounts from "./components/SupplierCurrentAccounts";
 import PendingInvoicesList from "./components/PendingInvoicesList";
 import PurchaseInvoices from "./components/PurchaseInvoices";
 import Aportes from "./components/Aportes";
+import Veps from "./components/Veps";
 import _, { capitalize } from "lodash";
 import { useState } from "react";
 import { cn } from "./utils/utils";
@@ -115,6 +116,7 @@ export default function App() {
           <Route path="facturas-pendientes" element={<PendingInvoicesList />} />
           <Route path="facturas-compras" element={<PurchaseInvoices />} />
           <Route path="aportes" element={<Aportes />} />
+          <Route path="veps" element={<Veps />} />
           <Route path="clientes" element={<Clients />} />
           <Route path="productos" element={<Products />} />
           <Route path="pedidos" element={<Orders />} />

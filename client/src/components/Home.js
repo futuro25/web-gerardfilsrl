@@ -15,6 +15,7 @@ import {
   Wallet,
   ClipboardList,
   FilePlus,
+  Receipt,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { MoonLoader } from "react-spinners";
@@ -46,6 +47,7 @@ export default function Home() {
       order: 7.54,
     },
     { label: "Aportes", icon: PiggyBank, path: "/aportes", order: 7.55 },
+    { label: "VEPs", icon: Receipt, path: "/veps", order: 7.56 },
     // {
     //   label: "Facturas Compras",
     //   icon: FilePlus,

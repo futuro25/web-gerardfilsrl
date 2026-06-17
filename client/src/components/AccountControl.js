@@ -9,6 +9,7 @@ import Button from "./common/Button";
 import FormActions from "./common/FormActions";
 import Spinner from "./common/Spinner";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
+import ConfirmDialog from "./common/ConfirmDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./common/Tooltip";
 import * as utils from "../utils/utils";
 
@@ -22,10 +23,13 @@ import {
   updateAccountMovement,
   deleteAccountMovement,
 } from "../apis/api.accountmovements";
+import { fetchUpcomingVeps, markVepAsPaid } from "../apis/api.veps";
 import {
   queryAccountMovementsKey,
   queryAccountMovementsSummaryKey,
   queryUpcomingChequesKey,
+  queryUpcomingVepsKey,
+  queryVepsKey,
   queryAccountFutureBalancesKey,
   queryPaychecksKey,
   querySupplierAccountsListKey,
@@ -35,6 +39,7 @@ import {
 import InvoiceDataFields from "./InvoiceDataFields";
 import MovementDocumentUpload from "./MovementDocumentUpload";
 import EgresoSupplierFields from "./EgresoSupplierFields";
+import EgresoVepFields from "./EgresoVepFields";
 import PaymentOrderFields, { PAYMENT_METHOD_LABELS } from "./PaymentOrderFields";
 import PaymentOrderDialog from "./PaymentOrderDialog";
 import MovementDetailDialog from "./MovementDetailDialog";
@@ -106,6 +111,9 @@ function deleteMovementConfirmMessage(m) {
   }
   if (m.is_cheque) extras.push("datos de cheque del movimiento");
   if (m.paycheck_id) extras.push("registro en Cheques");
+  if (m.vep_id || m.expense_category === "VEP") {
+    extras.push("marca de pago del VEP vinculado");
+  }
 
   let msg = "¿Eliminar este movimiento?";
   if (extras.length) {
@@ -126,6 +134,7 @@ const EXPENSE_CATEGORY_OPTIONS = [
   { value: "FACTURA", label: "Factura de proveedor" },
   { value: "GASTOS_BANCARIOS", label: "Gastos bancarios" },
   { value: "IMPUESTOS", label: "Impuestos" },
+  { value: "VEP", label: "VEP" },
   { value: "PAGO_HABERES", label: "Pago de Haberes" },
   { value: "SERVICIOS", label: "Servicios" },
   { value: "OTRO", label: "Otro" },
@@ -150,6 +159,7 @@ function effectiveMovementDate(m) {
 
 function inferExpenseCategory(movement) {
   if (movement?.expense_category) return movement.expense_category;
+  if (movement?.vep_id) return "VEP";
   if (movement?.supplier_invoice_id) return "FACTURA";
   if (movement?.type === "EGRESO") return "OTRO";
   return "FACTURA";
@@ -213,6 +223,9 @@ export default function AccountControl() {
   const [kindListFilter, setKindListFilter] = useState("");
   const [pendingListFilter, setPendingListFilter] = useState("");
   const [futureDialogOpen, setFutureDialogOpen] = useState(false);
+  const [vepsExpanded, setVepsExpanded] = useState(false);
+  const [markingVepId, setMarkingVepId] = useState(null);
+  const [vepPaidConfirm, setVepPaidConfirm] = useState(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [detailMovement, setDetailMovement] = useState(null);
   const [invoiceShowErrors, setInvoiceShowErrors] = useState(false);
@@ -223,11 +236,13 @@ export default function AccountControl() {
   const [paymentOrderShowErrors, setPaymentOrderShowErrors] = useState(false);
   const [egresoPaymentShowErrors, setEgresoPaymentShowErrors] = useState(false);
   const [egresoSupplierShowErrors, setEgresoSupplierShowErrors] = useState(false);
+  const [egresoVepShowErrors, setEgresoVepShowErrors] = useState(false);
   const [invoiceTotalForPo, setInvoiceTotalForPo] = useState(0);
   const invoiceFieldsRef = useRef(null);
   const paymentOrderFieldsRef = useRef(null);
   const egresoPaymentFieldsRef = useRef(null);
   const egresoSupplierFieldsRef = useRef(null);
+  const egresoVepFieldsRef = useRef(null);
   const movementDocumentRef = useRef(null);
   /** Orden de listado por fecha: coincide con el API; default asc (más antiguas primero). */
   const [dateOrder, setDateOrder] = useState("asc");
@@ -236,6 +251,7 @@ export default function AccountControl() {
     register,
     handleSubmit,
     reset,
+    setValue,
     watch,
     formState: { errors },
   } = useForm({
@@ -316,6 +332,40 @@ export default function AccountControl() {
     queryFn: () => fetchUpcomingCheques(15),
   });
 
+  const { data: upcomingVepsRes } = useQuery({
+    queryKey: queryUpcomingVepsKey(15),
+    queryFn: () => fetchUpcomingVeps(15),
+  });
+
+  const upcomingVeps = upcomingVepsRes?.data || [];
+
+  const markVepPaidMutation = useMutation({
+    mutationFn: markVepAsPaid,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryUpcomingVepsKey() });
+      queryClient.invalidateQueries({ queryKey: queryVepsKey() });
+    },
+    onSettled: () => {
+      setMarkingVepId(null);
+    },
+  });
+
+  const handleMarkVepAsPaid = (vep) => {
+    if (markingVepId != null) return;
+    setVepPaidConfirm(vep);
+  };
+
+  const confirmMarkVepAsPaid = async () => {
+    if (!vepPaidConfirm || markingVepId != null) return;
+    setMarkingVepId(vepPaidConfirm.id);
+    try {
+      await markVepPaidMutation.mutateAsync(vepPaidConfirm.id);
+      setVepPaidConfirm(null);
+    } catch (e) {
+      window.alert(e.message || "No se pudo marcar el VEP como pagado");
+    }
+  };
+
   const { data: futureBalancesRes, isLoading: futureBalancesLoading } = useQuery({
     queryKey: queryAccountFutureBalancesKey(),
     queryFn: fetchFutureBalances,
@@ -354,6 +404,8 @@ export default function AccountControl() {
     queryClient.invalidateQueries({ queryKey: ["account-movements"] });
     queryClient.invalidateQueries({ queryKey: ["account-movements-summary"] });
     queryClient.invalidateQueries({ queryKey: ["upcoming-cheques"] });
+    queryClient.invalidateQueries({ queryKey: queryUpcomingVepsKey() });
+    queryClient.invalidateQueries({ queryKey: queryVepsKey() });
     queryClient.invalidateQueries({ queryKey: queryAccountFutureBalancesKey() });
     queryClient.invalidateQueries({ queryKey: queryPaychecksKey() });
     queryClient.invalidateQueries({
@@ -582,6 +634,11 @@ export default function AccountControl() {
 
   const requiresSupplierInvoiceNumber = expenseCategory === "SERVICIOS";
 
+  const showsVepFields =
+    movementType === "EGRESO" && expenseCategory === "VEP";
+
+  const vepFieldsReadOnly = Boolean(selectedMovement?.vep_id);
+
   const showsMovementDocumentUpload =
     movementType === "EGRESO" && !requiresInvoice;
 
@@ -750,6 +807,19 @@ export default function AccountControl() {
     return result;
   };
 
+  const handleVepChange = (vep) => {
+    if (!vep) return;
+    const category = vep.display_category || vep.category || "VEP";
+    const due = vep.due_date
+      ? DateTime.fromISO(vep.due_date).toFormat("dd/MM/yyyy")
+      : "";
+    setValue("amount", vep.amount ?? "");
+    setValue(
+      "description",
+      `Pago VEP ${category}${due ? ` - Vence ${due}` : ""}`
+    );
+  };
+
   const onSubmit = async (data) => {
     try {
       setIsLoadingSubmit(true);
@@ -757,6 +827,7 @@ export default function AccountControl() {
       setPaymentOrderShowErrors(false);
       setEgresoPaymentShowErrors(false);
       setEgresoSupplierShowErrors(false);
+      setEgresoVepShowErrors(false);
 
       if (selectedMovement && movementHasPaymentOrder) {
         await saveMovementDatesOnly();
@@ -781,6 +852,18 @@ export default function AccountControl() {
           setIsLoadingSubmit(false);
           window.alert(
             supplierValidation.message || "Revise los datos del proveedor"
+          );
+          return;
+        }
+      }
+
+      if (showsVepFields) {
+        const vepValidation = await egresoVepFieldsRef.current?.validate();
+        if (!vepValidation?.ok) {
+          setEgresoVepShowErrors(true);
+          setIsLoadingSubmit(false);
+          window.alert(
+            vepValidation.message || "Seleccioná el VEP que estás pagando"
           );
           return;
         }
@@ -856,6 +939,11 @@ export default function AccountControl() {
         body.invoice_number = supplierPayload.invoice_number;
       }
 
+      if (showsVepFields && egresoVepFieldsRef.current) {
+        const vepPayload = egresoVepFieldsRef.current.getPayload();
+        body.vep_id = vepPayload.vep_id;
+      }
+
       if (requiresPaymentMethod) {
         const payPayload = egresoPaymentFieldsRef.current.getPayload();
         body.payment_method = payPayload.payment_method;
@@ -916,11 +1004,17 @@ export default function AccountControl() {
       setPaymentOrderShowErrors(false);
       setEgresoPaymentShowErrors(false);
       setEgresoSupplierShowErrors(false);
+      setEgresoVepShowErrors(false);
       invoiceFieldsRef.current?.reset();
       paymentOrderFieldsRef.current?.reset?.();
       egresoPaymentFieldsRef.current?.reset?.();
       egresoSupplierFieldsRef.current?.reset?.();
+      egresoVepFieldsRef.current?.reset?.();
       movementDocumentRef.current?.reset?.();
+      if (expenseCategory === "VEP") {
+        queryClient.invalidateQueries({ queryKey: queryVepsKey() });
+        queryClient.invalidateQueries({ queryKey: queryUpcomingVepsKey() });
+      }
       setPage(1);
       setStage("LIST");
       await refreshMovementsList();
@@ -974,10 +1068,12 @@ export default function AccountControl() {
     setPaymentOrderShowErrors(false);
     setEgresoPaymentShowErrors(false);
     setEgresoSupplierShowErrors(false);
+    setEgresoVepShowErrors(false);
     invoiceFieldsRef.current?.reset();
     paymentOrderFieldsRef.current?.reset?.();
     egresoPaymentFieldsRef.current?.reset?.();
     egresoSupplierFieldsRef.current?.reset?.();
+    egresoVepFieldsRef.current?.reset?.();
     movementDocumentRef.current?.reset?.();
     reset({
       movement_kind: "UNICA VEZ",
@@ -1330,6 +1426,95 @@ export default function AccountControl() {
                 </div>
               )}
 
+            {/* VEPs por vencer — colapsado por defecto */}
+            {!isLoading && upcomingVeps.length > 0 && (
+              <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg overflow-hidden">
+                <div
+                  className={utils.cn(
+                    "flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-4 py-2.5",
+                    vepsExpanded && "border-b border-amber-200/80"
+                  )}
+                >
+                  <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">
+                    {upcomingVeps.length === 1
+                      ? "Hay 1 VEP por vencer en los próximos 15 días"
+                      : `Hay ${upcomingVeps.length} VEPs por vencer en los próximos 15 días`}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    className="text-xs h-8 px-3 border-amber-300 text-amber-900 hover:bg-amber-100"
+                    onClick={() => setVepsExpanded((prev) => !prev)}
+                  >
+                    {vepsExpanded ? "Ocultar" : "Ver detalle"}
+                  </Button>
+                </div>
+                {vepsExpanded && (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs border-collapse">
+                        <thead>
+                          <tr className="text-left text-slate-500 bg-amber-50/80">
+                            <th className="font-medium px-4 py-2">Vencimiento</th>
+                            <th className="font-medium px-4 py-2">Clasificación</th>
+                            <th className="font-medium px-4 py-2 text-right">
+                              Importe
+                            </th>
+                            <th className="font-medium px-4 py-2 text-right w-32">
+                              {" "}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {upcomingVeps.map((v) => (
+                            <tr
+                              key={v.id}
+                              className="border-t border-amber-100/80 hover:bg-amber-100/40"
+                            >
+                              <td className="px-4 py-2 text-slate-700 whitespace-nowrap">
+                                {v.due_date
+                                  ? DateTime.fromISO(v.due_date).toFormat(
+                                      "dd/MM/yyyy"
+                                    )
+                                  : "—"}
+                              </td>
+                              <td className="px-4 py-2 text-slate-800">
+                                {v.display_category || v.category || "—"}
+                              </td>
+                              <td className="px-4 py-2 text-right font-medium text-red-700 whitespace-nowrap tabular-nums">
+                                {utils.formatAmount(v.amount)}
+                              </td>
+                              <td className="px-4 py-2 text-right whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  disabled={markingVepId === v.id}
+                                  className="text-[11px] font-medium px-2.5 py-1 rounded border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                                  onClick={() => handleMarkVepAsPaid(v)}
+                                >
+                                  {markingVepId === v.id
+                                    ? "..."
+                                    : "Marcar pagado"}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="px-4 py-2 border-t border-amber-200/80 flex justify-end">
+                      <button
+                        type="button"
+                        className="text-xs text-amber-900 underline hover:text-amber-950"
+                        onClick={() => navigate("/veps")}
+                      >
+                        Ir a VEPs
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Movements table */}
             {!isLoading && (
               <div className="mb-4">
@@ -1430,6 +1615,11 @@ export default function AccountControl() {
                                           Factura {m.invoice_number}
                                         </span>
                                       )}
+                                    {(m.vep_id || m.expense_category === "VEP") && (
+                                      <span className="block text-[10px] text-violet-700 font-medium">
+                                        VEP{m.vep_label ? `: ${m.vep_label}` : ""}
+                                      </span>
+                                    )}
                                     {m.payment_method && m.expense_category !== "FACTURA" && (
                                       <span className="block text-[10px] text-slate-500">
                                         {PAYMENT_METHOD_LABELS[m.payment_method] ||
@@ -1778,13 +1968,26 @@ export default function AccountControl() {
                   <p className="text-xs text-slate-500 mt-2">
                     {requiresInvoice
                       ? "Registrá la factura y dejala pendiente o pagala con una orden de pago."
-                      : expenseCategory === "SERVICIOS"
+                      : expenseCategory === "VEP"
+                        ? "Seleccioná el VEP que estás pagando, la forma de pago y podés adjuntar el comprobante (opcional)."
+                        : expenseCategory === "SERVICIOS"
                         ? "Indicá el proveedor, el número de factura y la forma de pago."
                         : expenseCategory === "OTRO"
                           ? "Podés indicar un proveedor (opcional). Indicá la forma de pago del egreso."
                           : "Indicá la forma de pago con la que se realizó el egreso."}
                   </p>
                 </div>
+              )}
+
+              {showsVepFields && (
+                <EgresoVepFields
+                  key={`egreso-vep-${selectedMovement?.id ?? "new"}-${expenseCategory}`}
+                  ref={egresoVepFieldsRef}
+                  accountMovement={selectedMovement}
+                  showErrors={egresoVepShowErrors}
+                  readOnly={vepFieldsReadOnly}
+                  onVepChange={handleVepChange}
+                />
               )}
 
               {showsSupplierFields && (
@@ -1992,6 +2195,39 @@ export default function AccountControl() {
         onOpenChange={setDetailDialogOpen}
         movement={detailMovement}
       />
+
+      <ConfirmDialog
+        open={Boolean(vepPaidConfirm)}
+        onOpenChange={(open) => {
+          if (!open && !markingVepId) setVepPaidConfirm(null);
+        }}
+        title="¿Marcar VEP como pagado?"
+        description="El VEP pasará a estado pagado y dejará de mostrarse en los avisos de vencimiento de Control."
+        confirmLabel="Marcar como pagado"
+        cancelLabel="Cancelar"
+        variant="success"
+        isLoading={markingVepId === vepPaidConfirm?.id}
+        onConfirm={confirmMarkVepAsPaid}
+      >
+        {vepPaidConfirm && (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+            <dt className="text-slate-500">Clasificación</dt>
+            <dd className="font-medium text-slate-800">
+              {vepPaidConfirm.display_category || vepPaidConfirm.category || "—"}
+            </dd>
+            <dt className="text-slate-500">Vencimiento</dt>
+            <dd className="font-medium text-slate-800">
+              {vepPaidConfirm.due_date
+                ? DateTime.fromISO(vepPaidConfirm.due_date).toFormat("dd/MM/yyyy")
+                : "—"}
+            </dd>
+            <dt className="text-slate-500">Importe</dt>
+            <dd className="font-semibold text-slate-900 tabular-nums">
+              {utils.formatAmount(vepPaidConfirm.amount)}
+            </dd>
+          </dl>
+        )}
+      </ConfirmDialog>
     </>
   );
 }

@@ -22,6 +22,7 @@ const StockController = require("../controllers/StockController.js");
 const RetentionCertificatesController = require("../controllers/RetentionCertificatesController.js");
 const AccountMovementController = require("../controllers/AccountMovementController.js");
 const AporteController = require("../controllers/AporteController.js");
+const VepController = require("../controllers/VepController.js");
 const SupplierAccountController = require("../controllers/SupplierAccountController.js");
 const SupplierInvoiceController = require("../controllers/SupplierInvoiceController.js");
 const CronController = require("../controllers/CronController.js");
@@ -523,6 +524,17 @@ router.get("/aportes", (req, res, next) => AporteController.getAportes(req, res,
 router.post("/aportes", (req, res, next) => AporteController.createAporte(req, res, next));
 router.patch("/aportes/:id", (req, res, next) => AporteController.updateAporte(req, res, next));
 router.delete("/aportes/:id", (req, res, next) => AporteController.deleteAporte(req, res, next));
+
+router.get("/veps/upcoming", (req, res, next) =>
+  VepController.getUpcomingVeps(req, res, next)
+);
+router.get("/veps", (req, res, next) => VepController.getVeps(req, res, next));
+router.post("/veps", (req, res, next) => VepController.createVep(req, res, next));
+router.patch("/veps/:id", (req, res, next) => VepController.updateVep(req, res, next));
+router.patch("/veps/:id/mark-paid", (req, res, next) =>
+  VepController.markVepAsPaid(req, res, next)
+);
+router.delete("/veps/:id", (req, res, next) => VepController.deleteVep(req, res, next));
 
 // CRON (Heroku Scheduler o llamada manual con CRON_SECRET)
 router.post("/cron/pending-movements-report", (req, res, next) =>

@@ -1,6 +1,7 @@
 "use strict";
 
 const { validateDirectPaymentMethod } = require("./accountMovementPayment");
+const { validateEgresoVepFields } = require("./accountMovementVep");
 
 function parseAmount(value) {
   const n = parseFloat(value);
@@ -36,6 +37,9 @@ function validateMovementBody(body) {
       return "Concepto del egreso requerido";
     }
   }
+
+  const vepErr = validateEgresoVepFields(body);
+  if (vepErr) return vepErr;
 
   if (type === "INGRESO" && body.is_cheque) {
     if (!body.cheque_number || !body.cheque_bank || !body.cheque_due_date) {

@@ -23,6 +23,13 @@ const {
   applyDirectPaymentMethod,
   applyEgresoSupplierFields,
 } = require("../services/accountMovementPayment");
+const {
+  applyEgresoVepFields,
+  parseVepId,
+  assertVepAvailableForPayment,
+  linkVepPayment,
+  attachVepInfo,
+} = require("../services/accountMovementVep");
 const { assertNoDuplicateSupplierInvoice } = require("../services/supplierInvoiceDuplicate");
 const { validateMovementBody } = require("../services/accountMovementValidation");
 
@@ -122,6 +129,10 @@ function movementBodyChangesOnlyKind(existing, body) {
     return false;
   }
 
+  if ((existing.vep_id || null) !== (parseVepId(body.vep_id) || null)) {
+    return false;
+  }
+
   return true;
 }
 
@@ -151,6 +162,7 @@ function buildMovementUpdateFromBody(body) {
   }
 
   applyEgresoSupplierFields(update, body);
+  applyEgresoVepFields(update, body);
 
   if (body.image_key != null && body.image_key !== "") {
     update.image_key = body.image_key;
@@ -470,7 +482,9 @@ self.getMovements = async (req, res) => {
       const { data, error, count } = await query;
       if (error) throw error;
 
-      const dataWithSuppliers = await attachSupplierNames(data || []);
+      const dataWithSuppliers = await attachVepInfo(
+        await attachSupplierNames(data || [])
+      );
       const excludedIds = await getBalanceExcludedMovementIds();
       const withInvoiceFlags = await attachInvoicePaymentFlags(dataWithSuppliers);
 
@@ -509,7 +523,9 @@ self.getMovements = async (req, res) => {
 
     if (error) throw error;
 
-    const dataWithSuppliers = await attachSupplierNames(data || []);
+    const dataWithSuppliers = await attachVepInfo(
+      await attachSupplierNames(data || [])
+    );
     const excludedIds = await getBalanceExcludedMovementIds();
     const withInvoiceFlags = await attachInvoicePaymentFlags(dataWithSuppliers);
 
@@ -721,25 +737,32 @@ self.createMovement = async (req, res) => {
     const validationErr = validateMovementBody(req.body);
     if (validationErr) return res.json({ error: validationErr });
 
-    const movement = applyEgresoSupplierFields(
-      applyDirectPaymentMethod(
-        {
-          type: req.body.type,
-          responsible: "Sin especificar",
-          movement_kind: normalizeMovementKind(req.body.movement_kind),
-          date: req.body.date,
-          amount: req.body.amount,
-          description: req.body.description || null,
-          is_cheque: req.body.is_cheque || false,
-          cheque_number: req.body.cheque_number || null,
-          cheque_bank: req.body.cheque_bank || null,
-          cheque_due_date: req.body.cheque_due_date || null,
-          expense_category: req.body.expense_category || null,
-        },
+    const movement = applyEgresoVepFields(
+      applyEgresoSupplierFields(
+        applyDirectPaymentMethod(
+          {
+            type: req.body.type,
+            responsible: "Sin especificar",
+            movement_kind: normalizeMovementKind(req.body.movement_kind),
+            date: req.body.date,
+            amount: req.body.amount,
+            description: req.body.description || null,
+            is_cheque: req.body.is_cheque || false,
+            cheque_number: req.body.cheque_number || null,
+            cheque_bank: req.body.cheque_bank || null,
+            cheque_due_date: req.body.cheque_due_date || null,
+            expense_category: req.body.expense_category || null,
+          },
+          req.body
+        ),
         req.body
       ),
       req.body
     );
+
+    if (movement.expense_category === "VEP" && movement.vep_id) {
+      await assertVepAvailableForPayment(movement.vep_id);
+    }
 
     // Ingresos con cheque (toggle UI)
     if (movement.type === "INGRESO" && movement.is_cheque && movement.cheque_due_date) {
@@ -800,6 +823,25 @@ self.createMovement = async (req, res) => {
           .eq("id", paycheckId);
       }
       throw error;
+    }
+
+    const created = newMovement?.[0];
+    if (created?.expense_category === "VEP" && created?.vep_id) {
+      try {
+        await linkVepPayment(created.vep_id, created.id);
+      } catch (linkErr) {
+        await supabase
+          .from("account_movements")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", created.id);
+        if (paycheckId) {
+          await supabase
+            .from("paychecks")
+            .update({ deleted_at: new Date().toISOString() })
+            .eq("id", paycheckId);
+        }
+        throw linkErr;
+      }
     }
 
     return res.json(newMovement);

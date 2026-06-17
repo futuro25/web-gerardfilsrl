@@ -3,6 +3,7 @@
 const supabase = require("../controllers/db");
 const r2 = require("./r2");
 const { getActiveOrdersForInvoice } = require("./invoicePaymentSummary");
+const { clearVepPaymentByMovementId } = require("./accountMovementVep");
 
 function parseAmount(value) {
   const n = parseFloat(value);
@@ -218,6 +219,8 @@ async function cascadeDeleteMovementAndRelated(movement) {
       console.error("Error deleting linked paycheck:", paycheckError);
     }
   }
+
+  await clearVepPaymentByMovementId(movementId);
 
   const { error } = await supabase
     .from("account_movements")

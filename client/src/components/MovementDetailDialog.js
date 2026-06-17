@@ -206,6 +206,35 @@ export default function MovementDetailDialog({
           </section>
         )}
 
+        {(movement.expense_category === "VEP" || movement.vep_id) && (
+          <section className="flex flex-col gap-2.5 bg-violet-50 rounded-lg p-4 border border-violet-100">
+            <h3 className="text-xs font-semibold text-violet-600 uppercase tracking-wide">
+              VEP
+            </h3>
+            <DetailRow label="Clasificación">
+              {movement.vep?.display_category ||
+                movement.vep?.category ||
+                movement.vep_label ||
+                "—"}
+            </DetailRow>
+            {movement.vep?.due_date && (
+              <DetailRow label="Vencimiento">
+                {DateTime.fromISO(movement.vep.due_date).toFormat("dd/MM/yyyy")}
+              </DetailRow>
+            )}
+            {movement.vep?.amount != null && (
+              <DetailRow label="Importe VEP">
+                {utils.formatAmount(movement.vep.amount)}
+              </DetailRow>
+            )}
+            {movement.vep?.paid_at && (
+              <DetailRow label="Estado">
+                <span className="text-emerald-700 font-medium">Pagado</span>
+              </DetailRow>
+            )}
+          </section>
+        )}
+
         {/* Invoice section */}
         {hasFullInvoice && (
           <section className="flex flex-col gap-2.5 bg-amber-50 rounded-lg p-4 border border-amber-100">
