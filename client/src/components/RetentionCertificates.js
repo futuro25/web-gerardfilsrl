@@ -3,11 +3,12 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { DateTime } from "luxon";
 import { useForm, Controller } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { queryRetentionPaymentsKey, queryRetentionCertificateKey, querySuppliersKey } from "../apis/queryKeys";
+import { queryRetentionPaymentsKey, queryRetentionCertificateKey, querySuppliersKey, querySupplierAccountsListKey, queryPendingPaymentItemsKey } from "../apis/queryKeys";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { CopyIcon, EditIcon, TrashIcon, EyeIcon, CloseIcon, ReceiptIcon } from "./icons";
 import * as utils from "../utils/utils";
 import Button from "./common/Button";
+import ConfirmDialog from "./common/ConfirmDialog";
 import Spinner from "./common/Spinner";
 import { Input } from "./common/Input";
 import SelectComboBox from "./common/SelectComboBox";
@@ -96,6 +97,7 @@ export default function RetentionCertificates() {
   const [cashflowCategory, setCashflowCategory] = useState("");
   const [cashflowService, setCashflowService] = useState("");
   const [paymentMethod, setPaymentMethod] = useState(utils.getPaymentMethods()[0] || "EFECTIVO");
+  const [deleteConfirmPayment, setDeleteConfirmPayment] = useState(null);
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -271,9 +273,12 @@ export default function RetentionCertificates() {
 
   const deleteMutation = useMutation({
     mutationFn: useDeleteRetentionPaymentMutation,
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryRetentionPaymentsKey() });
-      console.log("Pago eliminado:", data);
+      queryClient.invalidateQueries({ queryKey: ["account-movements"] });
+      queryClient.invalidateQueries({ queryKey: ["account-movements-summary"] });
+      queryClient.invalidateQueries({ queryKey: querySupplierAccountsListKey() });
+      queryClient.invalidateQueries({ queryKey: queryPendingPaymentItemsKey() });
     },
     onError: (error) => {
       console.error("Error eliminando pago:", error);
@@ -518,14 +523,19 @@ export default function RetentionCertificates() {
     }
   };
 
-  const removePayment = async (payment_id) => {
-    if (window.confirm("¿Seguro desea eliminar este pago?")) {
-      try {
-        await deleteMutation.mutate(payment_id);
-        setStage("LIST");
-      } catch (e) {
-        console.log(e);
+  const confirmDeletePayment = async () => {
+    if (!deleteConfirmPayment?.id) return;
+
+    try {
+      const result = await deleteMutation.mutateAsync(deleteConfirmPayment.id);
+      if (result?.error) {
+        window.alert(result.error);
+        return;
       }
+      setDeleteConfirmPayment(null);
+      setStage("LIST");
+    } catch (e) {
+      window.alert(e.message || "No se pudo eliminar la retención.");
     }
   };
 
@@ -928,20 +938,13 @@ export default function RetentionCertificates() {
                                 >
                                   <EyeIcon />
                                 </button> */}
-                                {/* <button
-                                  className="flex items-center justify-center w-8 h-8"
-                                  title="Editar"
-                                  onClick={() => onEdit(pago.id)}
-                                >
-                                  <EditIcon />
-                                </button>
                                 <button
-                                  className="flex items-center justify-center w-8 h-8"
-                                  title="Eliminar"
-                                  onClick={() => removePayment(pago.id)}
+                                  className="flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-800"
+                                  title="Eliminar retención"
+                                  onClick={() => setDeleteConfirmPayment(pago)}
                                 >
                                   <TrashIcon />
-                                </button> */}
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -1533,6 +1536,45 @@ export default function RetentionCertificates() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteConfirmPayment)}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) setDeleteConfirmPayment(null);
+        }}
+        title="¿Eliminar retención?"
+        description="El saldo pendiente de la factura se recalculará sin el monto retenido. Esta acción no se puede deshacer."
+        confirmLabel="Eliminar retención"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
+        onConfirm={confirmDeletePayment}
+      >
+        {deleteConfirmPayment && (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+            {deleteConfirmPayment.supplier && (
+              <>
+                <dt className="text-slate-500">Proveedor</dt>
+                <dd className="font-medium text-slate-800 text-right">
+                  {deleteConfirmPayment.supplier}
+                </dd>
+              </>
+            )}
+            {deleteConfirmPayment.invoice_number && (
+              <>
+                <dt className="text-slate-500">Factura</dt>
+                <dd className="font-medium text-slate-800 text-right">
+                  {deleteConfirmPayment.invoice_number}
+                </dd>
+              </>
+            )}
+            <dt className="text-slate-500">Monto retenido</dt>
+            <dd className="font-semibold text-slate-900 tabular-nums text-right">
+              ${Number(deleteConfirmPayment.retention_amount || 0).toFixed(2)}
+            </dd>
+          </dl>
+        )}
+      </ConfirmDialog>
     </>
   );
 }

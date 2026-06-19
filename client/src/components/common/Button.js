@@ -12,7 +12,7 @@ const buttonVariants = cva(
         secondary: tw`border border-emerald-500 text-emerald-500 hover:bg-emerald-100 focus-visible:ring-emerald-500`,
         alternative: tw`bg-blue-500 text-white hover:bg-blue-500/90 focus-visible:ring-blue-500`,
         alternativeSecondary: tw`bg-orange-500 text-white hover:bg-orange-500/90 focus-visible:ring-orange-500`,
-        destructive: tw`bg-gray-400 text-white hover:bg-gray-800 focus-visible:ring-red`,
+        destructive: tw`bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600`,
         outlined: tw`border bg-white border-gray-100 hover:bg-gray-50 text-gray-900 focus-visible:ring-gray-100`,
         "destructive-outlined": tw`border bg-white border-none hover:text-red-500 border-gray-100 text-gray-900 focus-visible:ring-gray-100`,
       },

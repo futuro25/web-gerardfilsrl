@@ -1,14 +1,22 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { FileText, Trash2 } from "lucide-react";
 import Button from "./common/Button";
+import ConfirmDialog from "./common/ConfirmDialog";
 import Spinner from "./common/Spinner";
 import RetentionCertificateDialog from "./RetentionCertificateDialog";
 import RetentionFormDialog from "./RetentionFormDialog";
-import { fetchRetentionByInvoice } from "../apis/api.retentioncertificates";
+import {
+  fetchRetentionByInvoice,
+  useDeleteRetentionPaymentMutation,
+} from "../apis/api.retentioncertificates";
 import {
   queryRetentionByInvoiceKey,
   queryRetentionPaymentsKey,
+  queryPendingPaymentItemsKey,
+  querySupplierAccountsListKey,
+  queryPaymentOrdersByMovementKey,
+  queryPaymentOrdersByInvoiceKey,
 } from "../apis/queryKeys";
 import { retentionLookupParams, invoiceSupportsRetention } from "../utils/retentionInvoice";
 import * as utils from "../utils/utils";
@@ -18,11 +26,17 @@ export default function InvoiceRetentionSection({
   enabled = true,
   className,
   onRetentionCreated,
+  onRetentionDeleted,
 }) {
   const queryClient = useQueryClient();
   const [retentionFormOpen, setRetentionFormOpen] = useState(false);
   const [certOpen, setCertOpen] = useState(false);
   const [createdRetention, setCreatedRetention] = useState(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  const deleteMutation = useMutation({
+    mutationFn: useDeleteRetentionPaymentMutation,
+  });
 
   const lookup = retentionLookupParams(invoice);
   const supportsRetention = invoiceSupportsRetention(invoice?.invoice_number);
@@ -45,6 +59,43 @@ export default function InvoiceRetentionSection({
   const invalidateRetention = () => {
     queryClient.invalidateQueries({ queryKey: queryRetentionPaymentsKey() });
     queryClient.invalidateQueries({ queryKey: queryRetentionByInvoiceKey(lookup) });
+  };
+
+  const invalidateRelatedQueries = () => {
+    invalidateRetention();
+    queryClient.invalidateQueries({ queryKey: ["account-movements"] });
+    queryClient.invalidateQueries({ queryKey: ["account-movements-summary"] });
+    queryClient.invalidateQueries({ queryKey: querySupplierAccountsListKey() });
+    queryClient.invalidateQueries({ queryKey: queryPendingPaymentItemsKey() });
+    if (lookup.accountMovementId) {
+      queryClient.invalidateQueries({
+        queryKey: queryPaymentOrdersByMovementKey(lookup.accountMovementId),
+      });
+    }
+    if (lookup.supplierInvoiceId) {
+      queryClient.invalidateQueries({
+        queryKey: queryPaymentOrdersByInvoiceKey(lookup.supplierInvoiceId),
+      });
+    }
+  };
+
+  const confirmDeleteRetention = async () => {
+    if (!retentionPayment?.id) return;
+
+    try {
+      const result = await deleteMutation.mutateAsync(retentionPayment.id);
+      if (result?.error) {
+        window.alert(result.error);
+        return;
+      }
+      setCreatedRetention(null);
+      setCertOpen(false);
+      setDeleteConfirmOpen(false);
+      invalidateRelatedQueries();
+      onRetentionDeleted?.();
+    } catch (e) {
+      window.alert(e.message || "No se pudo eliminar la retención.");
+    }
   };
 
   const handleRetentionCreated = (result) => {
@@ -112,7 +163,7 @@ export default function InvoiceRetentionSection({
                 </span>
               </div>
             )}
-            <div className="pt-1">
+            <div className="pt-1 flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outlined"
@@ -121,6 +172,17 @@ export default function InvoiceRetentionSection({
               >
                 <FileText className="h-4 w-4 mr-1" />
                 Ver comprobante
+              </Button>
+              <Button
+                type="button"
+                variant="outlined"
+                size="sm"
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                disabled={deleteMutation.isPending}
+                onClick={() => setDeleteConfirmOpen(true)}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                {deleteMutation.isPending ? "Eliminando..." : "Eliminar retención"}
               </Button>
             </div>
           </div>
@@ -157,6 +219,49 @@ export default function InvoiceRetentionSection({
         invoice={invoice}
         onCreated={handleRetentionCreated}
       />
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) setDeleteConfirmOpen(false);
+        }}
+        title="¿Eliminar retención?"
+        description="El saldo pendiente de la factura se recalculará sin el monto retenido. Esta acción no se puede deshacer."
+        confirmLabel="Eliminar retención"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
+        onConfirm={confirmDeleteRetention}
+      >
+        {retentionPayment && (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+            {(retentionPayment.category_code ||
+              retentionPayment.category_detail) && (
+              <>
+                <dt className="text-slate-500">Categoría</dt>
+                <dd className="font-medium text-slate-800 text-right">
+                  {retentionPayment.category_code}
+                  {retentionPayment.category_detail
+                    ? ` - ${retentionPayment.category_detail}`
+                    : ""}
+                </dd>
+              </>
+            )}
+            <dt className="text-slate-500">Monto retenido</dt>
+            <dd className="font-semibold text-slate-900 tabular-nums text-right">
+              {utils.formatAmount(retentionPayment.retention_amount)}
+            </dd>
+            {retentionCertificate?.certificate_number && (
+              <>
+                <dt className="text-slate-500">Certificado</dt>
+                <dd className="font-medium text-slate-800 text-right">
+                  {retentionCertificate.certificate_number}
+                </dd>
+              </>
+            )}
+          </dl>
+        )}
+      </ConfirmDialog>
     </>
   );
 }
