@@ -1,0 +1,9 @@
+{
+  "name": "gerardfil",
+  "stack": "heroku-26",
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ]
+}
