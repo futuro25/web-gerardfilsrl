@@ -2,8 +2,8 @@
 "use strict";
 
 /**
- * Cron: envía por email facturas pendientes sin orden de pago y cheques a vencer
- * en los próximos 30 días (nº, importe y proveedor pagado si está vinculado).
+ * Cron: envía por email facturas pendientes sin orden de pago, cheques a vencer
+ * en los próximos 30 días y VEPs pendientes por vencer en los próximos 30 días.
  *
  * Uso:
  *   node scripts/cron-pending-movements-report.js
@@ -58,6 +58,9 @@ async function main() {
   );
   console.log(
     `[cron-pending-movements] Cheques a vencer — ${result.chequesSummary.count} cheque(s), total ${result.chequesSummary.total}`
+  );
+  console.log(
+    `[cron-pending-movements] VEPs por vencer — ${result.vepsSummary.count} VEP(s), total ${result.vepsSummary.total}`
   );
   if (result.messageId) {
     console.log(`[cron-pending-movements] messageId: ${result.messageId}`);

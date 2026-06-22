@@ -47,6 +47,8 @@ self.sendPendingMovementsReport = async (req, res) => {
       success: true,
       messageId: result.messageId,
       summary: result.summary,
+      chequesSummary: result.chequesSummary,
+      vepsSummary: result.vepsSummary,
     });
   } catch (e) {
     console.error("sendPendingMovementsReport cron:", e);

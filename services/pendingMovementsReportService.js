@@ -7,6 +7,7 @@ const {
 } = require("../controllers/PaycheckController");
 
 const CHEQUES_DUE_DAYS = 30;
+const VEPS_DUE_DAYS = 30;
 
 function formatAmount(value) {
   const n = parseFloat(value);
@@ -62,6 +63,53 @@ async function fetchChequesDueWithinDays(days = CHEQUES_DUE_DAYS) {
   if (error) throw error;
 
   return attachPaycheckSupplier(data || []);
+}
+
+function vepDisplayCategory(vep) {
+  if (vep.category === "Otros" && vep.custom_category) {
+    return vep.custom_category;
+  }
+  return vep.category || "—";
+}
+
+function vepDueDate(vep) {
+  if (!vep.due_date) return "—";
+  const d = DateTime.fromISO(vep.due_date);
+  return d.isValid ? d.toFormat("dd/MM/yyyy") : "—";
+}
+
+function vepAmount(vep) {
+  return Math.abs(parseFloat(vep.amount) || 0);
+}
+
+async function fetchUpcomingVeps(days = VEPS_DUE_DAYS) {
+  const zone = "America/Argentina/Buenos_Aires";
+  const today = DateTime.now().setZone(zone).startOf("day");
+  const until = today.plus({ days });
+
+  const { data, error } = await supabase
+    .from("veps")
+    .select("*")
+    .is("deleted_at", null)
+    .is("paid_at", null)
+    .gte("due_date", today.toISODate())
+    .lte("due_date", until.toISODate())
+    .order("due_date", { ascending: true });
+
+  if (error) throw error;
+
+  return data || [];
+}
+
+function buildVepsSummary(veps) {
+  let total = 0;
+  veps.forEach((v) => {
+    total += vepAmount(v);
+  });
+  return {
+    count: veps.length,
+    total,
+  };
 }
 
 function buildChequesSummary(cheques) {
@@ -139,7 +187,45 @@ function buildChequesSectionHtml(cheques, chequesSummary) {
     </div>`;
 }
 
-function buildReportHtml(movements, summary, cheques, chequesSummary) {
+function buildVepsSectionHtml(veps, vepsSummary) {
+  const rowsHtml =
+    veps.length === 0
+      ? `<tr><td colspan="3" style="padding:16px;text-align:center;color:#64748b;">No hay VEPs por vencer en los próximos ${VEPS_DUE_DAYS} días.</td></tr>`
+      : veps
+          .map((v) => {
+            const amount = vepAmount(v);
+            return `<tr>
+              <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${escapeHtml(vepDisplayCategory(v))}</td>
+              <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${escapeHtml(vepDueDate(v))}</td>
+              <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;">${formatAmount(amount)}</td>
+            </tr>`;
+          })
+          .join("");
+
+  return `
+    <div style="margin-top:28px;padding-top:24px;border-top:2px solid #e2e8f0;">
+      <h2 style="margin:0 0 8px;font-size:18px;color:#92400e;">VEPs por vencer (próximos ${VEPS_DUE_DAYS} días)</h2>
+      <p style="margin:0 0 16px;font-size:14px;"><strong>${vepsSummary.count}</strong> VEP(s) pendiente(s) por un total de <strong>${formatAmount(vepsSummary.total)}</strong>.</p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#fffbeb;">
+            <th style="text-align:left;padding:8px 10px;">Clasificación</th>
+            <th style="text-align:left;padding:8px 10px;">Vencimiento</th>
+            <th style="text-align:right;padding:8px 10px;">Importe</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+        <tfoot>
+          <tr style="background:#fffbeb;font-weight:bold;font-size:15px;">
+            <td colspan="2" style="padding:14px 10px;text-align:right;border-top:2px solid #fde68a;">Total</td>
+            <td style="padding:14px 10px;text-align:right;border-top:2px solid #fde68a;">${formatAmount(vepsSummary.total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>`;
+}
+
+function buildReportHtml(movements, summary, cheques, chequesSummary, veps, vepsSummary) {
   const generatedAt = DateTime.now().setZone("America/Argentina/Buenos_Aires").toFormat(
     "dd/MM/yyyy HH:mm"
   );
@@ -174,7 +260,7 @@ function buildReportHtml(movements, summary, cheques, chequesSummary) {
 <body style="font-family:Arial,sans-serif;color:#1e293b;line-height:1.5;margin:0;padding:24px;background:#f8fafc;">
   <div style="max-width:720px;margin:0 auto;background:#fff;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;">
     <div style="background:#fef3c7;padding:20px 24px;border-bottom:1px solid #fde68a;">
-      <h1 style="margin:0 0 8px;font-size:20px;color:#92400e;">Reporte diario — Facturas y cheques</h1>
+      <h1 style="margin:0 0 8px;font-size:20px;color:#92400e;">Reporte diario — Facturas, cheques y VEPs</h1>
       <p style="margin:0;font-size:13px;color:#78716c;">Generado el ${escapeHtml(generatedAt)} (hora Argentina)</p>
     </div>
     <div style="padding:20px 24px;">
@@ -198,13 +284,14 @@ function buildReportHtml(movements, summary, cheques, chequesSummary) {
         </tfoot>
       </table>
       ${buildChequesSectionHtml(cheques, chequesSummary)}
+      ${buildVepsSectionHtml(veps, vepsSummary)}
     </div>
   </div>
 </body>
 </html>`;
 }
 
-function buildReportText(movements, summary, cheques, chequesSummary) {
+function buildReportText(movements, summary, cheques, chequesSummary, veps, vepsSummary) {
   const lines = [
     "Facturas Pendientes (sin orden de pago)",
     `Cantidad: ${summary.count}`,
@@ -239,6 +326,19 @@ function buildReportText(movements, summary, cheques, chequesSummary) {
 
   lines.push("");
   lines.push(`Total cheques: ${formatAmount(chequesSummary.total)}`);
+  lines.push("");
+  lines.push(`VEPs por vencer (próximos ${VEPS_DUE_DAYS} días)`);
+  lines.push(`Cantidad: ${vepsSummary.count}`);
+  lines.push("");
+
+  veps.forEach((v, i) => {
+    lines.push(
+      `${i + 1}. ${vepDisplayCategory(v)} | Vence ${vepDueDate(v)} | ${formatAmount(vepAmount(v))}`
+    );
+  });
+
+  lines.push("");
+  lines.push(`Total VEPs: ${formatAmount(vepsSummary.total)}`);
 
   return lines.join("\n");
 }
@@ -250,14 +350,30 @@ function buildReportText(movements, summary, cheques, chequesSummary) {
 async function sendPendingMovementsReport({ to }) {
   const { sendEmail } = require("../utils/mailer");
 
-  const [movements, cheques] = await Promise.all([
+  const [movements, cheques, veps] = await Promise.all([
     fetchPendingMovements(),
     fetchChequesDueWithinDays(),
+    fetchUpcomingVeps(),
   ]);
   const summary = buildSummary(movements);
   const chequesSummary = buildChequesSummary(cheques);
-  const html = buildReportHtml(movements, summary, cheques, chequesSummary);
-  const text = buildReportText(movements, summary, cheques, chequesSummary);
+  const vepsSummary = buildVepsSummary(veps);
+  const html = buildReportHtml(
+    movements,
+    summary,
+    cheques,
+    chequesSummary,
+    veps,
+    vepsSummary
+  );
+  const text = buildReportText(
+    movements,
+    summary,
+    cheques,
+    chequesSummary,
+    veps,
+    vepsSummary
+  );
 
   const dateLabel = DateTime.now()
     .setZone("America/Argentina/Buenos_Aires")
@@ -265,22 +381,33 @@ async function sendPendingMovementsReport({ to }) {
 
   const result = await sendEmail({
     to,
-    subject: `[Reporte] Facturas pendientes (${summary.count}) y cheques a vencer (${chequesSummary.count}) — ${dateLabel}`,
+    subject: `[Reporte] Facturas pendientes (${summary.count}), cheques (${chequesSummary.count}) y VEPs (${vepsSummary.count}) — ${dateLabel}`,
     text,
     html,
   });
 
-  return { ...result, movements, summary, cheques, chequesSummary };
+  return {
+    ...result,
+    movements,
+    summary,
+    cheques,
+    chequesSummary,
+    veps,
+    vepsSummary,
+  };
 }
 
 module.exports = {
   fetchPendingMovements,
   fetchChequesDueWithinDays,
+  fetchUpcomingVeps,
   buildSummary,
   buildChequesSummary,
+  buildVepsSummary,
   buildReportHtml,
   buildReportText,
   sendPendingMovementsReport,
   formatAmount,
   CHEQUES_DUE_DAYS,
+  VEPS_DUE_DAYS,
 };
