@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { DateTime } from "luxon";
-import { ExternalLinkIcon, Eye, Maximize2 } from "lucide-react";
+import { ExternalLinkIcon, Eye, Maximize2, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "./common/Dialog";
 import Button from "./common/Button";
 import Spinner from "./common/Spinner";
@@ -35,6 +35,8 @@ export default function MovementDetailDialog({
   open,
   onOpenChange,
   movement,
+  onRequestCancelPaymentOrder,
+  isCancellingPaymentOrder = false,
 }) {
   const movementId = movement?.id;
   const hasFullInvoice =
@@ -63,6 +65,8 @@ export default function MovementDetailDialog({
     setSelectedPaymentOrder(po);
     setPoViewOpen(true);
   };
+
+  const canCancelPaymentOrders = Boolean(onRequestCancelPaymentOrder);
 
   const { data: invoiceData, isLoading: invoiceLoading } = useQuery({
     queryKey: querySupplierInvoiceByMovementKey(movementId),
@@ -424,6 +428,18 @@ export default function MovementDetailDialog({
                       <Eye className="h-3.5 w-3.5" />
                       Ver
                     </button>
+                    {canCancelPaymentOrders && (
+                      <button
+                        type="button"
+                        onClick={() => onRequestCancelPaymentOrder(po)}
+                        disabled={isCancellingPaymentOrder}
+                        className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700 hover:bg-red-100 transition-colors disabled:opacity-50"
+                        title="Eliminar orden de pago"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Eliminar
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

@@ -26,6 +26,48 @@ const PAYMENT_METHODS = new Set([
   "DEBITO AUTOMATICO",
 ]);
 
+async function findPaycheckIdForOrder(order) {
+  if (!order || order.payment_method !== "CHEQUE") return null;
+  if (order.paycheck_id) return order.paycheck_id;
+
+  if (
+    !order.account_movement_id ||
+    !order.cheque_number ||
+    !order.cheque_bank ||
+    !order.cheque_due_date
+  ) {
+    return null;
+  }
+
+  const { data: candidates, error } = await supabase
+    .from("paychecks")
+    .select("id, amount")
+    .eq("movement_id", order.account_movement_id)
+    .eq("number", order.cheque_number)
+    .eq("bank", order.cheque_bank)
+    .eq("due_date", order.cheque_due_date)
+    .eq("type", "OUT")
+    .is("deleted_at", null);
+
+  if (error) throw error;
+  if (!candidates?.length) return null;
+
+  const orderAmount = parseAmount(order.amount);
+  const match = candidates.find(
+    (p) => Math.abs(parseAmount(p.amount) - orderAmount) < 0.01
+  );
+  return match?.id ?? candidates[0]?.id ?? null;
+}
+
+async function softDeletePaycheck(paycheckId) {
+  if (!paycheckId) return;
+  await supabase
+    .from("paychecks")
+    .update({ deleted_at: new Date() })
+    .eq("id", paycheckId)
+    .is("deleted_at", null);
+}
+
 async function generateNextOrderNumber() {
   const { data, error } = await supabase
     .from("payment_orders")
@@ -388,6 +430,7 @@ self.createPaymentOrder = async (req, res) => {
         cheque_number: isCheque ? cheque_number : null,
         cheque_bank: isCheque ? cheque_bank : null,
         cheque_due_date: isCheque ? cheque_due_date : null,
+        paycheck_id: isCheque ? paycheckId : null,
       })
       .select();
 
@@ -457,11 +500,9 @@ self.cancelPaymentOrder = async (req, res) => {
       invoice?.document_date ||
       movement.date;
 
-    if (movement.paycheck_id) {
-      await supabase
-        .from("paychecks")
-        .update({ deleted_at: new Date() })
-        .eq("id", movement.paycheck_id);
+    const cancelledPaycheckId = await findPaycheckIdForOrder(order);
+    if (cancelledPaycheckId) {
+      await softDeletePaycheck(cancelledPaycheckId);
     }
 
     const { error: deleteOrderErr } = await supabase
@@ -490,10 +531,14 @@ self.cancelPaymentOrder = async (req, res) => {
         cheque_bank: latest.cheque_bank,
         cheque_due_date: latest.cheque_due_date,
       });
+      const latestPaycheckId =
+        latest.payment_method === "CHEQUE"
+          ? await findPaycheckIdForOrder(latest)
+          : null;
       movementUpdate = {
         ...movementUpdate,
         date: documentDate,
-        paycheck_id: latest.paycheck_id || null,
+        paycheck_id: latestPaycheckId,
       };
     } else {
       movementUpdate = buildMovementPendingRevert(documentDate);
@@ -559,18 +604,12 @@ self.updatePaymentOrder = async (req, res) => {
     if (updateErr) throw updateErr;
 
     if (isCheque && order.account_movement_id) {
-      const { data: movement, error: movErr } = await supabase
-        .from("account_movements")
-        .select("id, paycheck_id")
-        .eq("id", order.account_movement_id)
-        .is("deleted_at", null)
-        .maybeSingle();
-
-      if (!movErr && movement?.paycheck_id) {
+      const paycheckId = await findPaycheckIdForOrder(order);
+      if (paycheckId) {
         await supabase
           .from("paychecks")
           .update({ due_date: payment_date })
-          .eq("id", movement.paycheck_id)
+          .eq("id", paycheckId)
           .is("deleted_at", null);
       }
     }

@@ -186,6 +186,44 @@ function paymentOrderBlockMessage(movement) {
   return `Este movimiento tiene ${orders.length > 1 ? "órdenes de pago activas" : "una orden de pago activa"}${op}.${partial} Podés corregir las fechas abajo. Para cambiar montos u otros datos, anulá la(s) OP primero.`;
 }
 
+function mergeMovementAfterOpCancel(prev, movementId, opId, result) {
+  if (!prev || prev.id !== movementId) return prev;
+
+  const category = inferExpenseCategory(prev);
+  const remainingOrders = (prev.payment_orders || []).filter((o) => o.id !== opId);
+  const paidAmount = remainingOrders.reduce(
+    (acc, o) => acc + (parseFloat(o.amount) || 0),
+    0
+  );
+  const total = parseFloat(prev.invoice_total_amount ?? prev.amount) || 0;
+  const retentionAmount = parseFloat(prev.invoice_retention_amount) || 0;
+  const remainingAmount =
+    result.remaining_amount != null
+      ? parseFloat(result.remaining_amount) || 0
+      : Math.max(0, total - paidAmount - retentionAmount);
+  const fullyPaid =
+    result.fully_paid != null
+      ? Boolean(result.fully_paid)
+      : remainingAmount <= 0.009;
+  const latest = remainingOrders[remainingOrders.length - 1] || null;
+
+  return {
+    ...prev,
+    ...(result.movement || {}),
+    payment_orders: remainingOrders,
+    has_payment_order: remainingOrders.length > 0,
+    payment_order_id: latest?.id || null,
+    payment_order_number:
+      remainingOrders.map((o) => o.order_number).filter(Boolean).join(", ") ||
+      null,
+    invoice_paid_amount: paidAmount,
+    invoice_remaining_amount: remainingAmount,
+    invoice_fully_paid: fullyPaid,
+    invoice_payment_pending:
+      category === "FACTURA" && Boolean(prev.supplier_invoice_id) && !fullyPaid,
+  };
+}
+
 const MONTHS = [
   { value: 1, label: "Enero" },
   { value: 2, label: "Febrero" },
@@ -226,6 +264,7 @@ export default function AccountControl() {
   const [vepsExpanded, setVepsExpanded] = useState(false);
   const [markingVepId, setMarkingVepId] = useState(null);
   const [vepPaidConfirm, setVepPaidConfirm] = useState(null);
+  const [cancelOpConfirm, setCancelOpConfirm] = useState(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [detailMovement, setDetailMovement] = useState(null);
   const [invoiceShowErrors, setInvoiceShowErrors] = useState(false);
@@ -439,26 +478,27 @@ export default function AccountControl() {
     }
   };
 
+  const requestCancelPaymentOrder = (
+    movement,
+    { fromEdit = false, orderId = null, order = null } = {}
+  ) => {
+    const opId = orderId || movement.payment_order_id;
+    const op =
+      order ||
+      movement.payment_orders?.find((o) => o.id === opId) || {
+        id: opId,
+        order_number: movement.payment_order_number,
+        amount: null,
+        payment_date: null,
+      };
+    setCancelOpConfirm({ movement, orderId: opId, fromEdit, order: op });
+  };
+
   const handleCancelPaymentOrder = async (
     movement,
     { fromEdit = false, orderId = null } = {}
   ) => {
     const opId = orderId || movement.payment_order_id;
-    const opNumber =
-      movement.payment_orders?.find((o) => o.id === opId)?.order_number ||
-      movement.payment_order_number ||
-      "";
-    if (
-      !window.confirm(
-        `¿Anular la orden de pago ${opNumber}?${
-          movement.payment_orders?.length > 1
-            ? " Las demás OP seguirán activas."
-            : " El movimiento volverá a pendiente."
-        }`
-      )
-    ) {
-      return false;
-    }
     try {
       setIsCancellingOp(true);
       const result = await cancelPaymentOrder(opId);
@@ -468,6 +508,11 @@ export default function AccountControl() {
       }
       invalidateAll();
       invalidatePaymentQueries();
+      if (movement?.supplier_id) {
+        queryClient.invalidateQueries({
+          queryKey: querySupplierAccountKey(movement.supplier_id),
+        });
+      }
       setPage(1);
       await refreshMovementsList();
 
@@ -478,45 +523,12 @@ export default function AccountControl() {
         queryClient.invalidateQueries({
           queryKey: queryPaymentOrdersByMovementKey(movement.id),
         });
-        setSelectedMovement((prev) => {
-          if (prev?.id !== movement.id) return prev;
-          const category = inferExpenseCategory(prev);
-          const remainingOrders = (prev.payment_orders || []).filter(
-            (o) => o.id !== opId
-          );
-          const paidAmount = remainingOrders.reduce(
-            (acc, o) => acc + (parseFloat(o.amount) || 0),
-            0
-          );
-          const total =
-            parseFloat(prev.invoice_total_amount ?? prev.amount) || 0;
-          const retentionAmount =
-            parseFloat(prev.invoice_retention_amount) || 0;
-          const remainingAmount =
-            result.remaining_amount != null
-              ? parseFloat(result.remaining_amount) || 0
-              : Math.max(0, total - paidAmount - retentionAmount);
-          const fullyPaid =
-            result.fully_paid != null
-              ? Boolean(result.fully_paid)
-              : remainingAmount <= 0.009;
-          const latest = remainingOrders[remainingOrders.length - 1] || null;
-          return {
-            ...prev,
-            ...(result.movement || {}),
-            payment_orders: remainingOrders,
-            has_payment_order: remainingOrders.length > 0,
-            payment_order_id: latest?.id || null,
-            payment_order_number:
-              remainingOrders.map((o) => o.order_number).filter(Boolean).join(", ") ||
-              null,
-            invoice_paid_amount: paidAmount,
-            invoice_remaining_amount: remainingAmount,
-            invoice_fully_paid: fullyPaid,
-            invoice_payment_pending:
-              category === "FACTURA" && Boolean(prev.supplier_invoice_id) && !fullyPaid,
-          };
-        });
+        setSelectedMovement((prev) =>
+          mergeMovementAfterOpCancel(prev, movement.id, opId, result)
+        );
+        setDetailMovement((prev) =>
+          mergeMovementAfterOpCancel(prev, movement.id, opId, result)
+        );
         if (!result.fully_paid) {
           setInvoicePayMode("pending");
         }
@@ -530,6 +542,13 @@ export default function AccountControl() {
     } finally {
       setIsCancellingOp(false);
     }
+  };
+
+  const confirmCancelPaymentOrder = async () => {
+    if (!cancelOpConfirm) return;
+    const { movement, orderId, fromEdit } = cancelOpConfirm;
+    const ok = await handleCancelPaymentOrder(movement, { fromEdit, orderId });
+    if (ok) setCancelOpConfirm(null);
   };
 
   const invalidatePaymentQueries = () => {
@@ -1723,7 +1742,7 @@ export default function AccountControl() {
                                               "text-amber-700 hover:bg-amber-50 hover:text-amber-900"
                                             )}
                                             onClick={() =>
-                                              handleCancelPaymentOrder(cancelTarget, {
+                                              requestCancelPaymentOrder(cancelTarget, {
                                                 orderId: cancelTarget.payment_order_id,
                                               })
                                             }
@@ -2078,14 +2097,11 @@ export default function AccountControl() {
                           className="border-amber-400 text-amber-900 hover:bg-amber-100"
                           disabled={isCancellingOp}
                           onClick={() =>
-                            handleCancelPaymentOrder(
-                              {
-                                ...selectedMovement,
-                                payment_order_id: op.id,
-                                payment_order_number: op.order_number,
-                              },
-                              { fromEdit: true, orderId: op.id }
-                            )
+                            requestCancelPaymentOrder(selectedMovement, {
+                              fromEdit: true,
+                              orderId: op.id,
+                              order: op,
+                            })
                           }
                         >
                           Anular
@@ -2194,7 +2210,66 @@ export default function AccountControl() {
         open={detailDialogOpen}
         onOpenChange={setDetailDialogOpen}
         movement={detailMovement}
+        onRequestCancelPaymentOrder={
+          detailMovement
+            ? (po) =>
+                requestCancelPaymentOrder(detailMovement, {
+                  fromEdit: true,
+                  orderId: po.id,
+                  order: po,
+                })
+            : undefined
+        }
+        isCancellingPaymentOrder={isCancellingOp}
       />
+
+      <ConfirmDialog
+        open={Boolean(cancelOpConfirm)}
+        onOpenChange={(open) => {
+          if (!open && !isCancellingOp) setCancelOpConfirm(null);
+        }}
+        title="¿Eliminar orden de pago?"
+        description={
+          cancelOpConfirm &&
+          (cancelOpConfirm.movement.payment_orders || []).filter(
+            (o) => o.id !== cancelOpConfirm.orderId
+          ).length > 0
+            ? "La orden de pago se anulará. Las demás OP seguirán activas y el saldo se recalculará en Control y en la cuenta corriente."
+            : "La orden de pago se anulará y el movimiento volverá a pendiente de pago. El saldo se actualizará en Control y en la cuenta corriente."
+        }
+        confirmLabel="Eliminar orden de pago"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        isLoading={isCancellingOp}
+        onConfirm={confirmCancelPaymentOrder}
+      >
+        {cancelOpConfirm?.order && (
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+            <dt className="text-slate-500">Orden</dt>
+            <dd className="font-medium text-slate-800 text-right">
+              {cancelOpConfirm.order.order_number || "—"}
+            </dd>
+            {cancelOpConfirm.order.amount != null && (
+              <>
+                <dt className="text-slate-500">Importe</dt>
+                <dd className="font-semibold text-slate-900 tabular-nums text-right">
+                  {utils.formatAmount(cancelOpConfirm.order.amount)}
+                </dd>
+              </>
+            )}
+            {cancelOpConfirm.order.payment_date && (
+              <>
+                <dt className="text-slate-500">Fecha de pago</dt>
+                <dd className="font-medium text-slate-800 text-right">
+                  {DateTime.fromISO(cancelOpConfirm.order.payment_date).toFormat(
+                    "dd/MM/yyyy"
+                  )}
+                </dd>
+              </>
+            )}
+          </dl>
+        )}
+      </ConfirmDialog>
 
       <ConfirmDialog
         open={Boolean(vepPaidConfirm)}
