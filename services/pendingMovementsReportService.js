@@ -6,7 +6,7 @@ const {
   attachPaycheckSupplier,
 } = require("../controllers/PaycheckController");
 
-const CHEQUES_DUE_DAYS = 30;
+const CHEQUES_DUE_DAYS = 60;
 const VEPS_DUE_DAYS = 30;
 
 function formatAmount(value) {

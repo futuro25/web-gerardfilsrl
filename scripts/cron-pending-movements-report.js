@@ -3,7 +3,7 @@
 
 /**
  * Cron: envía por email facturas pendientes sin orden de pago, cheques a vencer
- * en los próximos 30 días y VEPs pendientes por vencer en los próximos 30 días.
+ * en los próximos 60 días y VEPs pendientes por vencer en los próximos 30 días.
  *
  * Uso:
  *   node scripts/cron-pending-movements-report.js
