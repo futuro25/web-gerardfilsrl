@@ -38,6 +38,7 @@ export default function PaymentOrderViewDialog({
   if (!order) return null;
 
   const isCheque = order.payment_method === "CHEQUE";
+  const isCreditNote = order.payment_method === "NOTA DE CREDITO";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -79,6 +80,13 @@ export default function PaymentOrderViewDialog({
                 value={fmtDate(order.cheque_due_date)}
               />
             </>
+          )}
+
+          {isCreditNote && order.credit_note_number && (
+            <Row
+              label="N° nota de crédito"
+              value={order.credit_note_number}
+            />
           )}
         </div>
 

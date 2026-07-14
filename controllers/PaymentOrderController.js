@@ -24,6 +24,7 @@ const PAYMENT_METHODS = new Set([
   "EFECTIVO",
   "TARJETA DE CREDITO",
   "DEBITO AUTOMATICO",
+  "NOTA DE CREDITO",
 ]);
 
 async function findPaycheckIdForOrder(order) {
@@ -260,6 +261,7 @@ self.createPaymentOrder = async (req, res) => {
       cheque_number,
       cheque_bank,
       cheque_due_date,
+      credit_note_number,
     } = req.body;
 
     if (req.body.cashflow_id && !supplier_invoice_id) {
@@ -430,6 +432,10 @@ self.createPaymentOrder = async (req, res) => {
         cheque_number: isCheque ? cheque_number : null,
         cheque_bank: isCheque ? cheque_bank : null,
         cheque_due_date: isCheque ? cheque_due_date : null,
+        credit_note_number:
+          payment_method === "NOTA DE CREDITO"
+            ? credit_note_number?.trim() || null
+            : null,
         paycheck_id: isCheque ? paycheckId : null,
       })
       .select();

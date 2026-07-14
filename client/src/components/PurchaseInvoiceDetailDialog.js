@@ -347,6 +347,14 @@ export default function PurchaseInvoiceDetailDialog({
                   </span>
                 </div>
               )}
+              {existingOrder.credit_note_number && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500 text-xs">Nota de crédito</span>
+                  <span className="font-medium text-slate-700">
+                    {existingOrder.credit_note_number}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500 text-xs">Fecha de pago</span>
                 <span className="font-medium text-slate-700">

@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS payment_orders (
   supplier_id           INTEGER REFERENCES suppliers(id),                      -- Proveedor
   payment_method        TEXT    NOT NULL CHECK (payment_method IN (
                           'TRANSFERENCIA', 'CHEQUE', 'EFECTIVO',
-                          'TARJETA DE CREDITO', 'DEBITO AUTOMATICO'
+                          'TARJETA DE CREDITO', 'DEBITO AUTOMATICO', 'NOTA DE CREDITO'
                         )),
   amount                NUMERIC NOT NULL,
   description           TEXT,

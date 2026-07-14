@@ -10,6 +10,7 @@ export const PAYMENT_METHOD_OPTIONS = [
   { value: "EFECTIVO", label: "Efectivo" },
   { value: "TARJETA DE CREDITO", label: "Tarjeta de crédito" },
   { value: "DEBITO AUTOMATICO", label: "Débito automático" },
+  { value: "NOTA DE CREDITO", label: "Nota de crédito" },
 ];
 
 export const PAYMENT_METHOD_LABELS = {
@@ -29,6 +30,7 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
     defaultChequeBank = "",
     defaultChequeDueDate = "",
     defaultPaymentDate = "",
+    defaultCreditNoteNumber = "",
     showErrors = false,
   },
   ref
@@ -49,11 +51,13 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
       description: defaultDescription || "",
       cheque_number: "",
       cheque_bank: "",
+      credit_note_number: "",
     },
   });
 
   const paymentMethod = watch("payment_method");
   const isCheque = paymentMethod === "CHEQUE";
+  const isCreditNote = paymentMethod === "NOTA DE CREDITO";
 
   useEffect(() => {
     const resolvedPaymentDate =
@@ -67,6 +71,7 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
       description: defaultDescription || "",
       cheque_number: defaultChequeNumber || "",
       cheque_bank: defaultChequeBank || "",
+      credit_note_number: defaultCreditNoteNumber || "",
     });
   }, [
     defaultAmount,
@@ -76,6 +81,7 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
     defaultChequeBank,
     defaultChequeDueDate,
     defaultPaymentDate,
+    defaultCreditNoteNumber,
     reset,
   ]);
 
@@ -125,12 +131,19 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
               cheque_due_date: data.payment_date,
             }
           : {};
+      const creditNoteData =
+        data.payment_method === "NOTA DE CREDITO"
+          ? {
+              credit_note_number: data.credit_note_number?.trim() || null,
+            }
+          : {};
       if (isEgresoVariant) {
         return {
           payment_method: data.payment_method,
           is_cheque: data.payment_method === "CHEQUE",
           payment_date: data.payment_date || null,
           ...chequeData,
+          ...creditNoteData,
         };
       }
       return {
@@ -139,6 +152,7 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
         description: data.description || null,
         payment_date: data.payment_date,
         ...chequeData,
+        ...creditNoteData,
       };
     },
     reset,
@@ -173,6 +187,20 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
           <p className="text-sm text-red-500 pt-1">Seleccione la forma de pago</p>
         )}
       </div>
+
+      {isCreditNote && (
+        <div className="grid grid-cols-1 gap-3 border border-violet-100 bg-violet-50/60 rounded-lg p-3">
+          <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
+            Nota de crédito
+          </p>
+          <Input
+            label="Número de nota de crédito (opcional)"
+            type="text"
+            placeholder="Ej: A-0001-00000123"
+            {...register("credit_note_number")}
+          />
+        </div>
+      )}
 
       {isCheque && (
         <div className="grid grid-cols-1 gap-3 border border-blue-100 bg-blue-50/60 rounded-lg p-3">

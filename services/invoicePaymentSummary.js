@@ -50,7 +50,7 @@ async function getActiveOrdersForInvoice(supplierInvoiceId) {
   const { data, error } = await supabase
     .from("payment_orders")
     .select(
-      "id, order_number, supplier_invoice_id, amount, payment_method, payment_date, cheque_number, cheque_bank, cheque_due_date, created_at"
+      "id, order_number, supplier_invoice_id, amount, payment_method, payment_date, cheque_number, cheque_bank, cheque_due_date, credit_note_number, created_at"
     )
     .eq("supplier_invoice_id", supplierInvoiceId)
     .is("deleted_at", null)
@@ -95,7 +95,7 @@ async function getOrdersGroupedByInvoiceIds(invoiceIds) {
   const { data, error } = await supabase
     .from("payment_orders")
     .select(
-      "id, order_number, supplier_invoice_id, amount, payment_method, payment_date, cheque_number, cheque_bank, cheque_due_date, created_at"
+      "id, order_number, supplier_invoice_id, amount, payment_method, payment_date, cheque_number, cheque_bank, cheque_due_date, credit_note_number, created_at"
     )
     .in("supplier_invoice_id", invoiceIds)
     .is("deleted_at", null)
