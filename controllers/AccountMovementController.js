@@ -697,6 +697,25 @@ self.getFutureBalances = async (req, res) => {
       deltasByDate.get(ev.eff).push(ev.delta);
     }
 
+    // VEPs pendientes de pago: egreso proyectado en su vencimiento.
+    // Los vencidos sin pagar se imputan mañana (siguen siendo plata que va a salir).
+    const { data: pendingVeps, error: vepsErr } = await supabase
+      .from("veps")
+      .select("amount, due_date")
+      .is("deleted_at", null)
+      .is("paid_at", null);
+    if (vepsErr) throw vepsErr;
+
+    const tomorrow = DateTime.fromISO(today).plus({ days: 1 }).toISODate();
+    for (const vep of pendingVeps || []) {
+      const amount = parseFloat(vep.amount);
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      const eff =
+        vep.due_date && vep.due_date > today ? vep.due_date : tomorrow;
+      if (!deltasByDate.has(eff)) deltasByDate.set(eff, []);
+      deltasByDate.get(eff).push(-amount);
+    }
+
     // Próximos 3 meses (día a día desde mañana hasta hoy + 3 meses inclusive)
     const out = [];
     let current = balanceThroughToday;
@@ -705,12 +724,14 @@ self.getFutureBalances = async (req, res) => {
     while (d <= endD) {
       const iso = d.toISODate();
       const deltas = deltasByDate.get(iso) || [];
-      for (const del of deltas) current += del;
-      out.push({ date: iso, balance: current });
+      let dayDelta = 0;
+      for (const del of deltas) dayDelta += del;
+      current += dayDelta;
+      out.push({ date: iso, balance: current, delta: dayDelta });
       d = d.plus({ days: 1 });
     }
 
-    res.json({ data: out });
+    res.json({ data: out, currentBalance: balanceThroughToday });
   } catch (e) {
     console.error("getFutureBalances error:", e.message);
     res.json({ error: e.message, data: [] });

@@ -1421,8 +1421,37 @@ export default function AccountControl() {
                   </button>
                 </div>
                 <p className="text-xs text-slate-500">
-                  Próximos 3 meses (día a día desde mañana). Saldo al cierre de cada día según fechas efectivas (incluye cheques en su fecha de vencimiento).
+                  Próximos 3 meses (día a día desde mañana). Saldo al cierre de
+                  cada día según fechas efectivas: incluye ingresos futuros,
+                  cheques en su fecha de vencimiento y VEPs pendientes de pago
+                  en su vencimiento.
                 </p>
+                {!futureBalancesLoading &&
+                  !futureBalancesRes?.error &&
+                  futureBalancesRes?.currentBalance != null && (
+                    <div
+                      className={utils.cn(
+                        "rounded-lg border px-4 py-3 flex items-center justify-between gap-3",
+                        futureBalancesRes.currentBalance >= 0
+                          ? "bg-green-50 border-green-200"
+                          : "bg-red-50 border-red-200"
+                      )}
+                    >
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-600">
+                        Saldo actual en caja
+                      </span>
+                      <span
+                        className={utils.cn(
+                          "text-lg font-bold tabular-nums",
+                          futureBalancesRes.currentBalance >= 0
+                            ? "text-green-700"
+                            : "text-red-600"
+                        )}
+                      >
+                        {utils.formatAmount(futureBalancesRes.currentBalance)}
+                      </span>
+                    </div>
+                  )}
                 <div className="flex-1 min-h-0 overflow-y-auto border border-slate-200 rounded-lg bg-white">
                   {futureBalancesLoading && (
                     <div className="p-8 flex justify-center">
@@ -1437,25 +1466,48 @@ export default function AccountControl() {
                       <thead className="sticky top-0 bg-slate-100 z-10">
                         <tr>
                           <th className="text-left font-medium p-3 text-slate-600 border-b border-slate-200">Fecha</th>
+                          <th className="text-right font-medium p-3 text-slate-600 border-b border-slate-200">Movimientos</th>
                           <th className="text-right font-medium p-3 text-slate-600 border-b border-slate-200">Saldo</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(futureBalancesRes?.data || []).length === 0 ? (
                           <tr>
-                            <td colSpan={2} className="p-4 text-center text-slate-500">
+                            <td colSpan={3} className="p-4 text-center text-slate-500">
                               No hay movimientos proyectados después de hoy.
                             </td>
                           </tr>
                         ) : (
                           (futureBalancesRes.data || []).map((row) => (
-                            <tr key={row.date} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
+                            <tr
+                              key={row.date}
+                              className={utils.cn(
+                                "border-b border-slate-100 last:border-b-0",
+                                row.balance >= 0
+                                  ? "bg-green-50/60 hover:bg-green-100/60"
+                                  : "bg-red-50/70 hover:bg-red-100/60"
+                              )}
+                            >
                               <td className="p-3 text-slate-700">
                                 {utils.formatDate(row.date)}
                               </td>
                               <td
                                 className={utils.cn(
-                                  "p-3 text-right font-medium tabular-nums",
+                                  "p-3 text-right tabular-nums text-xs",
+                                  !row.delta
+                                    ? "text-slate-300"
+                                    : row.delta > 0
+                                      ? "text-green-700"
+                                      : "text-red-600"
+                                )}
+                              >
+                                {row.delta
+                                  ? `${row.delta > 0 ? "+" : "−"}${utils.formatAmount(Math.abs(row.delta))}`
+                                  : "—"}
+                              </td>
+                              <td
+                                className={utils.cn(
+                                  "p-3 text-right font-semibold tabular-nums",
                                   row.balance >= 0 ? "text-green-700" : "text-red-600"
                                 )}
                               >
