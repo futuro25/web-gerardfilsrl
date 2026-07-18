@@ -1946,7 +1946,7 @@ export default function AccountControl() {
                       )}
                       onClick={() => setIncomeCategory("STANDARD")}
                     >
-                      Ingreso
+                      Ingreso x ventas
                     </button>
                     <button
                       type="button"

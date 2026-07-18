@@ -40,10 +40,11 @@ const IngresoCreditNoteFields = forwardRef(function IngresoCreditNoteFields(
     queryFn: fetchSupplierInvoices,
   });
 
-  const invoices = useMemo(
-    () => (Array.isArray(invoicesRes) ? invoicesRes : []),
-    [invoicesRes]
-  );
+  const invoices = useMemo(() => {
+    if (Array.isArray(invoicesRes)) return invoicesRes;
+    if (Array.isArray(invoicesRes?.data)) return invoicesRes.data;
+    return [];
+  }, [invoicesRes]);
 
   const invoiceOptions = useMemo(() => {
     const sorted = [...invoices].sort((a, b) => {

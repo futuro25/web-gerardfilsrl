@@ -120,19 +120,19 @@ export default function SelectComboBox({ options, value, onChange }) {
             displayValue={(option) => option?.label || ""}
             onChange={handleInputChange}
           />
-          <ComboboxButton 
+          <ComboboxButton
             className="group absolute inset-y-0 right-0 px-2.5"
             onClick={handleOpen}
           >
             <ChevronDownIcon className="size-4 fill-slate-900" />
           </ComboboxButton>
-        </div>
 
+        {/* Dentro del contenedor relative: el dropdown queda anclado al input y acompaña el scroll */}
         {isOpen && (
           <ComboboxOptions
             static
             className={clsx(
-              "absolute z-10 rounded border border-slate-200 bg-white p-1 shadow-lg max-h-60 overflow-auto",
+              "absolute left-0 top-full mt-1 z-10 min-w-full w-max max-w-[min(28rem,90vw)] rounded border border-slate-200 bg-white p-1 shadow-lg max-h-60 overflow-auto",
               "transition duration-100 ease-in"
             )}
           >
@@ -154,6 +154,7 @@ export default function SelectComboBox({ options, value, onChange }) {
             )}
           </ComboboxOptions>
         )}
+        </div>
       </Combobox>
     </div>
   );
