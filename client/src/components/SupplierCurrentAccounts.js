@@ -26,6 +26,7 @@ function categoryLabel(m) {
   if (m.category === "FACTURA") return "Factura (Cashflow)";
   if (m.category === "ORDEN_PAGO") return "Orden de Pago";
   if (m.category === "RETENCION") return "Retención";
+  if (m.category === "NOTA_CREDITO") return "Nota de Crédito";
   if (m.category === "INGRESO") return "Ingreso";
   if (m.category === "EGRESO") return "Egreso";
   return m.movement_type === "INGRESO" ? "Ingreso" : "Egreso";
@@ -39,11 +40,18 @@ function shownAmount(m) {
 function movementInvoiceKey(m) {
   if (m.category === "FACTURA_CONTROL") return `control-${m.source_id}`;
   if (m.category === "FACTURA") return `cashflow-${m.source_id}`;
+  if (m.category === "NOTA_CREDITO" && m.supplier_invoice_id != null) {
+    return `control-${m.supplier_invoice_id}`;
+  }
   return null;
 }
 
 function canViewInvoice(m) {
-  return m.category === "FACTURA_CONTROL" || m.category === "FACTURA";
+  return (
+    m.category === "FACTURA_CONTROL" ||
+    m.category === "FACTURA" ||
+    (m.category === "NOTA_CREDITO" && m.supplier_invoice_id != null)
+  );
 }
 
 function canViewPaymentOrder(m) {
@@ -62,6 +70,12 @@ function formatMovementDocNumber(m) {
     }
     if (m.category_code) return m.category_code;
     return "—";
+  }
+  if (m.category === "NOTA_CREDITO") {
+    if (m.invoice_number) {
+      return utils.formatInvoiceNumber(m.invoice_number);
+    }
+    return m.credit_note_number || "—";
   }
   if (m.invoice_number) {
     return utils.formatInvoiceNumber(m.invoice_number);
@@ -359,7 +373,7 @@ export default function SupplierCurrentAccounts() {
 
             {!detailLoading && !detailError && accountData && (
               <>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 my-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 my-4">
                   <SummaryCard
                     label="Egresos (Cashflow)"
                     value={summary?.totalCashflowEgresos ?? 0}
@@ -378,6 +392,11 @@ export default function SupplierCurrentAccounts() {
                   <SummaryCard
                     label="Órdenes de pago"
                     value={summary?.totalPaymentOrders ?? 0}
+                    negative
+                  />
+                  <SummaryCard
+                    label="Notas de crédito"
+                    value={summary?.totalCreditNotes ?? 0}
                     negative
                   />
                   <SummaryCard
@@ -449,6 +468,8 @@ export default function SupplierCurrentAccounts() {
                                       ? "bg-blue-500"
                                       : m.category === "RETENCION"
                                       ? "bg-violet-600"
+                                      : m.category === "NOTA_CREDITO"
+                                      ? "bg-teal-600"
                                       : shownAmount(m) >= 0
                                       ? "bg-amber-500"
                                       : "bg-emerald-600"

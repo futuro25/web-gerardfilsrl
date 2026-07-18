@@ -31,6 +31,12 @@ const {
   attachVepInfo,
 } = require("../services/accountMovementVep");
 const { assertNoDuplicateSupplierInvoice } = require("../services/supplierInvoiceDuplicate");
+const {
+  isCreditNoteIncome,
+  applyIngresoCreditNoteFields,
+  resolveCreditNoteInvoice,
+  attachCreditNoteInfo,
+} = require("../services/accountMovementCreditNote");
 const { validateMovementBody } = require("../services/accountMovementValidation");
 
 const MOVEMENT_KINDS = new Set(["FIJO", "UNICA VEZ"]);
@@ -163,6 +169,7 @@ function buildMovementUpdateFromBody(body) {
 
   applyEgresoSupplierFields(update, body);
   applyEgresoVepFields(update, body);
+  applyIngresoCreditNoteFields(update, body);
 
   if (body.image_key != null && body.image_key !== "") {
     update.image_key = body.image_key;
@@ -362,7 +369,7 @@ async function getSearchMovementIds(search) {
     .select("id")
     .is("deleted_at", null)
     .or(
-      `description.ilike.${pattern},cheque_number.ilike.${pattern},cheque_bank.ilike.${pattern},invoice_number.ilike.${pattern}`
+      `description.ilike.${pattern},cheque_number.ilike.${pattern},cheque_bank.ilike.${pattern},invoice_number.ilike.${pattern},credit_note_number.ilike.${pattern}`
     );
   if (directErr) throw directErr;
   (direct || []).forEach((row) => ids.add(row.id));
@@ -523,8 +530,8 @@ self.getMovements = async (req, res) => {
 
     if (error) throw error;
 
-    const dataWithSuppliers = await attachVepInfo(
-      await attachSupplierNames(data || [])
+    const dataWithSuppliers = await attachCreditNoteInfo(
+      await attachVepInfo(await attachSupplierNames(data || []))
     );
     const excludedIds = await getBalanceExcludedMovementIds();
     const withInvoiceFlags = await attachInvoicePaymentFlags(dataWithSuppliers);
@@ -737,22 +744,25 @@ self.createMovement = async (req, res) => {
     const validationErr = validateMovementBody(req.body);
     if (validationErr) return res.json({ error: validationErr });
 
-    const movement = applyEgresoVepFields(
-      applyEgresoSupplierFields(
-        applyDirectPaymentMethod(
-          {
-            type: req.body.type,
-            responsible: "Sin especificar",
-            movement_kind: normalizeMovementKind(req.body.movement_kind),
-            date: req.body.date,
-            amount: req.body.amount,
-            description: req.body.description || null,
-            is_cheque: req.body.is_cheque || false,
-            cheque_number: req.body.cheque_number || null,
-            cheque_bank: req.body.cheque_bank || null,
-            cheque_due_date: req.body.cheque_due_date || null,
-            expense_category: req.body.expense_category || null,
-          },
+    const movement = applyIngresoCreditNoteFields(
+      applyEgresoVepFields(
+        applyEgresoSupplierFields(
+          applyDirectPaymentMethod(
+            {
+              type: req.body.type,
+              responsible: "Sin especificar",
+              movement_kind: normalizeMovementKind(req.body.movement_kind),
+              date: req.body.date,
+              amount: req.body.amount,
+              description: req.body.description || null,
+              is_cheque: req.body.is_cheque || false,
+              cheque_number: req.body.cheque_number || null,
+              cheque_bank: req.body.cheque_bank || null,
+              cheque_due_date: req.body.cheque_due_date || null,
+              expense_category: req.body.expense_category || null,
+            },
+            req.body
+          ),
           req.body
         ),
         req.body
@@ -762,6 +772,18 @@ self.createMovement = async (req, res) => {
 
     if (movement.expense_category === "VEP" && movement.vep_id) {
       await assertVepAvailableForPayment(movement.vep_id);
+    }
+
+    // Nota de crédito: proveedor derivado de la factura asociada (impacta su cuenta corriente).
+    if (isCreditNoteIncome(req.body)) {
+      const creditNoteInvoice = await resolveCreditNoteInvoice(
+        movement.credit_note_invoice_id
+      );
+      movement.supplier_id = creditNoteInvoice.supplier_id;
+      movement.is_cheque = false;
+      movement.cheque_number = null;
+      movement.cheque_bank = null;
+      movement.cheque_due_date = null;
     }
 
     // Ingresos con cheque (toggle UI)
@@ -870,6 +892,24 @@ self.updateMovement = async (req, res) => {
     const built = buildMovementUpdateFromBody(req.body);
     if (built.error) return res.json({ error: built.error });
     const update = built.update;
+
+    if (isCreditNoteIncome(req.body)) {
+      try {
+        const creditNoteInvoice = await resolveCreditNoteInvoice(
+          update.credit_note_invoice_id
+        );
+        update.supplier_id = creditNoteInvoice.supplier_id;
+        update.is_cheque = false;
+        update.cheque_number = null;
+        update.cheque_bank = null;
+        update.cheque_due_date = null;
+      } catch (cnErr) {
+        if (cnErr.code === "CREDIT_NOTE_INVOICE") {
+          return res.json({ error: cnErr.message });
+        }
+        throw cnErr;
+      }
+    }
 
     if (update.supplier_id && update.invoice_number) {
       try {

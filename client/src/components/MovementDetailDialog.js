@@ -156,6 +156,11 @@ export default function MovementDetailDialog({
             >
               {movement.type === "INGRESO" ? "Ingreso" : "Egreso"}
             </span>
+            {movement.income_category === "NOTA_CREDITO" && (
+              <span className="ml-2 px-2 py-0.5 rounded text-xs font-medium text-white bg-teal-600">
+                Nota de crédito
+              </span>
+            )}
           </DetailRow>
           <DetailRow label="Clasificación">
             {movement.movement_kind === "FIJO" ? "Fijo" : "Única vez"}
@@ -176,6 +181,21 @@ export default function MovementDetailDialog({
           </DetailRow>
           {movement.description && (
             <DetailRow label="Detalle">{movement.description}</DetailRow>
+          )}
+          {movement.income_category === "NOTA_CREDITO" && (
+            <>
+              <DetailRow label="N° nota de crédito">
+                {movement.credit_note_number || "-"}
+              </DetailRow>
+              <DetailRow label="Factura asociada">
+                {movement.credit_note_invoice_number
+                  ? utils.formatInvoiceNumber(movement.credit_note_invoice_number)
+                  : "-"}
+              </DetailRow>
+              {movement.supplier_name && (
+                <DetailRow label="Proveedor">{movement.supplier_name}</DetailRow>
+              )}
+            </>
           )}
           {movement.payment_method && (
             <DetailRow label="Forma de pago">

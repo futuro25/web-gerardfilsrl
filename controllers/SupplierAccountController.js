@@ -127,6 +127,41 @@ function retentionMovementItems(retentions) {
   });
 }
 
+/** Notas de crédito de proveedor cargadas como ingreso en Control. */
+function creditNoteMovementItems(creditNotes, invoiceNumberById = {}) {
+  return (creditNotes || []).map((m) => {
+    const amt = Math.abs(parseAmount(m.amount));
+    const invoiceKey =
+      m.credit_note_invoice_id != null
+        ? `supplier-invoice-${m.credit_note_invoice_id}`
+        : null;
+    const number = m.credit_note_number
+      ? String(m.credit_note_number).trim()
+      : "";
+    return {
+      id: `credit-note-${m.id}`,
+      source: "credit_note",
+      source_id: m.id,
+      invoice_key: invoiceKey,
+      supplier_invoice_id: m.credit_note_invoice_id ?? null,
+      movement_type: "INGRESO",
+      category: "NOTA_CREDITO",
+      date: m.date,
+      description: m.description
+        ? `Nota de Crédito ${number} - ${m.description}`.trim()
+        : `Nota de Crédito ${number}`.trim(),
+      invoice_number:
+        invoiceNumberById[m.credit_note_invoice_id] || null,
+      credit_note_number: number || null,
+      amount: amt,
+      // La nota de crédito reduce la deuda con el proveedor.
+      signed_amount: -amt,
+      display_amount: -amt,
+      taxes: [],
+    };
+  });
+}
+
 function paymentOrderItems(orders) {
   return (orders || []).map((po) => {
     const amt = Math.abs(parseAmount(po.amount));
@@ -204,16 +239,21 @@ function sortAndApplyBalance(movements) {
   // Cada movimiento recibe una clave de orden:
   //   _chrono : fecha que define la posición cronológica
   //   _anchor : agrupa la factura con su orden de pago
-  //   _seq    : 0 = factura, 1 = retención, 2 = orden de pago
+  //   _seq    : 0 = factura, 1 = retención, 2 = orden de pago, 3 = nota de crédito
   const enriched = movements.map((m) => {
-    if (m.source === "payment_order" || m.source === "retention") {
+    if (
+      m.source === "payment_order" ||
+      m.source === "retention" ||
+      m.source === "credit_note"
+    ) {
       const anchorDate =
         (m.invoice_key && dateByKey[m.invoice_key]) || m.date;
       return {
         ...m,
         _chrono: String(anchorDate || ""),
         _anchor: m.invoice_key || m.id,
-        _seq: m.source === "retention" ? 1 : 2,
+        _seq:
+          m.source === "retention" ? 1 : m.source === "payment_order" ? 2 : 3,
       };
     }
     return {
@@ -245,12 +285,14 @@ function computeSummary(
   cashflowRows,
   supplierInvoices,
   paymentOrders,
-  retentions
+  retentions,
+  creditNotes
 ) {
   const cf = supplierCashflowRows(cashflowRows);
   const inv = supplierInvoices || [];
   const po = paymentOrders || [];
   const ret = retentions || [];
+  const cn = creditNotes || [];
 
   const totalCashflowEgresos = cf
     .filter((r) => r.type === "EGRESO")
@@ -271,6 +313,10 @@ function computeSummary(
     (acc, r) => acc + Math.abs(parseAmount(r.retention_amount)),
     0
   );
+  const totalCreditNotes = cn.reduce(
+    (acc, m) => acc + Math.abs(parseAmount(m.amount)),
+    0
+  );
 
   let balance = 0;
   cf.forEach((r) => {
@@ -283,6 +329,7 @@ function computeSummary(
   balance += totalControlInvoices;
   balance -= totalPaymentOrders;
   balance -= totalRetentions;
+  balance -= totalCreditNotes;
 
   return {
     totalCashflowEgresos,
@@ -290,6 +337,7 @@ function computeSummary(
     totalControlInvoices,
     totalPaymentOrders,
     totalRetentions,
+    totalCreditNotes,
     totalInvoices: totalCashflowEgresos + totalControlInvoices,
     totalPayments: totalCashflowEgresos,
     totalCredits: totalCashflowIngresos,
@@ -301,7 +349,8 @@ async function buildMergedAccountData(
   cashflowRows,
   supplierInvoices,
   paymentOrders,
-  retentions
+  retentions,
+  creditNotes
 ) {
   const invoiceIds = (supplierInvoices || []).map((inv) => inv.id);
   const retentionRows =
@@ -317,22 +366,50 @@ async function buildMergedAccountData(
     invoiceIds
   );
 
+  const invoiceNumberById = {};
+  (supplierInvoices || []).forEach((inv) => {
+    invoiceNumberById[inv.id] = inv.invoice_number || null;
+  });
+
   const cfRows = supplierCashflowRows(cashflowRows);
   const movements = sortAndApplyBalance([
     ...cashflowMovementItems(cfRows, taxesByCashflowId),
     ...supplierInvoiceMovementItems(supplierInvoices, taxesBySupplierInvoiceId),
     ...retentionMovementItems(retentionRows),
     ...paymentOrderItems(paymentOrders),
+    ...creditNoteMovementItems(creditNotes, invoiceNumberById),
   ]);
 
   const summary = computeSummary(
     cfRows,
     supplierInvoices,
     paymentOrders,
-    retentionRows
+    retentionRows,
+    creditNotes
   );
 
   return { movements, summary };
+}
+
+/** Ingresos de Control tipo nota de crédito, por proveedor. */
+async function fetchCreditNoteMovements(supplierId = null) {
+  let query = supabase
+    .from("account_movements")
+    .select(
+      "id, supplier_id, date, amount, description, credit_note_number, credit_note_invoice_id"
+    )
+    .eq("type", "INGRESO")
+    .eq("income_category", "NOTA_CREDITO")
+    .is("deleted_at", null)
+    .not("supplier_id", "is", null);
+
+  if (supplierId != null) {
+    query = query.eq("supplier_id", supplierId);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
 }
 
 self.getAllSupplierAccounts = async (req, res) => {
@@ -372,6 +449,15 @@ self.getAllSupplierAccounts = async (req, res) => {
       .is("deleted_at", null);
 
     if (paymentOrdersError) throw paymentOrdersError;
+
+    const allCreditNotes = await fetchCreditNoteMovements();
+    const creditNotesBySupplier = {};
+    allCreditNotes.forEach((cn) => {
+      if (!creditNotesBySupplier[cn.supplier_id]) {
+        creditNotesBySupplier[cn.supplier_id] = [];
+      }
+      creditNotesBySupplier[cn.supplier_id].push(cn);
+    });
 
     const allRetentions = (supplierInvoices || []).length
       ? await fetchRetentionsForInvoices(supplierInvoices)
@@ -415,11 +501,13 @@ self.getAllSupplierAccounts = async (req, res) => {
       const supplierControlInvoices = invoicesBySupplier[supplier.id] || [];
       const supplierOrders = ordersBySupplier[supplier.id] || [];
       const supplierRetentions = retentionsBySupplier[supplier.id] || [];
+      const supplierCreditNotes = creditNotesBySupplier[supplier.id] || [];
       const summary = computeSummary(
         supplierCashflow,
         supplierControlInvoices,
         supplierOrders,
-        supplierRetentions
+        supplierRetentions,
+        supplierCreditNotes
       );
 
       return {
@@ -429,7 +517,8 @@ self.getAllSupplierAccounts = async (req, res) => {
           supplierCashflow.length +
           supplierControlInvoices.length +
           supplierOrders.length +
-          supplierRetentions.length,
+          supplierRetentions.length +
+          supplierCreditNotes.length,
       };
     });
 
@@ -525,11 +614,14 @@ self.getSupplierAccount = async (req, res) => {
       ? await fetchRetentionsForInvoices(supplierInvoices)
       : [];
 
+    const creditNotes = await fetchCreditNoteMovements(supplierId);
+
     const { movements, summary } = await buildMergedAccountData(
       cashflowRows,
       supplierInvoices,
       paymentOrders,
-      retentions
+      retentions,
+      creditNotes
     );
 
     return res.json({

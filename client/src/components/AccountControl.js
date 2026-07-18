@@ -39,6 +39,7 @@ import {
 import InvoiceDataFields from "./InvoiceDataFields";
 import MovementDocumentUpload from "./MovementDocumentUpload";
 import EgresoSupplierFields from "./EgresoSupplierFields";
+import IngresoCreditNoteFields from "./IngresoCreditNoteFields";
 import EgresoVepFields from "./EgresoVepFields";
 import PaymentOrderFields, { PAYMENT_METHOD_LABELS } from "./PaymentOrderFields";
 import PaymentOrderDialog from "./PaymentOrderDialog";
@@ -251,6 +252,7 @@ export default function AccountControl() {
   const [viewAll, setViewAll] = useState(false);
   const [isCheque, setIsCheque] = useState(false);
   const [movementType, setMovementType] = useState("INGRESO");
+  const [incomeCategory, setIncomeCategory] = useState("STANDARD");
   const [expenseCategory, setExpenseCategory] = useState("FACTURA");
   const [isLoadingSubmit, setIsLoadingSubmit] = useState(false);
   const [isCancellingOp, setIsCancellingOp] = useState(false);
@@ -276,12 +278,14 @@ export default function AccountControl() {
   const [egresoPaymentShowErrors, setEgresoPaymentShowErrors] = useState(false);
   const [egresoSupplierShowErrors, setEgresoSupplierShowErrors] = useState(false);
   const [egresoVepShowErrors, setEgresoVepShowErrors] = useState(false);
+  const [creditNoteShowErrors, setCreditNoteShowErrors] = useState(false);
   const [invoiceTotalForPo, setInvoiceTotalForPo] = useState(0);
   const invoiceFieldsRef = useRef(null);
   const paymentOrderFieldsRef = useRef(null);
   const egresoPaymentFieldsRef = useRef(null);
   const egresoSupplierFieldsRef = useRef(null);
   const egresoVepFieldsRef = useRef(null);
+  const creditNoteFieldsRef = useRef(null);
   const movementDocumentRef = useRef(null);
   /** Orden de listado por fecha: coincide con el API; default asc (más antiguas primero). */
   const [dateOrder, setDateOrder] = useState("asc");
@@ -656,6 +660,9 @@ export default function AccountControl() {
   const showsVepFields =
     movementType === "EGRESO" && expenseCategory === "VEP";
 
+  const isCreditNoteIngreso =
+    movementType === "INGRESO" && incomeCategory === "NOTA_CREDITO";
+
   const vepFieldsReadOnly = Boolean(selectedMovement?.vep_id);
 
   const showsMovementDocumentUpload =
@@ -847,6 +854,7 @@ export default function AccountControl() {
       setEgresoPaymentShowErrors(false);
       setEgresoSupplierShowErrors(false);
       setEgresoVepShowErrors(false);
+      setCreditNoteShowErrors(false);
 
       if (selectedMovement && movementHasPaymentOrder) {
         await saveMovementDatesOnly();
@@ -888,6 +896,18 @@ export default function AccountControl() {
         }
       }
 
+      if (isCreditNoteIngreso) {
+        const cnValidation = await creditNoteFieldsRef.current?.validate();
+        if (!cnValidation?.ok) {
+          setCreditNoteShowErrors(true);
+          setIsLoadingSubmit(false);
+          window.alert(
+            cnValidation.message || "Revise los datos de la nota de crédito"
+          );
+          return;
+        }
+      }
+
       if (requiresPaymentMethod) {
         const payValidation = await egresoPaymentFieldsRef.current?.validate();
         if (!payValidation?.ok) {
@@ -924,7 +944,8 @@ export default function AccountControl() {
         }
       }
 
-      const chequeActive = isCheque && movementType !== "EGRESO";
+      const chequeActive =
+        isCheque && movementType !== "EGRESO" && !isCreditNoteIngreso;
 
       let movementAmount = parseFloat(data.amount);
       let movementDate = data.date;
@@ -947,10 +968,24 @@ export default function AccountControl() {
         cheque_bank: chequeActive ? data.cheque_bank : null,
         cheque_due_date: chequeActive ? data.date : null,
         expense_category: movementType === "EGRESO" ? expenseCategory : null,
+        income_category: isCreditNoteIngreso ? "NOTA_CREDITO" : null,
+        credit_note_number: null,
+        credit_note_invoice_id: null,
         payment_method: null,
         supplier_id: null,
         invoice_number: null,
       };
+
+      let creditNoteSupplierId = null;
+      if (isCreditNoteIngreso && creditNoteFieldsRef.current) {
+        const cnPayload = creditNoteFieldsRef.current.getPayload();
+        body.credit_note_number = cnPayload.credit_note_number;
+        body.credit_note_invoice_id = cnPayload.credit_note_invoice_id;
+        creditNoteSupplierId = cnPayload.supplier_id;
+        if (!String(body.description || "").trim()) {
+          body.description = `Nota de crédito ${cnPayload.credit_note_number}`;
+        }
+      }
 
       if (showsSupplierFields && egresoSupplierFieldsRef.current) {
         const supplierPayload = egresoSupplierFieldsRef.current.getPayload();
@@ -1013,9 +1048,16 @@ export default function AccountControl() {
         });
       }
 
+      if (isCreditNoteIngreso && creditNoteSupplierId) {
+        queryClient.invalidateQueries({
+          queryKey: querySupplierAccountKey(creditNoteSupplierId),
+        });
+      }
+
       setIsLoadingSubmit(false);
       setIsCheque(false);
       setMovementType("INGRESO");
+      setIncomeCategory("STANDARD");
       setExpenseCategory("FACTURA");
       setInvoicePayMode("pending");
       setSelectedMovement(null);
@@ -1024,11 +1066,13 @@ export default function AccountControl() {
       setEgresoPaymentShowErrors(false);
       setEgresoSupplierShowErrors(false);
       setEgresoVepShowErrors(false);
+      setCreditNoteShowErrors(false);
       invoiceFieldsRef.current?.reset();
       paymentOrderFieldsRef.current?.reset?.();
       egresoPaymentFieldsRef.current?.reset?.();
       egresoSupplierFieldsRef.current?.reset?.();
       egresoVepFieldsRef.current?.reset?.();
+      creditNoteFieldsRef.current?.reset?.();
       movementDocumentRef.current?.reset?.();
       if (expenseCategory === "VEP") {
         queryClient.invalidateQueries({ queryKey: queryVepsKey() });
@@ -1056,6 +1100,9 @@ export default function AccountControl() {
   const onEdit = (movement) => {
     setSelectedMovement(movement);
     setMovementType(movement.type);
+    setIncomeCategory(
+      movement.income_category === "NOTA_CREDITO" ? "NOTA_CREDITO" : "STANDARD"
+    );
     setIsCheque(movement.is_cheque || false);
     setExpenseCategory(inferExpenseCategory(movement));
     setInvoicePayMode(
@@ -1078,6 +1125,7 @@ export default function AccountControl() {
   const onCancel = () => {
     setIsCheque(false);
     setMovementType("INGRESO");
+    setIncomeCategory("STANDARD");
     setExpenseCategory("FACTURA");
     setInvoicePayMode("pending");
     setIsLoadingSubmit(false);
@@ -1088,11 +1136,13 @@ export default function AccountControl() {
     setEgresoPaymentShowErrors(false);
     setEgresoSupplierShowErrors(false);
     setEgresoVepShowErrors(false);
+    setCreditNoteShowErrors(false);
     invoiceFieldsRef.current?.reset();
     paymentOrderFieldsRef.current?.reset?.();
     egresoPaymentFieldsRef.current?.reset?.();
     egresoSupplierFieldsRef.current?.reset?.();
     egresoVepFieldsRef.current?.reset?.();
+    creditNoteFieldsRef.current?.reset?.();
     movementDocumentRef.current?.reset?.();
     reset({
       movement_kind: "UNICA VEZ",
@@ -1182,10 +1232,13 @@ export default function AccountControl() {
               onClick={() => {
                 setSelectedMovement(null);
                 setMovementType("EGRESO");
+                setIncomeCategory("STANDARD");
                 setExpenseCategory("FACTURA");
                 setIsCheque(false);
                 setInvoiceShowErrors(false);
+                setCreditNoteShowErrors(false);
                 invoiceFieldsRef.current?.reset();
+                creditNoteFieldsRef.current?.reset?.();
                 reset({
                   movement_kind: "UNICA VEZ",
                   date: DateTime.now().toFormat("yyyy-MM-dd"),
@@ -1639,6 +1692,14 @@ export default function AccountControl() {
                                         VEP{m.vep_label ? `: ${m.vep_label}` : ""}
                                       </span>
                                     )}
+                                    {m.income_category === "NOTA_CREDITO" && (
+                                      <span className="block text-[10px] text-teal-700 font-medium">
+                                        NC {m.credit_note_number || ""}
+                                        {m.credit_note_invoice_number
+                                          ? ` · Fact. ${utils.formatInvoiceNumber(m.credit_note_invoice_number)}`
+                                          : ""}
+                                      </span>
+                                    )}
                                     {m.payment_method && m.expense_category !== "FACTURA" && (
                                       <span className="block text-[10px] text-slate-500">
                                         {PAYMENT_METHOD_LABELS[m.payment_method] ||
@@ -1868,6 +1929,51 @@ export default function AccountControl() {
                 )}
               </div>
 
+              {/* Tipo de ingreso: normal o nota de crédito de proveedor */}
+              {movementType === "INGRESO" && (
+                <div>
+                  <label className="text-xs font-sans text-gray-900 mb-2 block">
+                    Tipo de ingreso
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={utils.cn(
+                        "flex-1 py-2 rounded text-sm font-medium border transition-colors",
+                        incomeCategory === "STANDARD"
+                          ? "bg-green-500 text-white border-green-500"
+                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                      )}
+                      onClick={() => setIncomeCategory("STANDARD")}
+                    >
+                      Ingreso
+                    </button>
+                    <button
+                      type="button"
+                      className={utils.cn(
+                        "flex-1 py-2 rounded text-sm font-medium border transition-colors",
+                        incomeCategory === "NOTA_CREDITO"
+                          ? "bg-teal-600 text-white border-teal-600"
+                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                      )}
+                      onClick={() => {
+                        setIncomeCategory("NOTA_CREDITO");
+                        setIsCheque(false);
+                      }}
+                    >
+                      Nota de crédito
+                    </button>
+                  </div>
+                  {isCreditNoteIngreso && (
+                    <p className="text-xs text-slate-500 mt-2">
+                      Indicá el número de la nota de crédito, el importe, la
+                      fecha y la factura asociada. Impacta en la cuenta
+                      corriente del proveedor.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Date — oculto para facturas: la fecha comprobante va en el formulario de factura */}
               {!requiresInvoice && (
                 <Input
@@ -1899,14 +2005,14 @@ export default function AccountControl() {
                 />
               )}
 
-              {/* Description */}
+              {/* Description — opcional para notas de crédito (se autocompleta con el N° de NC) */}
               <Input
-                label="Detalle"
+                label={isCreditNoteIngreso ? "Detalle (opcional)" : "Detalle"}
                 type="text"
                 placeholder="Descripción del movimiento"
                 {...register("description", {
-                  required: "Ingrese el detalle del movimiento",
                   validate: (value) =>
+                    isCreditNoteIngreso ||
                     String(value || "").trim().length > 0 ||
                     "Ingrese el detalle del movimiento",
                 })}
@@ -1914,8 +2020,17 @@ export default function AccountControl() {
                 helperText={errors.description?.message}
               />
 
-              {/* Cheque toggle y campos — solo para INGRESO */}
-              {movementType !== "EGRESO" && (
+              {isCreditNoteIngreso && (
+                <IngresoCreditNoteFields
+                  key={`ingreso-credit-note-${selectedMovement?.id ?? "new"}`}
+                  ref={creditNoteFieldsRef}
+                  accountMovement={selectedMovement}
+                  showErrors={creditNoteShowErrors}
+                />
+              )}
+
+              {/* Cheque toggle y campos — solo para INGRESO común */}
+              {movementType !== "EGRESO" && !isCreditNoteIngreso && (
                 <>
                   <div className="flex items-center gap-3 py-2">
                     <label className="text-xs font-sans text-gray-900">¿Es cheque?</label>

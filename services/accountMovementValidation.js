@@ -2,6 +2,9 @@
 
 const { validateDirectPaymentMethod } = require("./accountMovementPayment");
 const { validateEgresoVepFields } = require("./accountMovementVep");
+const {
+  validateIngresoCreditNoteFields,
+} = require("./accountMovementCreditNote");
 
 function parseAmount(value) {
   const n = parseFloat(value);
@@ -40,6 +43,9 @@ function validateMovementBody(body) {
 
   const vepErr = validateEgresoVepFields(body);
   if (vepErr) return vepErr;
+
+  const creditNoteErr = validateIngresoCreditNoteFields(body);
+  if (creditNoteErr) return creditNoteErr;
 
   if (type === "INGRESO" && body.is_cheque) {
     if (!body.cheque_number || !body.cheque_bank || !body.cheque_due_date) {
