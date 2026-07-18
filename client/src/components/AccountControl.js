@@ -289,6 +289,8 @@ export default function AccountControl() {
   const movementDocumentRef = useRef(null);
   /** Orden de listado por fecha: coincide con el API; default asc (más antiguas primero). */
   const [dateOrder, setDateOrder] = useState("asc");
+  /** Campo de ordenamiento: "document" (fecha comprobante) o "created" (fecha de carga). */
+  const [sortBy, setSortBy] = useState("document");
 
   const {
     register,
@@ -320,6 +322,7 @@ export default function AccountControl() {
     page,
     limit: 50,
     dateOrder,
+    sortBy,
     pending: pendingListFilter === "pending",
     ...(debouncedSearch ? { search: debouncedSearch } : {}),
   };
@@ -426,6 +429,13 @@ export default function AccountControl() {
     });
 
     const chrono = [...filtered].sort((a, b) => {
+      if (sortBy === "created") {
+        const c = String(a.created_at || "").localeCompare(
+          String(b.created_at || "")
+        );
+        if (c !== 0) return c;
+        return (a.id || 0) - (b.id || 0);
+      }
       const da = String(effectiveMovementDate(a) || "");
       const db = String(effectiveMovementDate(b) || "");
       const c = da.localeCompare(db);
@@ -437,7 +447,7 @@ export default function AccountControl() {
       return [...chrono].reverse();
     }
     return chrono;
-  }, [allData, kindListFilter, dateOrder]);
+  }, [allData, kindListFilter, dateOrder, sortBy]);
 
   const refreshMovementsList = async () => {
     await queryClient.refetchQueries({ queryKey: ["account-movements"] });
@@ -1188,6 +1198,12 @@ export default function AccountControl() {
     setAllData([]);
   };
 
+  const handleSortByChange = (value) => {
+    setSortBy(value === "created" ? "created" : "document");
+    setPage(1);
+    setAllData([]);
+  };
+
   const loadMore = () => {
     const nextPage = page + 1;
     setPage(nextPage);
@@ -1360,6 +1376,7 @@ export default function AccountControl() {
                 onChange={(e) => setDetailSearch(e.target.value)}
                 className="border rounded px-2 py-1.5 text-sm bg-white flex-1 min-w-[10rem] max-w-md"
               />
+              
               <Button
                 type="button"
                 variant="outlined"
@@ -1377,6 +1394,16 @@ export default function AccountControl() {
               >
                 {viewAll ? "Filtrar por mes" : "Ver todo"}
               </Button>
+
+              <select
+                className="border rounded px-2 py-1.5 text-sm bg-white shrink-0"
+                value={sortBy}
+                onChange={(e) => handleSortByChange(e.target.value)}
+                title="Campo por el que se ordena el listado"
+              >
+                <option value="document">Ordenar por fecha de comprobante</option>
+                <option value="created">Ordenar por fecha de carga</option>
+              </select>
             </div>
 
             <Dialog open={futureDialogOpen} onOpenChange={setFutureDialogOpen}>
@@ -1618,7 +1645,9 @@ export default function AccountControl() {
                                 aria-label={`Ordenar fechas, actualmente ${dateOrder === "asc" ? "ascendente" : "descendente"}`}
                                 aria-sort={dateOrder === "asc" ? "ascending" : "descending"}
                               >
-                                Fecha comprobante
+                                {sortBy === "created"
+                                  ? "Fecha de carga"
+                                  : "Fecha comprobante"}
                                 {dateOrder === "asc" ? (
                                   <ArrowUpNarrowWide className="h-4 w-4 text-slate-500 shrink-0" aria-hidden />
                                 ) : (
@@ -1660,6 +1689,14 @@ export default function AccountControl() {
                                         </span>
                                       )}
                                     </div>
+                                    {sortBy === "created" && m.created_at && (
+                                      <span className="block text-[10px] text-slate-400 mt-0.5">
+                                        Carga:{" "}
+                                        {DateTime.fromISO(m.created_at).toFormat(
+                                          "dd/MM/yyyy"
+                                        )}
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="!text-xs text-left border-b border-slate-100 p-3 text-slate-600">
                                     {movementKindLabel(m.movement_kind)}

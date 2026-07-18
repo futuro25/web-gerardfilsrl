@@ -445,11 +445,17 @@ self.getMovements = async (req, res) => {
       page = 1,
       limit = 50,
       dateOrder: dateOrderParam,
+      sortBy: sortByParam,
       pending,
       search,
     } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const ascending = String(dateOrderParam || "asc").toLowerCase() !== "desc";
+    // "document" (default) ordena por fecha del comprobante; "created" por fecha de carga.
+    const sortField =
+      String(sortByParam || "document").toLowerCase() === "created"
+        ? "created_at"
+        : "date";
     const pendingOnly = isPendingFilter(pending);
 
     const searchIds = search ? await getSearchMovementIds(search) : null;
@@ -476,7 +482,7 @@ self.getMovements = async (req, res) => {
         .is("deleted_at", null)
         .in("id", pendingIds)
         .eq("expense_category", "FACTURA")
-        .order("date", { ascending })
+        .order(sortField, { ascending })
         .order("id", { ascending })
         .range(offset, offset + parseInt(limit) - 1);
 
@@ -512,7 +518,7 @@ self.getMovements = async (req, res) => {
       .from("account_movements")
       .select("*", { count: "exact" })
       .is("deleted_at", null)
-      .order("date", { ascending })
+      .order(sortField, { ascending })
       .order("id", { ascending })
       .range(offset, offset + parseInt(limit) - 1);
 

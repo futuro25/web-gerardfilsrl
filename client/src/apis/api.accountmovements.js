@@ -6,6 +6,7 @@ export const fetchAccountMovements = async ({
   page = 1,
   limit = 50,
   dateOrder = "asc",
+  sortBy = "document",
   pending,
   search,
 }) => {
@@ -13,6 +14,7 @@ export const fetchAccountMovements = async ({
     page: String(page),
     limit: String(limit),
     dateOrder: dateOrder === "desc" ? "desc" : "asc",
+    sortBy: sortBy === "created" ? "created" : "document",
   });
   if (month && year) {
     params.set("month", String(month));
