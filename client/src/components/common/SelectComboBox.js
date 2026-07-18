@@ -147,8 +147,8 @@ export default function SelectComboBox({ options, value, onChange }) {
                   value={option}
                   className="group flex cursor-pointer items-center gap-2 rounded py-1.5 px-3 select-none hover:bg-gray-100 data-[focus]:bg-gray-100"
                 >
-                  <CheckIcon className="invisible size-4 fill-gray-900 group-data-[selected]:visible" />
-                  <div className="text-sm text-black">{option.name}</div>
+                  <CheckIcon className="invisible size-4 shrink-0 fill-gray-900 group-data-[selected]:visible" />
+                  <div className="text-sm text-black flex-1 min-w-0">{option.name}</div>
                 </ComboboxOption>
               ))
             )}

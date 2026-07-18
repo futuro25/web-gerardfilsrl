@@ -14,17 +14,69 @@ import { fetchSupplierInvoices } from "../apis/api.supplierinvoices";
 import { querySupplierInvoicesListKey } from "../apis/queryKeys";
 import * as utils from "../utils/utils";
 
-function invoiceOptionLabel(inv) {
-  const number = inv.invoice_number
+function invoiceNumberLabel(inv) {
+  return inv.invoice_number
     ? utils.formatInvoiceNumber(inv.invoice_number)
     : `Factura #${inv.id}`;
-  const supplierName = inv.supplier?.fantasy_name || inv.supplier?.name || "";
-  const dateStr = inv.document_date
+}
+
+function invoiceSupplierName(inv) {
+  return inv.supplier?.fantasy_name || inv.supplier?.name || "";
+}
+
+function invoiceDateLabel(inv) {
+  return inv.document_date
     ? DateTime.fromISO(inv.document_date).toFormat("dd/MM/yyyy")
     : "";
-  return [number, supplierName, utils.formatAmount(inv.total ?? inv.amount), dateStr]
+}
+
+/** Texto plano para buscar y para mostrar en el input al seleccionar. */
+function invoiceOptionLabel(inv) {
+  return [
+    invoiceNumberLabel(inv),
+    invoiceSupplierName(inv),
+    utils.formatAmount(inv.total ?? inv.amount),
+    invoiceDateLabel(inv),
+  ]
     .filter(Boolean)
     .join(" · ");
+}
+
+/** Layout de dos líneas para cada opción del listado. */
+function invoiceOptionName(inv) {
+  const dateStr = invoiceDateLabel(inv);
+  return (
+    <div className="flex flex-col gap-0.5 w-full py-0.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="flex items-baseline gap-2 min-w-0">
+          <span className="font-medium text-slate-800 tabular-nums whitespace-nowrap">
+            {invoiceNumberLabel(inv)}
+          </span>
+          <span
+            className={utils.cn(
+              "text-[10px] font-medium px-1.5 py-px rounded-full shrink-0",
+              inv.invoice_fully_paid
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-amber-100 text-amber-700"
+            )}
+          >
+            {inv.invoice_fully_paid ? "Pagada" : "Pendiente"}
+          </span>
+        </span>
+        <span className="font-semibold text-slate-900 tabular-nums shrink-0">
+          {utils.formatAmount(inv.total ?? inv.amount)}
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-xs text-slate-500 truncate">
+          {invoiceSupplierName(inv) || "Sin proveedor"}
+        </span>
+        {dateStr && (
+          <span className="text-[11px] text-slate-400 shrink-0">{dateStr}</span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /** Campos de un ingreso tipo Nota de crédito: N° de NC y factura asociada. */
@@ -52,15 +104,12 @@ const IngresoCreditNoteFields = forwardRef(function IngresoCreditNoteFields(
       const db = String(b.document_date || b.created_at || "");
       return db.localeCompare(da);
     });
-    return sorted.map((inv) => {
-      const label = invoiceOptionLabel(inv);
-      return {
-        id: inv.id,
-        name: label,
-        label,
-        supplier_id: inv.supplier_id ?? inv.supplier?.id ?? null,
-      };
-    });
+    return sorted.map((inv) => ({
+      id: inv.id,
+      name: invoiceOptionName(inv),
+      label: invoiceOptionLabel(inv),
+      supplier_id: inv.supplier_id ?? inv.supplier?.id ?? null,
+    }));
   }, [invoices]);
 
   useEffect(() => {
