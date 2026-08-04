@@ -167,7 +167,7 @@ export function getPaycheckString() {
 }
 
 export function getBanks() {
-  return ["SANTANDER", "BBVA", "GALICIA", "NACION", "CIUDAD"];
+  return ["SANTANDER", "BBVA", "GALICIA", "NACION", "CIUDAD", "PROVINCIA"];
 }
 
 export function getCashflowInCategories() {
