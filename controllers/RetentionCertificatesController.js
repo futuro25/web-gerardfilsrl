@@ -865,11 +865,42 @@ self.getRetentionByInvoice = async (req, res) => {
         : rows;
       if (cuit && candidates.length === 0) candidates = rows;
 
+      // Una retención ya vinculada a OTRA factura/movimiento no puede ser la de
+      // esta factura: descartarla antes de cualquier heurística. Sin esto, dos
+      // facturas del mismo proveedor por el mismo importe comparten la misma
+      // retención en la UI.
+      candidates = candidates.filter((p) => {
+        if (
+          supplierInvoiceId &&
+          p.supplier_invoice_id != null &&
+          Number(p.supplier_invoice_id) !== supplierInvoiceId
+        ) {
+          return false;
+        }
+        if (
+          accountMovementId &&
+          p.account_movement_id != null &&
+          Number(p.account_movement_id) !== accountMovementId
+        ) {
+          return false;
+        }
+        return true;
+      });
+
       if (invoiceNorm) {
         match =
           candidates.find(
             (p) => normalizeInvoiceNumber(p.invoice_number) === invoiceNorm
           ) || null;
+
+        // Si conocemos el número de factura, el fallback por importe solo puede
+        // considerar retenciones sin número cargado: un número distinto es una
+        // factura distinta, aunque coincidan proveedor, importe y fecha.
+        if (!match) {
+          candidates = candidates.filter(
+            (p) => !normalizeInvoiceNumber(p.invoice_number)
+          );
+        }
       }
 
       if (!match && amount != null && candidates.length) {

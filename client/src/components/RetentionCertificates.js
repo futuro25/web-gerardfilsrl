@@ -204,10 +204,41 @@ export default function RetentionCertificates() {
     return years;
   }, []);
 
+  // El endpoint responde 200 con { error } cuando algo falla, así que sin esto
+  // un fallo del backend se ve igual que "no hay retenciones".
+  const paymentsList = useMemo(
+    () => (Array.isArray(payments) ? payments : []),
+    [payments]
+  );
+  const paymentsError =
+    !Array.isArray(payments) && payments?.error ? payments.error : null;
+
+  // Las retenciones se listan por la fecha de emisión de la factura, que
+  // habitualmente es de un mes anterior al que se emite el certificado. Si el
+  // mes actual no tiene ninguna, posicionar el filtro en el período de la última
+  // retención cargada en lugar de mostrar una lista vacía sin explicación.
+  const [periodAutoAdjusted, setPeriodAutoAdjusted] = useState(false);
+  useEffect(() => {
+    if (periodAutoAdjusted || viewAll || !paymentsList.length) return;
+    setPeriodAutoAdjusted(true);
+    const dates = paymentsList
+      .map((p) => DateTime.fromISO(String(p.issue_date || "").slice(0, 10)))
+      .filter((dt) => dt.isValid);
+    if (!dates.length) return;
+    if (
+      dates.some((dt) => dt.month === selectedMonth && dt.year === selectedYear)
+    ) {
+      return;
+    }
+    const latest = dates.reduce((a, b) => (b > a ? b : a));
+    setSelectedMonth(latest.month);
+    setSelectedYear(latest.year);
+  }, [paymentsList, periodAutoAdjusted, viewAll, selectedMonth, selectedYear]);
+
   const listFiltered = useMemo(() => {
-    if (!payments?.length) return [];
+    if (!paymentsList.length) return [];
     const q = search.trim().toLowerCase();
-    return payments.filter((p) => {
+    return paymentsList.filter((p) => {
       if (q) {
         const supplier = (p.supplier || "").toLowerCase();
         const invoice = (p.invoice_number || "").toLowerCase();
@@ -219,7 +250,7 @@ export default function RetentionCertificates() {
       if (!dt.isValid) return false;
       return dt.month === selectedMonth && dt.year === selectedYear;
     });
-  }, [payments, search, selectedMonth, selectedYear, viewAll]);
+  }, [paymentsList, search, selectedMonth, selectedYear, viewAll]);
 
   const periodTotals = useMemo(() => {
     return listFiltered.reduce(
@@ -814,6 +845,12 @@ export default function RetentionCertificates() {
 
         {error && <div className="text-red-500">Error al cargar los pagos</div>}
 
+        {paymentsError && (
+          <div className="text-red-500">
+            Error al cargar los pagos: {paymentsError}
+          </div>
+        )}
+
         {stage === "LIST" && payments && (
           <div className="my-4 mb-28">
             <div className="pl-1 pb-1 text-slate-500 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
@@ -955,7 +992,26 @@ export default function RetentionCertificates() {
                             colSpan={10}
                             className="border-b border-slate-100 p-4 text-slate-500"
                           >
-                            No hay datos
+                            {!viewAll && paymentsList.length ? (
+                              <span>
+                                No hay retenciones con fecha de factura en{" "}
+                                {MONTHS.find((m) => m.value === selectedMonth)?.label}{" "}
+                                {selectedYear}. Hay {paymentsList.length}{" "}
+                                {paymentsList.length === 1
+                                  ? "retención cargada"
+                                  : "retenciones cargadas"}{" "}
+                                en otros períodos.{" "}
+                                <button
+                                  type="button"
+                                  className="underline text-slate-700"
+                                  onClick={() => setViewAll(true)}
+                                >
+                                  Ver todas
+                                </button>
+                              </span>
+                            ) : (
+                              "No hay datos"
+                            )}
                           </td>
                         </tr>
                       )}
