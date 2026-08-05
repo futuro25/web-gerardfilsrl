@@ -117,7 +117,7 @@ export default function SupplierQuickCreateDialog({ open, onOpenChange, onCreate
       onOpenChange(false);
     } catch (e) {
       console.error(e);
-      window.alert("No se pudo crear el proveedor");
+      window.alert(e.message || "No se pudo crear el proveedor");
     } finally {
       setIsLoading(false);
     }

@@ -67,6 +67,12 @@ export default function RetentionFormDialog({
     setErrorMsg("");
   }, [open, supplier, invoice]);
 
+  // Sin régimen cargado el sistema asume "No inscripto", que es la alícuota más
+  // alta. Se avisa en vez de dejar que pase inadvertido.
+  const supplierHasNoRegime = Boolean(
+    supplier && !String(supplier.tax_regime || "").trim()
+  );
+
   const isInscripto =
     profitsCondition === "Inscripto" || profitsCondition === "inscripto";
 
@@ -206,6 +212,14 @@ export default function RetentionFormDialog({
             <option value="Inscripto">Inscripto</option>
             <option value="No inscripto">No inscripto</option>
           </select>
+          {supplierHasNoRegime && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mt-2">
+              {supplierName || "El proveedor"} no tiene régimen cargado, así que
+              se asumió "No inscripto" (la alícuota más alta). Verificá la
+              condición antes de guardar y cargá el régimen en la ficha del
+              proveedor.
+            </p>
+          )}
         </div>
 
         <Input

@@ -31,6 +31,18 @@ export const useSupplierByIdQuery = async (inviteId) => {
   return res.json();
 };
 
+/** Devuelve el mensaje que manda el backend en vez de uno genérico. */
+async function throwServerError(res) {
+  let message = "Error en la petición";
+  try {
+    const body = await res.json();
+    if (body?.error) message = body.error;
+  } catch (e) {
+    // respuesta sin cuerpo JSON: se usa el mensaje genérico
+  }
+  throw new Error(message);
+}
+
 export const useCreateSupplierMutation = async (body) => {
   const res = await fetch(`${BASE_URL}`, {
     method: "POST",
@@ -40,7 +52,7 @@ export const useCreateSupplierMutation = async (body) => {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error("Error en la petición");
+    await throwServerError(res);
   }
   return res.json();
 };
@@ -54,7 +66,7 @@ export const useUpdateSupplierMutation = async (body) => {
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    throw new Error("Error en la petición");
+    await throwServerError(res);
   }
   return res.json();
 };

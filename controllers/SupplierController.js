@@ -70,8 +70,36 @@ self.getSupplierByEmail = async (req, res) => {
   }
 };
 
+// Regímenes válidos. Deben coincidir con las opciones de Suppliers.js y de
+// SupplierQuickCreateDialog.js.
+const TAX_REGIMES = [
+  "RESPONSABLE INSCRIPTO",
+  "MONOTRIBUTISTA",
+  "EXENTO",
+  "CONSUMIDOR FINAL",
+];
+
+// El régimen es obligatorio para todos los proveedores: de él sale la condición
+// frente a Ganancias y, por lo tanto, la alícuota de retención. Un proveedor sin
+// régimen se asume "No inscripto" en silencio y se le retiene de más.
+function validateTaxRegime(value) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (!raw) {
+    return "El régimen del proveedor es obligatorio.";
+  }
+  if (!TAX_REGIMES.includes(raw)) {
+    return `Régimen inválido. Valores permitidos: ${TAX_REGIMES.join(", ")}.`;
+  }
+  return null;
+}
+
 self.createSupplier = async (req, res) => {
   try {
+    const regimeError = validateTaxRegime(req.body.tax_regime);
+    if (regimeError) {
+      return res.status(400).json({ error: regimeError });
+    }
+
     const supplier = {
       name: req.body.name,
       last_name: req.body.last_name,
@@ -112,6 +140,15 @@ self.getSupplierByIdAndUpdate = async (req, res) => {
 
     if (update.id) {
       delete update.id;
+    }
+
+    // Solo se valida si el update trae el campo, para no romper actualizaciones
+    // parciales que no tocan el régimen.
+    if ("tax_regime" in update) {
+      const regimeError = validateTaxRegime(update.tax_regime);
+      if (regimeError) {
+        return res.status(400).json({ error: regimeError });
+      }
     }
 
     const { data: updatedSupplier, error } = await supabase
