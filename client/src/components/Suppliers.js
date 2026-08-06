@@ -95,6 +95,7 @@ export default function Suppliers() {
     },
     onError: (error) => {
       console.error("Error creando proveedor:", error);
+      window.alert(error.message || "No se pudo crear el proveedor");
     },
   });
 
@@ -102,10 +103,11 @@ export default function Suppliers() {
     mutationFn: useUpdateSupplierMutation,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: querySuppliersKey() });
-      console.log("Proveedor creado:", data);
+      console.log("Proveedor actualizado:", data);
     },
     onError: (error) => {
-      console.error("Error creando proveedor:", error);
+      console.error("Error actualizando proveedor:", error);
+      window.alert(error.message || "No se pudo actualizar el proveedor");
     },
   });
 
@@ -117,6 +119,7 @@ export default function Suppliers() {
     },
     onError: (error) => {
       console.error("Error eliminando proveedor:", error);
+      window.alert(error.message || "No se pudo eliminar el proveedor");
     },
   });
 

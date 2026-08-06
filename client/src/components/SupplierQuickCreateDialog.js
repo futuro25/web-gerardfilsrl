@@ -128,13 +128,21 @@ export default function SupplierQuickCreateDialog({ open, onOpenChange, onCreate
     onOpenChange(false);
   };
 
+  // El diálogo va en un portal, pero React propaga el submit por el árbol de
+  // componentes: sin frenarlo acá también se dispara el submit del formulario
+  // que quedó atrás (el de alta de movimiento).
+  const handleFormSubmit = (event) => {
+    event.stopPropagation();
+    return handleSubmit(onSubmit)(event);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto p-6 gap-4">
         <DialogTitle className="text-lg font-semibold text-slate-800">
           Nuevo proveedor
         </DialogTitle>
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        <form onSubmit={handleFormSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
               <Input

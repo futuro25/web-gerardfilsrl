@@ -126,10 +126,14 @@ self.createSupplier = async (req, res) => {
       .insert(supplier)
       .select();
 
+    if (error) throw error;
+
     return res.json(newSupplier);
   } catch (e) {
-    console.log("Supplier creation error", e.message);
-    return res.json(e);
+    // Sin el status de error el cliente ve un 200 con cuerpo vacío y da la
+    // creación por buena: la falla queda invisible.
+    console.error("Supplier creation error", e.message);
+    return res.status(500).json({ error: e.message });
   }
 };
 
@@ -175,10 +179,12 @@ self.deleteSupplierById = async (req, res) => {
       .update(update)
       .eq("id", supplier_id);
 
+    if (error) throw error;
+
     res.json(updatedSupplier);
   } catch (e) {
     console.error("delete supplier by id", e.message);
-    res.json({ error: e.message });
+    res.status(500).json({ error: e.message });
   }
 };
 

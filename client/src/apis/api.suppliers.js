@@ -79,7 +79,7 @@ export const useDeleteSupplierMutation = async (id) => {
     },
   });
   if (!res.ok) {
-    throw new Error("Error en la petición");
+    await throwServerError(res);
   }
   return res.json();
 };

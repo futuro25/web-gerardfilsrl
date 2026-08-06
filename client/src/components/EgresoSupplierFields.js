@@ -48,6 +48,10 @@ const EgresoSupplierFields = forwardRef(function EgresoSupplierFields(
     queryFn: useSuppliersQuery,
   });
 
+  // A propósito no depende de `suppliers`: al crear un proveedor desde el
+  // diálogo se invalida esa query y, con la lista en las dependencias, este
+  // reset volvía a correr y borraba el proveedor recién creado junto con el
+  // número de factura que el usuario ya había cargado.
   useEffect(() => {
     if (!accountMovement) {
       setInvoiceLetter("A");
@@ -61,18 +65,23 @@ const EgresoSupplierFields = forwardRef(function EgresoSupplierFields(
     setInvoiceLetter(parts.letter || "A");
     setInvoiceFirst4(parts.first4 || "");
     setInvoiceLast8(parts.last8 || "");
+  }, [accountMovement, reset]);
 
-    if (accountMovement.supplier_id && suppliers?.length) {
-      const s = suppliers.find((x) => x.id === accountMovement.supplier_id);
-      if (s) {
-        setValue("supplier", {
-          id: s.id,
-          name: s.fantasy_name,
-          label: s.fantasy_name || s.name,
-        });
-      }
-    }
-  }, [accountMovement, suppliers, reset, setValue]);
+  // El proveedor del movimiento se completa aparte porque necesita la lista ya
+  // cargada. Solo rellena el campo vacío, para no pisar una selección manual.
+  useEffect(() => {
+    if (!accountMovement?.supplier_id || !suppliers?.length) return;
+    if (getValues("supplier")?.id) return;
+
+    const s = suppliers.find((x) => x.id === accountMovement.supplier_id);
+    if (!s) return;
+
+    setValue("supplier", {
+      id: s.id,
+      name: s.fantasy_name,
+      label: s.fantasy_name || s.name,
+    });
+  }, [accountMovement, suppliers, getValues, setValue]);
 
   const supplierOptions = sortBy(suppliers || [], "fantasy_name").map((p) => ({
     id: p.id,
@@ -244,13 +253,7 @@ const EgresoSupplierFields = forwardRef(function EgresoSupplierFields(
       <SupplierQuickCreateDialog
         open={supplierQuickOpen}
         onOpenChange={setSupplierQuickOpen}
-        onCreated={(created) => {
-          setValue("supplier", {
-            id: created.id,
-            name: created.fantasy_name,
-            label: created.fantasy_name || created.name,
-          });
-        }}
+        onCreated={(created) => setValue("supplier", created)}
       />
     </>
   );

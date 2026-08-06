@@ -162,12 +162,36 @@ const SupplierInvoiceForm = forwardRef(function SupplierInvoiceForm(
     documentUploadRef.current?.reset();
   };
 
+  // `suppliers` a propósito no está en las dependencias: al crear un proveedor
+  // desde el diálogo se invalida esa query y applyDefaults volvía a correr,
+  // borrando el proveedor recién creado junto con el número de factura, el
+  // monto y los impuestos que el usuario ya había cargado.
   useEffect(() => {
     if (!enabled) return;
     const inv =
       linkedInvoice && !linkedInvoice.error ? linkedInvoice : null;
     applyDefaults(inv);
-  }, [enabled, linkedInvoice, movementId, suppliers]);
+  }, [enabled, linkedInvoice, movementId]);
+
+  // El proveedor de una factura ya guardada necesita la lista cargada, así que
+  // se completa aparte. Solo rellena el campo vacío, para no pisar ni una
+  // selección manual ni la del alta rápida.
+  useEffect(() => {
+    if (!enabled) return;
+    const inv =
+      linkedInvoice && !linkedInvoice.error ? linkedInvoice : null;
+    if (!inv?.supplier_id || !suppliers?.length) return;
+    if (getValues("supplier")?.id) return;
+
+    const s = suppliers.find((x) => x.id === inv.supplier_id);
+    if (!s) return;
+
+    setValue("supplier", {
+      id: s.id,
+      name: s.fantasy_name,
+      label: s.fantasy_name || s.name,
+    });
+  }, [enabled, linkedInvoice, suppliers, getValues, setValue]);
 
   const hasSavedInvoice =
     linkedInvoice && !linkedInvoice.error && linkedInvoice.id;
