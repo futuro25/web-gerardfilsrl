@@ -31,6 +31,7 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
     defaultChequeDueDate = "",
     defaultPaymentDate = "",
     defaultCreditNoteNumber = "",
+    defaultBank = "",
     showErrors = false,
   },
   ref
@@ -52,12 +53,15 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
       cheque_number: "",
       cheque_bank: "",
       credit_note_number: "",
+      bank: "",
     },
   });
 
   const paymentMethod = watch("payment_method");
   const isCheque = paymentMethod === "CHEQUE";
   const isCreditNote = paymentMethod === "NOTA DE CREDITO";
+  // En cheque el banco propio sale de la chequera (cheque_bank), no de este campo.
+  const needsOwnBank = utils.paymentMethodUsesOwnBank(paymentMethod);
 
   useEffect(() => {
     const resolvedPaymentDate =
@@ -72,8 +76,10 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
       cheque_number: defaultChequeNumber || "",
       cheque_bank: defaultChequeBank || "",
       credit_note_number: defaultCreditNoteNumber || "",
+      bank: defaultBank || "",
     });
   }, [
+    defaultBank,
     defaultAmount,
     defaultDescription,
     defaultPaymentMethod,
@@ -119,18 +125,27 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
           return { ok: false, message: "Ingrese la fecha de pago" };
         }
       }
+      if (utils.paymentMethodUsesOwnBank(data.payment_method) && !data.bank) {
+        return { ok: false, message: "Indicá de qué banco sale el pago" };
+      }
       return { ok: true };
     },
     getPayload() {
       const data = getValues();
-      const chequeData =
-        data.payment_method === "CHEQUE"
-          ? {
-              cheque_number: data.cheque_number,
-              cheque_bank: data.cheque_bank,
-              cheque_due_date: data.payment_date,
-            }
-          : {};
+      const isChequePayment = data.payment_method === "CHEQUE";
+      const chequeData = isChequePayment
+        ? {
+            cheque_number: data.cheque_number,
+            cheque_bank: data.cheque_bank,
+            cheque_due_date: data.payment_date,
+          }
+        : {};
+      // Cheque emitido: el banco propio es el de la chequera.
+      const bank = isChequePayment
+        ? data.cheque_bank || null
+        : utils.paymentMethodUsesOwnBank(data.payment_method)
+          ? data.bank || null
+          : null;
       const creditNoteData =
         data.payment_method === "NOTA DE CREDITO"
           ? {
@@ -142,6 +157,7 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
           payment_method: data.payment_method,
           is_cheque: data.payment_method === "CHEQUE",
           payment_date: data.payment_date || null,
+          bank,
           ...chequeData,
           ...creditNoteData,
         };
@@ -151,6 +167,7 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
         amount: parseFloat(data.amount),
         description: data.description || null,
         payment_date: data.payment_date,
+        bank,
         ...chequeData,
         ...creditNoteData,
       };
@@ -187,6 +204,30 @@ const PaymentOrderFields = forwardRef(function PaymentOrderFields(
           <p className="text-sm text-red-500 pt-1">Seleccione la forma de pago</p>
         )}
       </div>
+
+      {needsOwnBank && (
+        <div>
+          <label className="text-xs font-sans text-gray-900 mb-2 block">
+            Banco de salida <span className="text-red-500">*</span>
+          </label>
+          <select
+            className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"
+            {...register("bank", {
+              required: needsOwnBank ? "Indicá de qué banco sale el pago" : false,
+            })}
+          >
+            <option value="">Seleccionar...</option>
+            {utils.getOwnBanks().map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+          {showErrors && errors.bank && (
+            <p className="text-sm text-red-500 pt-1">{errors.bank.message}</p>
+          )}
+        </div>
+      )}
 
       {isCreditNote && (
         <div className="grid grid-cols-1 gap-3 border border-violet-100 bg-violet-50/60 rounded-lg p-3">

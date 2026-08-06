@@ -199,6 +199,7 @@ function paymentOrderItems(orders) {
         cheque_number: po.cheque_number ?? null,
         cheque_bank: po.cheque_bank ?? null,
         cheque_due_date: po.cheque_due_date ?? null,
+        bank: po.bank ?? null,
       },
       taxes: [],
     };
@@ -602,7 +603,8 @@ self.getSupplierAccount = async (req, res) => {
         payment_date,
         cheque_number,
         cheque_bank,
-        cheque_due_date
+        cheque_due_date,
+        bank
       `
       )
       .eq("supplier_id", supplierId)

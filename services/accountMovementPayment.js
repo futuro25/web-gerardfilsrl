@@ -12,6 +12,49 @@ const PAYMENT_METHODS = new Set([
 const EXPENSE_WITH_SUPPLIER_FIELDS = new Set(["OTRO", "SERVICIOS"]);
 const EXPENSE_REQUIRES_SUPPLIER = new Set(["SERVICIOS"]);
 
+/** Cuentas propias. Un cheque recibido puede ser de otro banco; la plata nuestra no. */
+const OWN_BANKS = new Set(["GALICIA", "PROVINCIA"]);
+
+/** Formas de pago que mueven una cuenta bancaria propia. */
+const PAYMENT_METHODS_WITH_OWN_BANK = new Set([
+  "TRANSFERENCIA",
+  "DEBITO AUTOMATICO",
+  "TARJETA DE DEBITO",
+]);
+
+function normalizeBank(value) {
+  return String(value || "").trim().toUpperCase() || null;
+}
+
+/**
+ * Valida el banco propio cuando la forma de pago mueve una cuenta nuestra.
+ * Devuelve el mensaje de error, o null si está bien.
+ */
+function validateOwnBank(paymentMethod, bank) {
+  if (!PAYMENT_METHODS_WITH_OWN_BANK.has(paymentMethod)) return null;
+
+  const normalized = normalizeBank(bank);
+  if (!normalized) {
+    return "Indicá de qué banco salió el pago";
+  }
+  if (!OWN_BANKS.has(normalized)) {
+    return `Banco inválido. Valores permitidos: ${[...OWN_BANKS].join(", ")}.`;
+  }
+  return null;
+}
+
+/**
+ * Banco propio del movimiento. En un cheque emitido es el de la chequera, que ya
+ * viene en cheque_bank. En un cheque recibido queda null a propósito: ese banco
+ * es del cliente, no nuestro.
+ */
+function resolveMovementBank(body) {
+  if (body.payment_method === "CHEQUE" || body.is_cheque) {
+    return body.type === "EGRESO" ? normalizeBank(body.cheque_bank) : null;
+  }
+  return normalizeBank(body.bank);
+}
+
 /** Egresos con concepto distinto de factura de proveedor llevan forma de pago en el movimiento. */
 function requiresDirectPaymentMethod(type, expenseCategory) {
   return (
@@ -71,6 +114,9 @@ function validateDirectPaymentMethod(body) {
       return "Complete los datos del cheque";
     }
   }
+  const bankErr = validateOwnBank(body.payment_method, body.bank);
+  if (bankErr) return bankErr;
+
   return null;
 }
 
@@ -81,6 +127,7 @@ function applyDirectPaymentMethod(movement, body) {
   }
 
   movement.payment_method = body.payment_method;
+  movement.bank = resolveMovementBank(body);
 
   if (body.payment_method === "CHEQUE") {
     movement.is_cheque = true;
@@ -102,11 +149,16 @@ function applyDirectPaymentMethod(movement, body) {
 
 module.exports = {
   PAYMENT_METHODS,
+  PAYMENT_METHODS_WITH_OWN_BANK,
+  OWN_BANKS,
   EXPENSE_WITH_SUPPLIER_FIELDS,
   EXPENSE_REQUIRES_SUPPLIER,
   requiresDirectPaymentMethod,
   validateEgresoSupplierFields,
   validateDirectPaymentMethod,
+  validateOwnBank,
+  normalizeBank,
+  resolveMovementBank,
   applyEgresoSupplierFields,
   applyDirectPaymentMethod,
 };

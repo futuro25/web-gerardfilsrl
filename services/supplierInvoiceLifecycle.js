@@ -236,6 +236,7 @@ function buildMovementPaymentFields({
   cheque_number,
   cheque_bank,
   cheque_due_date,
+  bank,
 }) {
   const isCheque = payment_method === "CHEQUE";
   return {
@@ -244,6 +245,8 @@ function buildMovementPaymentFields({
     cheque_number: isCheque ? cheque_number : null,
     cheque_bank: isCheque ? cheque_bank : null,
     cheque_due_date: isCheque ? cheque_due_date : null,
+    // Cheque emitido: el banco propio es el de la chequera.
+    bank: isCheque ? cheque_bank || null : bank || null,
     amount: parseAmount(amount),
   };
 }
@@ -255,6 +258,7 @@ function buildMovementPendingRevert(documentDate) {
     cheque_number: null,
     cheque_bank: null,
     cheque_due_date: null,
+    bank: null,
     paycheck_id: null,
     date: documentDate,
   };

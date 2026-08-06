@@ -203,6 +203,13 @@ export default function MovementDetailDialog({
                 movement.payment_method}
             </DetailRow>
           )}
+          {!movement.is_cheque && movement.bank && (
+            <DetailRow
+              label={movement.type === "INGRESO" ? "Banco de ingreso" : "Banco de salida"}
+            >
+              {movement.bank}
+            </DetailRow>
+          )}
           {movement.is_cheque && (
             <>
               <DetailRow label="N° cheque">{movement.cheque_number}</DetailRow>

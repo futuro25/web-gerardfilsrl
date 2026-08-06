@@ -877,6 +877,7 @@ export default function AccountControl() {
           cheque_number: "",
           cheque_bank: "",
           cheque_due_date: "",
+          bank: "",
         });
         return;
       }
@@ -977,6 +978,11 @@ export default function AccountControl() {
         cheque_number: chequeActive ? data.cheque_number : null,
         cheque_bank: chequeActive ? data.cheque_bank : null,
         cheque_due_date: chequeActive ? data.date : null,
+        // Banco propio del ingreso. Los egresos lo definen más abajo, según la
+        // forma de pago; acá quedan en null para no arrastrar un valor viejo del
+        // formulario si se cambió el tipo de movimiento.
+        bank:
+          movementType === "EGRESO" || chequeActive ? null : data.bank || null,
         expense_category: movementType === "EGRESO" ? expenseCategory : null,
         income_category: isCreditNoteIngreso ? "NOTA_CREDITO" : null,
         credit_note_number: null,
@@ -1015,6 +1021,7 @@ export default function AccountControl() {
         body.cheque_number = payPayload.cheque_number || null;
         body.cheque_bank = payPayload.cheque_bank || null;
         body.cheque_due_date = payPayload.cheque_due_date || null;
+        body.bank = payPayload.bank || null;
         if (payPayload.is_cheque && payPayload.cheque_due_date) {
           body.date = payPayload.cheque_due_date;
         }
@@ -1099,6 +1106,7 @@ export default function AccountControl() {
         cheque_number: "",
         cheque_bank: "",
         cheque_due_date: "",
+        bank: "",
       });
     } catch (e) {
       console.error(e);
@@ -1128,6 +1136,7 @@ export default function AccountControl() {
       cheque_due_date: movement.cheque_due_date
         ? DateTime.fromISO(movement.cheque_due_date).toFormat("yyyy-MM-dd")
         : "",
+      bank: movement.bank || "",
     });
     setStage("CREATE");
   };
@@ -1162,6 +1171,7 @@ export default function AccountControl() {
       cheque_number: "",
       cheque_bank: "",
       cheque_due_date: "",
+      bank: "",
     });
     setStage("LIST");
   };
@@ -1263,6 +1273,7 @@ export default function AccountControl() {
                   cheque_number: "",
                   cheque_bank: "",
                   cheque_due_date: "",
+                  bank: "",
                 });
                 setStage("CREATE");
               }}
@@ -2140,6 +2151,27 @@ export default function AccountControl() {
                     </button>
                   </div>
 
+                  {/*
+                    Banco propio donde entró la plata. Con cheque no se pide: ese
+                    banco es el del cliente que lo emitió, no una cuenta nuestra.
+                  */}
+                  {!isCheque && (
+                    <div>
+                      <label className="text-xs font-sans text-gray-900 mb-2 block">
+                        Banco de ingreso
+                      </label>
+                      <select
+                        className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"
+                        {...register("bank")}
+                      >
+                        <option value="">Efectivo / no aplica</option>
+                        {utils.getOwnBanks().map((b) => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   {isCheque && (
                     <div className="flex flex-col gap-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                       <Input
@@ -2235,6 +2267,7 @@ export default function AccountControl() {
                   }
                   defaultChequeNumber={selectedMovement?.cheque_number || ""}
                   defaultChequeBank={selectedMovement?.cheque_bank || ""}
+                  defaultBank={selectedMovement?.bank || ""}
                   defaultPaymentDate={
                     selectedMovement?.cheque_due_date || selectedMovement?.date
                       ? DateTime.fromISO(

@@ -22,6 +22,7 @@ const {
 const {
   applyDirectPaymentMethod,
   applyEgresoSupplierFields,
+  resolveMovementBank,
 } = require("../services/accountMovementPayment");
 const {
   applyEgresoVepFields,
@@ -118,6 +119,12 @@ function movementBodyChangesOnlyKind(existing, body) {
   ) {
     return false;
   }
+  if (
+    normOptionalString(existing.bank) !==
+    normOptionalString(resolveMovementBank(body))
+  ) {
+    return false;
+  }
   if ((existing.expense_category || null) !== (body.expense_category || null)) {
     return false;
   }
@@ -158,6 +165,10 @@ function buildMovementUpdateFromBody(body) {
       cheque_number: body.cheque_number || null,
       cheque_bank: body.cheque_bank || null,
       cheque_due_date: body.cheque_due_date || null,
+      // Banco propio. En egresos con forma de pago directa lo pisa
+      // applyDirectPaymentMethod con el mismo criterio; acá cubre los ingresos
+      // y los egresos con factura, que no pasan por ahí.
+      bank: resolveMovementBank(body),
       expense_category: body.expense_category || null,
     },
     body
@@ -369,7 +380,7 @@ async function getSearchMovementIds(search) {
     .select("id")
     .is("deleted_at", null)
     .or(
-      `description.ilike.${pattern},cheque_number.ilike.${pattern},cheque_bank.ilike.${pattern},invoice_number.ilike.${pattern},credit_note_number.ilike.${pattern}`
+      `description.ilike.${pattern},cheque_number.ilike.${pattern},cheque_bank.ilike.${pattern},bank.ilike.${pattern},invoice_number.ilike.${pattern},credit_note_number.ilike.${pattern}`
     );
   if (directErr) throw directErr;
   (direct || []).forEach((row) => ids.add(row.id));
@@ -786,6 +797,7 @@ self.createMovement = async (req, res) => {
               cheque_number: req.body.cheque_number || null,
               cheque_bank: req.body.cheque_bank || null,
               cheque_due_date: req.body.cheque_due_date || null,
+              bank: resolveMovementBank(req.body),
               expense_category: req.body.expense_category || null,
             },
             req.body
@@ -811,6 +823,8 @@ self.createMovement = async (req, res) => {
       movement.cheque_number = null;
       movement.cheque_bank = null;
       movement.cheque_due_date = null;
+      // Una nota de crédito no mueve plata de ninguna cuenta.
+      movement.bank = null;
     }
 
     // Ingresos con cheque (toggle UI)
@@ -930,6 +944,7 @@ self.updateMovement = async (req, res) => {
         update.cheque_number = null;
         update.cheque_bank = null;
         update.cheque_due_date = null;
+        update.bank = null;
       } catch (cnErr) {
         if (cnErr.code === "CREDIT_NOTE_INVOICE") {
           return res.json({ error: cnErr.message });

@@ -71,6 +71,10 @@ export default function PaymentOrderViewDialog({
           <Row label="Fecha de pago" value={fmtDate(order.payment_date)} />
           <Row label="Monto" value={utils.formatAmount(order.amount)} strong />
 
+          {!isCheque && order.bank && (
+            <Row label="Banco de salida" value={order.bank} />
+          )}
+
           {isCheque && (
             <>
               <Row label="N° de cheque" value={order.cheque_number || "—"} />

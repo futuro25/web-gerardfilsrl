@@ -17,6 +17,10 @@ const {
   buildMovementPaymentFields,
   buildMovementPendingRevert,
 } = require("../services/supplierInvoiceLifecycle");
+const {
+  validateOwnBank,
+  normalizeBank,
+} = require("../services/accountMovementPayment");
 
 const PAYMENT_METHODS = new Set([
   "TRANSFERENCIA",
@@ -262,6 +266,7 @@ self.createPaymentOrder = async (req, res) => {
       cheque_bank,
       cheque_due_date,
       credit_note_number,
+      bank,
     } = req.body;
 
     if (req.body.cashflow_id && !supplier_invoice_id) {
@@ -283,6 +288,10 @@ self.createPaymentOrder = async (req, res) => {
     }
     if (!payment_date) {
       return res.json({ error: "Fecha de pago requerida" });
+    }
+    const bankError = validateOwnBank(payment_method, bank);
+    if (bankError) {
+      return res.json({ error: bankError });
     }
 
     const { data: invoice, error: invErr } = await supabase
@@ -388,6 +397,7 @@ self.createPaymentOrder = async (req, res) => {
         cheque_number,
         cheque_bank,
         cheque_due_date,
+        bank: normalizeBank(bank),
       });
       movementUpdate = {
         ...paymentFields,
@@ -432,6 +442,8 @@ self.createPaymentOrder = async (req, res) => {
         cheque_number: isCheque ? cheque_number : null,
         cheque_bank: isCheque ? cheque_bank : null,
         cheque_due_date: isCheque ? cheque_due_date : null,
+        // Cheque emitido: el banco propio es el de la chequera.
+        bank: isCheque ? normalizeBank(cheque_bank) : normalizeBank(bank),
         credit_note_number:
           payment_method === "NOTA DE CREDITO"
             ? credit_note_number?.trim() || null
@@ -536,6 +548,7 @@ self.cancelPaymentOrder = async (req, res) => {
         cheque_number: latest.cheque_number,
         cheque_bank: latest.cheque_bank,
         cheque_due_date: latest.cheque_due_date,
+        bank: latest.bank,
       });
       const latestPaycheckId =
         latest.payment_method === "CHEQUE"

@@ -166,8 +166,27 @@ export function getPaycheckString() {
   return getPaymentMethods()[2] || "CHEQUE";
 }
 
+/** Bancos de terceros: el del cheque que nos entregan, el del cliente, etc. */
 export function getBanks() {
   return ["SANTANDER", "BBVA", "GALICIA", "NACION", "CIUDAD", "PROVINCIA"];
+}
+
+/**
+ * Cuentas propias: de acá sale y acá entra nuestra plata. Es una lista distinta
+ * de getBanks() a propósito — un cheque recibido puede ser del Santander, pero
+ * el movimiento nunca sale de una cuenta que no tenemos.
+ */
+export function getOwnBanks() {
+  return ["GALICIA", "PROVINCIA"];
+}
+
+/** Formas de pago que mueven una cuenta bancaria propia. */
+export function paymentMethodUsesOwnBank(paymentMethod) {
+  return (
+    paymentMethod === "TRANSFERENCIA" ||
+    paymentMethod === "DEBITO AUTOMATICO" ||
+    paymentMethod === "TARJETA DE DEBITO"
+  );
 }
 
 export function getCashflowInCategories() {

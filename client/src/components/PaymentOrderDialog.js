@@ -183,12 +183,15 @@ export default function PaymentOrderDialog({
       cheque_number: "",
       cheque_bank: "",
       credit_note_number: "",
+      bank: "",
     },
   });
 
   const paymentMethod = watch("payment_method");
   const isCheque = paymentMethod === "CHEQUE";
   const isCreditNote = paymentMethod === "NOTA DE CREDITO";
+  // En cheque el banco propio sale de la chequera (cheque_bank), no de este campo.
+  const needsOwnBank = utils.paymentMethodUsesOwnBank(paymentMethod);
   const formInitializedFor = useRef(null);
 
   useEffect(() => {
@@ -210,6 +213,7 @@ export default function PaymentOrderDialog({
       cheque_number: "",
       cheque_bank: "",
       credit_note_number: "",
+      bank: "",
     });
   }, [open, loading, itemKey, reset, suggestedPayAmount]);
 
@@ -248,6 +252,12 @@ export default function PaymentOrderDialog({
         description: data.description || null,
         payment_date: data.payment_date,
         account_movement_id: item.account_movement_id || movementId || null,
+        // Cheque emitido: el banco propio es el de la chequera.
+        bank: isCheque
+          ? data.cheque_bank || null
+          : utils.paymentMethodUsesOwnBank(data.payment_method)
+            ? data.bank || null
+            : null,
         ...chequeData,
         ...creditNoteData,
       });
@@ -454,6 +464,35 @@ export default function PaymentOrderDialog({
                 </p>
               )}
             </div>
+
+            {/* Banco propio de salida (transferencia y débito automático) */}
+            {needsOwnBank && (
+              <div>
+                <label className="text-xs font-sans text-gray-900 mb-2 block">
+                  Banco de salida <span className="text-red-500">*</span>
+                </label>
+                <select
+                  className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"
+                  {...register("bank", {
+                    required: needsOwnBank
+                      ? "Indicá de qué banco sale el pago"
+                      : false,
+                  })}
+                >
+                  <option value="">Seleccionar...</option>
+                  {utils.getOwnBanks().map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+                {errors.bank && (
+                  <p className="text-sm text-red-500 pt-1">
+                    {errors.bank.message}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Nota de crédito (solo si la forma de pago es NOTA DE CREDITO) */}
             {isCreditNote && (

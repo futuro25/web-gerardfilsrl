@@ -145,7 +145,7 @@ self.getPurchaseInvoices = async (req, res) => {
     const { data: orders, error: ordersErr } = await supabase
       .from("payment_orders")
       .select(
-        "supplier_invoice_id, cashflow_id, account_movement_id, order_number, payment_method, amount, payment_date, cheque_number, cheque_bank, cheque_due_date"
+        "supplier_invoice_id, cashflow_id, account_movement_id, order_number, payment_method, amount, payment_date, cheque_number, cheque_bank, cheque_due_date, bank"
       )
       .is("deleted_at", null);
     if (ordersErr) throw ordersErr;
@@ -216,6 +216,7 @@ self.getPurchaseInvoices = async (req, res) => {
             cheque_number: o.cheque_number,
             cheque_bank: o.cheque_bank,
             cheque_due_date: o.cheque_due_date,
+            bank: o.bank,
           }
         : null;
 
