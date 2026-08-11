@@ -930,6 +930,28 @@ self.updateMovement = async (req, res) => {
 
     if (fetchError) throw fetchError;
 
+    // Marcar/desmarcar gasto fijo no toca ningún otro campo: se resuelve antes de
+    // validar el body completo para no exigir datos que el toggle no edita.
+    const activeOrder = await getActiveOrderForMovement(movementId);
+    if (activeOrder) {
+      if (movementBodyChangesOnlyKind(existing, req.body)) {
+        const { data: updated, error } = await supabase
+          .from("account_movements")
+          .update({
+            movement_kind: normalizeMovementKind(req.body.movement_kind),
+          })
+          .eq("id", movementId)
+          .select();
+
+        if (error) throw error;
+        return res.json(updated);
+      }
+      return res.json({
+        error:
+          "No se puede editar un movimiento con orden de pago activa. Anulá la OP primero y, si corresponde, creá una nueva al guardar.",
+      });
+    }
+
     const built = buildMovementUpdateFromBody(req.body);
     if (built.error) return res.json({ error: built.error });
     const update = built.update;
@@ -966,26 +988,6 @@ self.updateMovement = async (req, res) => {
         }
         throw dupErr;
       }
-    }
-
-    const activeOrder = await getActiveOrderForMovement(movementId);
-    if (activeOrder) {
-      if (movementBodyChangesOnlyKind(existing, req.body)) {
-        const { data: updated, error } = await supabase
-          .from("account_movements")
-          .update({
-            movement_kind: normalizeMovementKind(req.body.movement_kind),
-          })
-          .eq("id", movementId)
-          .select();
-
-        if (error) throw error;
-        return res.json(updated);
-      }
-      return res.json({
-        error:
-          "No se puede editar un movimiento con orden de pago activa. Anulá la OP primero y, si corresponde, creá una nueva al guardar.",
-      });
     }
 
     // Handle paycheck sync for cheque egresos

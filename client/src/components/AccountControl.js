@@ -570,6 +570,9 @@ export default function AccountControl() {
     queryClient.invalidateQueries({ queryKey: queryPurchaseInvoicesKey() });
   };
 
+  // El back valida y reescribe el movimiento completo en cada update, así que el
+  // body tiene que reflejar todos los campos tal cual están hoy: lo que falte se
+  // toma como vacío y rompe la validación (o se pisa con null).
   const buildMovementUpdateBody = (movement, overrides = {}) => ({
     id: movement.id,
     type: movement.type,
@@ -581,10 +584,15 @@ export default function AccountControl() {
     cheque_number: movement.cheque_number || null,
     cheque_bank: movement.cheque_bank || null,
     cheque_due_date: movement.cheque_due_date || null,
+    bank: movement.bank || null,
     expense_category: movement.expense_category || null,
     payment_method: movement.payment_method || null,
     supplier_id: movement.supplier_id || null,
     invoice_number: movement.invoice_number || null,
+    vep_id: movement.vep_id || null,
+    income_category: movement.income_category || null,
+    credit_note_number: movement.credit_note_number || null,
+    credit_note_invoice_id: movement.credit_note_invoice_id || null,
     ...overrides,
   });
 
