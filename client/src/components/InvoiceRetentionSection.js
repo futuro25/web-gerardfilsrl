@@ -79,6 +79,14 @@ export default function InvoiceRetentionSection({
     }
   };
 
+  // El backend ajusta la salida del movimiento al neto (total - retención).
+  // Si el importe había sido cargado a mano no lo pisa: ahí hay que avisar.
+  const warnIfMovementNotSynced = (result) => {
+    if (result?.movement_sync?.status === "skipped") {
+      window.alert(result.movement_sync.message);
+    }
+  };
+
   const confirmDeleteRetention = async () => {
     if (!retentionPayment?.id) return;
 
@@ -88,6 +96,7 @@ export default function InvoiceRetentionSection({
         window.alert(result.error);
         return;
       }
+      warnIfMovementNotSynced(result);
       setCreatedRetention(null);
       setCertOpen(false);
       setDeleteConfirmOpen(false);
@@ -100,7 +109,9 @@ export default function InvoiceRetentionSection({
 
   const handleRetentionCreated = (result) => {
     setRetentionFormOpen(false);
-    invalidateRetention();
+    // La retención cambia el importe del movimiento, no solo la retención.
+    invalidateRelatedQueries();
+    warnIfMovementNotSynced(result);
     if (result?.payment) {
       setCreatedRetention(result);
       setCertOpen(true);
@@ -163,6 +174,11 @@ export default function InvoiceRetentionSection({
                 </span>
               </div>
             )}
+            <p className="text-xs text-violet-700 border-t border-violet-200 pt-1.5 mt-0.5">
+              La salida en Control queda por el total menos la retención, que es
+              lo que sale del banco. El monto retenido se registra como egreso
+              cuando se paga el VEP.
+            </p>
             <div className="pt-1 flex flex-wrap gap-2">
               <Button
                 type="button"

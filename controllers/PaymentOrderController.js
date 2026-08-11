@@ -21,6 +21,9 @@ const {
   validateOwnBank,
   normalizeBank,
 } = require("../services/accountMovementPayment");
+const {
+  netMovementAmount,
+} = require("../services/accountMovementRetentionAmount");
 
 const PAYMENT_METHODS = new Set([
   "TRANSFERENCIA",
@@ -393,7 +396,8 @@ self.createPaymentOrder = async (req, res) => {
     if (fullyPaid) {
       const paymentFields = buildMovementPaymentFields({
         payment_method,
-        amount: invoiceTotalAmount,
+        // La salida de Control es lo que se pagó: el total menos la retención.
+        amount: netMovementAmount(invoiceTotalAmount, retentionAmount),
         cheque_number,
         cheque_bank,
         cheque_due_date,
@@ -544,7 +548,7 @@ self.cancelPaymentOrder = async (req, res) => {
       const latest = remainingOrders[remainingOrders.length - 1];
       movementUpdate = buildMovementPaymentFields({
         payment_method: latest.payment_method,
-        amount: invoiceTotal(invoice),
+        amount: netMovementAmount(invoiceTotal(invoice), retentionAmount),
         cheque_number: latest.cheque_number,
         cheque_bank: latest.cheque_bank,
         cheque_due_date: latest.cheque_due_date,

@@ -8,6 +8,27 @@ const {
 
 const CHEQUES_DUE_DAYS = 60;
 const VEPS_DUE_DAYS = 60;
+const FUTURE_BALANCE_DAYS = 60;
+
+const EXPENSE_CATEGORY_LABELS = {
+  FACTURA: "Factura de proveedor",
+  GASTOS_BANCARIOS: "Gastos bancarios",
+  IMPUESTOS: "Impuestos",
+  VEP: "VEP",
+  PAGO_HABERES: "Pago de Haberes",
+  SERVICIOS: "Servicios",
+  OTRO: "Otro",
+};
+
+const PAYMENT_METHOD_LABELS = {
+  TRANSFERENCIA: "Transferencia",
+  CHEQUE: "Cheque",
+  EFECTIVO: "Efectivo",
+  "TARJETA DE CREDITO": "Tarjeta de crédito",
+  "DEBITO AUTOMATICO": "Débito automático",
+  "TARJETA DE DEBITO": "Débito automático",
+  "NOTA DE CREDITO": "Nota de crédito",
+};
 
 function formatAmount(value) {
   const n = parseFloat(value);
@@ -99,6 +120,64 @@ async function fetchUpcomingVeps(days = VEPS_DUE_DAYS) {
   if (error) throw error;
 
   return data || [];
+}
+
+/**
+ * Saldo proyectado día a día. Se omiten los días sin movimientos: en 60 días
+ * la mayoría no tiene nada y solo agregan ruido al mail.
+ */
+async function fetchFutureBalances(days = FUTURE_BALANCE_DAYS) {
+  const { computeFutureBalances } = require("./futureBalances");
+  const result = await computeFutureBalances({ days });
+  return {
+    ...result,
+    days,
+    rows: result.data.filter((row) => (row.items || []).length > 0),
+  };
+}
+
+/** Qué es este movimiento proyectado, en una línea. */
+function futureItemLabel(item) {
+  const bits = [];
+
+  if (item.source === "GASTO_FIJO") {
+    bits.push("Gasto fijo proyectado");
+  } else if (item.source === "VEP") {
+    bits.push(item.overdue ? "VEP vencido sin pagar" : "VEP a vencer");
+  } else {
+    if (item.type === "EGRESO" && item.expense_category) {
+      bits.push(
+        EXPENSE_CATEGORY_LABELS[item.expense_category] || item.expense_category
+      );
+    }
+    if (item.income_category === "NOTA_CREDITO") {
+      bits.push(`NC ${item.credit_note_number || ""}`.trim());
+      if (item.credit_note_invoice_number) {
+        bits.push(`Fact. ${item.credit_note_invoice_number}`);
+      }
+    }
+    if (item.supplier_name) bits.push(item.supplier_name);
+    if (item.invoice_number && item.income_category !== "NOTA_CREDITO") {
+      bits.push(`Fact. ${item.invoice_number}`);
+    }
+    if (item.vep_label) bits.push(`VEP: ${item.vep_label}`);
+    if (item.is_cheque) {
+      bits.push(
+        `Cheque ${item.cheque_number || "s/n"}${item.cheque_bank ? ` · ${item.cheque_bank}` : ""}`
+      );
+    } else if (item.payment_method) {
+      bits.push(PAYMENT_METHOD_LABELS[item.payment_method] || item.payment_method);
+    }
+    // En un cheque emitido el banco propio es el de la chequera: no repetirlo.
+    if (item.bank && item.bank !== item.cheque_bank) bits.push(item.bank);
+  }
+
+  return bits.join(" · ");
+}
+
+function signedAmount(delta) {
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  return `${sign}${formatAmount(Math.abs(delta))}`;
 }
 
 function buildVepsSummary(veps) {
@@ -225,7 +304,79 @@ function buildVepsSectionHtml(veps, vepsSummary) {
     </div>`;
 }
 
-function buildReportHtml(movements, summary, cheques, chequesSummary, veps, vepsSummary) {
+function buildFutureBalancesSectionHtml(future) {
+  const rows = future?.rows || [];
+  const currentBalance = future?.currentBalance ?? 0;
+  const lastBalance = rows.length
+    ? rows[rows.length - 1].balance
+    : currentBalance;
+
+  const rowsHtml =
+    rows.length === 0
+      ? `<tr><td colspan="3" style="padding:16px;text-align:center;color:#64748b;">No hay movimientos proyectados en los próximos ${future?.days ?? FUTURE_BALANCE_DAYS} días.</td></tr>`
+      : rows
+          .map((row) => {
+            const itemsHtml = row.items
+              .map((item) => {
+                const label = futureItemLabel(item);
+                const labelHtml = label
+                  ? `<br><small style="color:#64748b;">${escapeHtml(label)}</small>`
+                  : "";
+                const color = item.delta > 0 ? "#15803d" : "#dc2626";
+                return `<div style="margin-bottom:6px;">
+                  <span>${escapeHtml(item.description || "Sin detalle")}</span>
+                  <span style="color:${color};font-weight:600;"> ${signedAmount(item.delta)}</span>
+                  ${labelHtml}
+                </div>`;
+              })
+              .join("");
+
+            const netHtml =
+              row.items.length > 1
+                ? `<div style="margin-top:4px;font-weight:600;color:${row.delta > 0 ? "#15803d" : "#dc2626"};">Neto del día: ${signedAmount(row.delta)}</div>`
+                : "";
+
+            const negative = row.balance < 0;
+            return `<tr style="background:${negative ? "#fef2f2" : "#f0fdf4"};">
+              <td style="padding:10px;border-bottom:1px solid #e2e8f0;vertical-align:top;white-space:nowrap;">${escapeHtml(itemDate(row))}</td>
+              <td style="padding:10px;border-bottom:1px solid #e2e8f0;vertical-align:top;">${itemsHtml}${netHtml}</td>
+              <td style="padding:10px;border-bottom:1px solid #e2e8f0;vertical-align:top;text-align:right;font-weight:700;white-space:nowrap;color:${negative ? "#dc2626" : "#15803d"};">${formatAmount(row.balance)}</td>
+            </tr>`;
+          })
+          .join("");
+
+  return `
+    <div style="margin-top:28px;padding-top:24px;border-top:2px solid #e2e8f0;">
+      <h2 style="margin:0 0 4px;font-size:18px;color:#0f766e;">Saldos Futuros <span style="font-size:13px;font-weight:normal;color:#b45309;">(en revisión)</span></h2>
+      <p style="margin:0 0 12px;font-size:13px;color:#64748b;">
+        Próximos ${future?.days ?? FUTURE_BALANCE_DAYS} días. Solo se listan los días con movimientos.
+        Incluye movimientos con fecha futura, cheques en su vencimiento, VEPs pendientes
+        y gastos fijos que todavía no tienen su movimiento cargado.
+      </p>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;">
+        <tr>
+          <td style="padding:10px;background:#f0fdfa;border:1px solid #99f6e4;">Saldo actual en caja</td>
+          <td style="padding:10px;background:#f0fdfa;border:1px solid #99f6e4;text-align:right;font-weight:700;color:${currentBalance < 0 ? "#dc2626" : "#0f766e"};">${formatAmount(currentBalance)}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px;background:#f0fdfa;border:1px solid #99f6e4;">Saldo proyectado a ${future?.days ?? FUTURE_BALANCE_DAYS} días</td>
+          <td style="padding:10px;background:#f0fdfa;border:1px solid #99f6e4;text-align:right;font-weight:700;color:${lastBalance < 0 ? "#dc2626" : "#0f766e"};">${formatAmount(lastBalance)}</td>
+        </tr>
+      </table>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f0fdfa;">
+            <th style="text-align:left;padding:8px 10px;">Fecha</th>
+            <th style="text-align:left;padding:8px 10px;">Movimientos del día</th>
+            <th style="text-align:right;padding:8px 10px;">Saldo proyectado</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>`;
+}
+
+function buildReportHtml(movements, summary, cheques, chequesSummary, veps, vepsSummary, future) {
   const generatedAt = DateTime.now().setZone("America/Argentina/Buenos_Aires").toFormat(
     "dd/MM/yyyy HH:mm"
   );
@@ -285,13 +436,14 @@ function buildReportHtml(movements, summary, cheques, chequesSummary, veps, veps
       </table>
       ${buildChequesSectionHtml(cheques, chequesSummary)}
       ${buildVepsSectionHtml(veps, vepsSummary)}
+      ${buildFutureBalancesSectionHtml(future)}
     </div>
   </div>
 </body>
 </html>`;
 }
 
-function buildReportText(movements, summary, cheques, chequesSummary, veps, vepsSummary) {
+function buildReportText(movements, summary, cheques, chequesSummary, veps, vepsSummary, future) {
   const lines = [
     "Facturas Pendientes (sin orden de pago)",
     `Cantidad: ${summary.count}`,
@@ -340,6 +492,34 @@ function buildReportText(movements, summary, cheques, chequesSummary, veps, veps
   lines.push("");
   lines.push(`Total VEPs: ${formatAmount(vepsSummary.total)}`);
 
+  const futureRows = future?.rows || [];
+  const futureDays = future?.days ?? FUTURE_BALANCE_DAYS;
+  lines.push("");
+  lines.push(`Saldos Futuros (en revisión) — próximos ${futureDays} días`);
+  lines.push(`Saldo actual en caja: ${formatAmount(future?.currentBalance ?? 0)}`);
+  lines.push(
+    `Saldo proyectado a ${futureDays} días: ${formatAmount(
+      futureRows.length
+        ? futureRows[futureRows.length - 1].balance
+        : future?.currentBalance ?? 0
+    )}`
+  );
+  lines.push("");
+
+  if (futureRows.length === 0) {
+    lines.push("Sin movimientos proyectados en el período.");
+  } else {
+    futureRows.forEach((row) => {
+      lines.push(`${itemDate(row)} — saldo ${formatAmount(row.balance)}`);
+      row.items.forEach((item) => {
+        const label = futureItemLabel(item);
+        lines.push(
+          `   ${signedAmount(item.delta)} | ${item.description || "Sin detalle"}${label ? ` | ${label}` : ""}`
+        );
+      });
+    });
+  }
+
   return lines.join("\n");
 }
 
@@ -350,10 +530,11 @@ function buildReportText(movements, summary, cheques, chequesSummary, veps, veps
 async function sendPendingMovementsReport({ to }) {
   const { sendEmail } = require("../utils/mailer");
 
-  const [movements, cheques, veps] = await Promise.all([
+  const [movements, cheques, veps, future] = await Promise.all([
     fetchPendingMovements(),
     fetchChequesDueWithinDays(),
     fetchUpcomingVeps(),
+    fetchFutureBalances(),
   ]);
   const summary = buildSummary(movements);
   const chequesSummary = buildChequesSummary(cheques);
@@ -364,7 +545,8 @@ async function sendPendingMovementsReport({ to }) {
     cheques,
     chequesSummary,
     veps,
-    vepsSummary
+    vepsSummary,
+    future
   );
   const text = buildReportText(
     movements,
@@ -372,7 +554,8 @@ async function sendPendingMovementsReport({ to }) {
     cheques,
     chequesSummary,
     veps,
-    vepsSummary
+    vepsSummary,
+    future
   );
 
   const dateLabel = DateTime.now()
@@ -394,6 +577,7 @@ async function sendPendingMovementsReport({ to }) {
     chequesSummary,
     veps,
     vepsSummary,
+    future,
   };
 }
 
@@ -401,6 +585,7 @@ module.exports = {
   fetchPendingMovements,
   fetchChequesDueWithinDays,
   fetchUpcomingVeps,
+  fetchFutureBalances,
   buildSummary,
   buildChequesSummary,
   buildVepsSummary,
@@ -410,4 +595,5 @@ module.exports = {
   formatAmount,
   CHEQUES_DUE_DAYS,
   VEPS_DUE_DAYS,
+  FUTURE_BALANCE_DAYS,
 };

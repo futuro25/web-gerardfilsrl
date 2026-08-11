@@ -8,6 +8,24 @@ const {
   persistRetentionInvoiceLink,
   batchResolveRetentionInvoiceNumbers,
 } = require("../services/retentionInvoiceLink");
+const {
+  getRetentionTotal,
+  syncMovementAmountForRetention,
+} = require("../services/accountMovementRetentionAmount");
+
+/**
+ * Ajusta el movimiento de Control al neto (total - retenciones) después de
+ * crear, modificar o eliminar una retención. Nunca corta la operación: si algo
+ * falla, la retención ya quedó guardada y solo se pierde el ajuste.
+ */
+async function syncMovementAmountSafe(params) {
+  try {
+    return await syncMovementAmountForRetention(params);
+  } catch (e) {
+    console.error("Error ajustando importe del movimiento:", e.message);
+    return { status: "error", message: e.message };
+  }
+}
 
 // Escalas para cálculo de retenciones según RG 4525.
 // Fuente única: debe coincidir con client/src/utils/retention.js para que el
@@ -526,6 +544,15 @@ self.createRetentionPayment = async (req, res) => {
     const retentionAmount = retentionResult.retention;
     const totalToPay = Math.round((totalAmount - retentionAmount) * 100) / 100;
 
+    // Retenciones vigentes antes de esta alta: referencia para saber si el
+    // importe actual del movimiento es el que dejó el sistema o uno manual.
+    const previousRetentionTotal = await getRetentionTotal({
+      supplierInvoiceIds: parsedSupplierInvoiceId
+        ? [parsedSupplierInvoiceId]
+        : [],
+      accountMovementId: linkedAccountMovementId,
+    });
+
     // Crear el pago
     const payment = {
       invoice_number: resolvedInvoiceNumber,
@@ -567,6 +594,14 @@ self.createRetentionPayment = async (req, res) => {
       }
     }
 
+    // La retención no sale de caja con la factura: el movimiento pasa al neto.
+    const movementSync = await syncMovementAmountSafe({
+      supplierInvoiceId: newPayment.supplier_invoice_id ?? parsedSupplierInvoiceId,
+      accountMovementId:
+        newPayment.account_movement_id ?? linkedAccountMovementId,
+      previousRetentionTotal,
+    });
+
     // No crear cashflow ni invoices - solo guardar datos del certificado
 
     // Crear certificado de retención
@@ -602,12 +637,14 @@ self.createRetentionPayment = async (req, res) => {
       return res.json({
         payment: { ...newPayment },
         certificate: newCertificate || null,
+        movement_sync: movementSync,
       });
     }
 
     return res.json({
       payment: { ...newPayment },
       certificate: null,
+      movement_sync: movementSync,
     });
   } catch (e) {
     console.log("Retention payment creation error", e.message);
@@ -634,6 +671,23 @@ self.updateRetentionPayment = async (req, res) => {
       cashflowService,
       paymentMethod,
     } = req.body;
+
+    // Vínculos y retenciones vigentes antes de la edición: sirven para saber
+    // qué importe debería tener hoy el movimiento de Control.
+    const { data: currentPayment, error: currentErr } = await supabase
+      .from("retention_payments")
+      .select("supplier_invoice_id, account_movement_id")
+      .eq("id", payment_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (currentErr) throw currentErr;
+
+    const previousRetentionTotal = await getRetentionTotal({
+      supplierInvoiceIds: currentPayment?.supplier_invoice_id
+        ? [currentPayment.supplier_invoice_id]
+        : [],
+      accountMovementId: currentPayment?.account_movement_id ?? null,
+    });
 
     // Recalcular retención considerando el acumulado mensual
     // Excluir el pago actual al recalcular para obtener el acumulado correcto
@@ -718,7 +772,19 @@ self.updateRetentionPayment = async (req, res) => {
 
     // No actualizar cashflow ni invoices - solo guardar datos del certificado
 
-    res.json({ ...updatedPayment });
+    const movementSync = await syncMovementAmountSafe({
+      supplierInvoiceId:
+        updatedPayment?.supplier_invoice_id ??
+        currentPayment?.supplier_invoice_id ??
+        null,
+      accountMovementId:
+        updatedPayment?.account_movement_id ??
+        currentPayment?.account_movement_id ??
+        null,
+      previousRetentionTotal,
+    });
+
+    res.json({ ...updatedPayment, movement_sync: movementSync });
   } catch (e) {
     console.error("Error updating retention payment:", e.message);
     res.json({ error: e.message });
@@ -733,12 +799,23 @@ self.deleteRetentionPayment = async (req, res) => {
     // Obtener el pago primero para verificar cashflow_id e invoice_id
     const { data: payment, error: paymentError } = await supabase
       .from("retention_payments")
-      .select("cashflow_id, invoice_id")
+      .select(
+        "cashflow_id, invoice_id, supplier_invoice_id, account_movement_id"
+      )
       .eq("id", payment_id)
       .is("deleted_at", null)
       .single();
 
     if (paymentError) throw paymentError;
+
+    // Retenciones vigentes antes de la baja: al eliminarla, el movimiento
+    // vuelve a ser el total de la factura.
+    const previousRetentionTotal = await getRetentionTotal({
+      supplierInvoiceIds: payment?.supplier_invoice_id
+        ? [payment.supplier_invoice_id]
+        : [],
+      accountMovementId: payment?.account_movement_id ?? null,
+    });
 
     // 1. Soft delete del pago en retention_payments (registro principal)
     const { error: deletePaymentError } = await supabase
@@ -781,7 +858,13 @@ self.deleteRetentionPayment = async (req, res) => {
         .eq("invoice_id", payment.invoice_id);
     }
 
-    res.json({ success: true });
+    const movementSync = await syncMovementAmountSafe({
+      supplierInvoiceId: payment?.supplier_invoice_id ?? null,
+      accountMovementId: payment?.account_movement_id ?? null,
+      previousRetentionTotal,
+    });
+
+    res.json({ success: true, movement_sync: movementSync });
   } catch (e) {
     console.error("Error deleting retention payment:", e.message);
     res.json({ error: e.message });

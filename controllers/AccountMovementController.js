@@ -39,6 +39,12 @@ const {
   attachCreditNoteInfo,
 } = require("../services/accountMovementCreditNote");
 const { validateMovementBody } = require("../services/accountMovementValidation");
+const {
+  linkMovementToFixedExpense,
+  unlinkMovementFromFixedExpense,
+} = require("../services/fixedExpenses");
+const { attachSupplierNames } = require("../services/accountMovementSuppliers");
+const { computeFutureBalances } = require("../services/futureBalances");
 
 const MOVEMENT_KINDS = new Set(["FIJO", "UNICA VEZ"]);
 
@@ -149,6 +155,24 @@ function movementBodyChangesOnlyKind(existing, body) {
   return true;
 }
 
+/**
+ * Mantiene el vínculo con la plantilla de gasto fijo cuando cambia la marca.
+ * Devuelve el fixed_expense_id a guardar, o undefined si la marca no cambió.
+ */
+async function syncFixedExpenseLink({ movement, previousKind, nextKind }) {
+  const wasFixed = normalizeMovementKind(previousKind) === "FIJO";
+  const isFixed = normalizeMovementKind(nextKind) === "FIJO";
+  if (wasFixed === isFixed) return undefined;
+  if (movement.type !== "EGRESO") return undefined;
+
+  if (isFixed) {
+    return await linkMovementToFixedExpense(movement);
+  }
+
+  await unlinkMovementFromFixedExpense(movement);
+  return null;
+}
+
 function buildMovementUpdateFromBody(body) {
   const validationErr = validateMovementBody(body);
   if (validationErr) return { error: validationErr };
@@ -196,55 +220,6 @@ function stripNullPaymentMethod(row) {
     delete out.payment_method;
   }
   return out;
-}
-
-async function attachSupplierNames(movements) {
-  if (!movements?.length) return movements || [];
-
-  const movementIds = movements.map((m) => m.id);
-  const { data: invoices, error } = await supabase
-    .from("supplier_invoices")
-    .select("account_movement_id, supplier_id")
-    .in("account_movement_id", movementIds)
-    .is("deleted_at", null);
-
-  if (error) throw error;
-
-  const supplierIds = new Set(
-    (invoices || []).map((i) => i.supplier_id).filter((id) => id != null)
-  );
-  movements.forEach((m) => {
-    if (m.supplier_id != null) supplierIds.add(m.supplier_id);
-  });
-
-  let supplierById = {};
-  if (supplierIds.size) {
-    const { data: suppliers, error: suppliersError } = await supabase
-      .from("suppliers")
-      .select("id, fantasy_name, name")
-      .in("id", [...supplierIds])
-      .is("deleted_at", null);
-
-    if (suppliersError) throw suppliersError;
-
-    (suppliers || []).forEach((s) => {
-      supplierById[s.id] = s.fantasy_name || s.name || null;
-    });
-  }
-
-  const nameByMovementId = {};
-  (invoices || []).forEach((inv) => {
-    if (inv.account_movement_id != null && !nameByMovementId[inv.account_movement_id]) {
-      nameByMovementId[inv.account_movement_id] =
-        supplierById[inv.supplier_id] || null;
-    }
-  });
-
-  return movements.map((m) => ({
-    ...m,
-    supplier_name:
-      nameByMovementId[m.id] || supplierById[m.supplier_id] || null,
-  }));
 }
 
 async function attachInvoicePaymentFlags(movements) {
@@ -671,78 +646,8 @@ self.getSummary = async (req, res) => {
 
 self.getFutureBalances = async (req, res) => {
   try {
-    const today = DateTime.now().toISODate();
-
-    const { data: rows, error } = await supabase
-      .from("account_movements")
-      .select("type, amount, date, is_cheque, cheque_due_date, created_at")
-      .is("deleted_at", null);
-
-    if (error) throw error;
-
-    const excludedIds = await getBalanceExcludedMovementIds();
-
-    const withEff = (rows || [])
-      .filter((m) => movementCountsInBalance(m, excludedIds))
-      .map((m) => ({
-        eff: m.is_cheque && m.cheque_due_date ? m.cheque_due_date : m.date,
-        created_at: m.created_at || "",
-        delta: m.type === "INGRESO" ? parseFloat(m.amount) : -parseFloat(m.amount),
-      }));
-
-    withEff.sort((a, b) => {
-      if (a.eff !== b.eff) return a.eff.localeCompare(b.eff);
-      return String(a.created_at).localeCompare(String(b.created_at));
-    });
-
-    let balanceThroughToday = 0;
-    for (const ev of withEff) {
-      if (ev.eff > today) break;
-      balanceThroughToday += ev.delta;
-    }
-
-    const deltasByDate = new Map();
-    for (const ev of withEff) {
-      if (ev.eff <= today) continue;
-      if (!deltasByDate.has(ev.eff)) deltasByDate.set(ev.eff, []);
-      deltasByDate.get(ev.eff).push(ev.delta);
-    }
-
-    // VEPs pendientes de pago: egreso proyectado en su vencimiento.
-    // Los vencidos sin pagar se imputan mañana (siguen siendo plata que va a salir).
-    const { data: pendingVeps, error: vepsErr } = await supabase
-      .from("veps")
-      .select("amount, due_date")
-      .is("deleted_at", null)
-      .is("paid_at", null);
-    if (vepsErr) throw vepsErr;
-
-    const tomorrow = DateTime.fromISO(today).plus({ days: 1 }).toISODate();
-    for (const vep of pendingVeps || []) {
-      const amount = parseFloat(vep.amount);
-      if (!Number.isFinite(amount) || amount <= 0) continue;
-      const eff =
-        vep.due_date && vep.due_date > today ? vep.due_date : tomorrow;
-      if (!deltasByDate.has(eff)) deltasByDate.set(eff, []);
-      deltasByDate.get(eff).push(-amount);
-    }
-
-    // Próximos 3 meses (día a día desde mañana hasta hoy + 3 meses inclusive)
-    const out = [];
-    let current = balanceThroughToday;
-    let d = DateTime.fromISO(today).plus({ days: 1 });
-    const endD = DateTime.fromISO(today).plus({ months: 3 });
-    while (d <= endD) {
-      const iso = d.toISODate();
-      const deltas = deltasByDate.get(iso) || [];
-      let dayDelta = 0;
-      for (const del of deltas) dayDelta += del;
-      current += dayDelta;
-      out.push({ date: iso, balance: current, delta: dayDelta });
-      d = d.plus({ days: 1 });
-    }
-
-    res.json({ data: out, currentBalance: balanceThroughToday });
+    const result = await computeFutureBalances({ months: 3 });
+    res.json({ data: result.data, currentBalance: result.currentBalance });
   } catch (e) {
     console.error("getFutureBalances error:", e.message);
     res.json({ error: e.message, data: [] });
@@ -935,11 +840,18 @@ self.updateMovement = async (req, res) => {
     const activeOrder = await getActiveOrderForMovement(movementId);
     if (activeOrder) {
       if (movementBodyChangesOnlyKind(existing, req.body)) {
+        const nextKind = normalizeMovementKind(req.body.movement_kind);
+        const kindUpdate = { movement_kind: nextKind };
+        const link = await syncFixedExpenseLink({
+          movement: existing,
+          previousKind: existing.movement_kind,
+          nextKind,
+        });
+        if (link !== undefined) kindUpdate.fixed_expense_id = link;
+
         const { data: updated, error } = await supabase
           .from("account_movements")
-          .update({
-            movement_kind: normalizeMovementKind(req.body.movement_kind),
-          })
+          .update(kindUpdate)
           .eq("id", movementId)
           .select();
 
@@ -989,6 +901,13 @@ self.updateMovement = async (req, res) => {
         throw dupErr;
       }
     }
+
+    const link = await syncFixedExpenseLink({
+      movement: { ...existing, ...update, id: existing.id },
+      previousKind: existing.movement_kind,
+      nextKind: update.movement_kind,
+    });
+    if (link !== undefined) update.fixed_expense_id = link;
 
     // Handle paycheck sync for cheque egresos
     if (existing.paycheck_id) {

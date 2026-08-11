@@ -43,6 +43,8 @@ export const queryAccountMovementsKey = (params) => ["account-movements", params
 export const queryAccountMovementsSummaryKey = (params) => ["account-movements-summary", params];
 export const queryUpcomingChequesKey = () => ["upcoming-cheques"];
 export const queryAccountFutureBalancesKey = () => ["account-movements-future-balances"];
+export const queryFixedExpensesKey = () => ["fixed-expenses"];
+export const queryFixedExpenseNamesKey = () => ["fixed-expense-names"];
 export const queryAportesKey = () => ["aportes"];
 export const queryVepsKey = () => ["veps"];
 export const queryUpcomingVepsKey = (days = 15) => ["upcoming-veps", days];

@@ -4,6 +4,10 @@ const supabase = require("../controllers/db");
 const r2 = require("./r2");
 const { getActiveOrdersForInvoice } = require("./invoicePaymentSummary");
 const { clearVepPaymentByMovementId } = require("./accountMovementVep");
+const {
+  getRetentionTotal,
+  netMovementAmount,
+} = require("./accountMovementRetentionAmount");
 
 function parseAmount(value) {
   const n = parseFloat(value);
@@ -49,11 +53,17 @@ async function syncPendingMovementFromInvoice(invoice) {
     invoice.created_at?.slice?.(0, 10) ||
     null;
 
+  // La retención no sale de caja con la factura: sale al pagar el VEP.
+  const retentionTotal = await getRetentionTotal({
+    supplierInvoiceIds: [invoice.id],
+    accountMovementId: invoice.account_movement_id,
+  });
+
   await supabase
     .from("account_movements")
     .update({
       date: documentDate,
-      amount: parseAmount(invoice.total ?? invoice.amount),
+      amount: netMovementAmount(invoice.total ?? invoice.amount, retentionTotal),
     })
     .eq("id", invoice.account_movement_id)
     .is("deleted_at", null);

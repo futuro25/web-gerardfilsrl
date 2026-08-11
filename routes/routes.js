@@ -21,6 +21,7 @@ const OrderController = require("../controllers/OrderController.js");
 const StockController = require("../controllers/StockController.js");
 const RetentionCertificatesController = require("../controllers/RetentionCertificatesController.js");
 const AccountMovementController = require("../controllers/AccountMovementController.js");
+const FixedExpenseController = require("../controllers/FixedExpenseController.js");
 const AporteController = require("../controllers/AporteController.js");
 const VepController = require("../controllers/VepController.js");
 const SupplierAccountController = require("../controllers/SupplierAccountController.js");
@@ -419,6 +420,31 @@ router.get("/account-movements/upcoming-cheques", (req, res, next) =>
 
 router.get("/account-movements/future-balances", (req, res, next) =>
   AccountMovementController.getFutureBalances(req, res, next)
+);
+
+// GASTOS FIJOS
+router.get("/fixed-expenses", (req, res, next) =>
+  FixedExpenseController.getFixedExpenses(req, res, next)
+);
+
+router.get("/fixed-expenses/names", (req, res, next) =>
+  FixedExpenseController.getFixedExpenseNames(req, res, next)
+);
+
+router.patch("/fixed-expenses/:id", (req, res, next) =>
+  FixedExpenseController.updateFixedExpense(req, res, next)
+);
+
+router.delete("/fixed-expenses/:id", (req, res, next) =>
+  FixedExpenseController.deleteFixedExpense(req, res, next)
+);
+
+router.post("/fixed-expenses/:id/amounts", (req, res, next) =>
+  FixedExpenseController.createFixedExpenseAmount(req, res, next)
+);
+
+router.delete("/fixed-expenses/:id/amounts/:amountId", (req, res, next) =>
+  FixedExpenseController.deleteFixedExpenseAmount(req, res, next)
 );
 
 router.post("/account-movements", (req, res, next) =>

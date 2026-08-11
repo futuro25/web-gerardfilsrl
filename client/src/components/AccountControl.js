@@ -31,6 +31,8 @@ import {
   queryUpcomingVepsKey,
   queryVepsKey,
   queryAccountFutureBalancesKey,
+  queryFixedExpensesKey,
+  queryFixedExpenseNamesKey,
   queryPaychecksKey,
   querySupplierAccountsListKey,
   querySupplierInvoiceByMovementKey,
@@ -44,6 +46,10 @@ import EgresoVepFields from "./EgresoVepFields";
 import PaymentOrderFields, { PAYMENT_METHOD_LABELS } from "./PaymentOrderFields";
 import PaymentOrderDialog from "./PaymentOrderDialog";
 import MovementDetailDialog from "./MovementDetailDialog";
+import FixedExpensesDialog from "./FixedExpensesDialog";
+import FixedExpenseSuggestionDialog from "./FixedExpenseSuggestionDialog";
+import { findFixedExpenseSuggestion } from "../utils/fixedExpenseMatch";
+import { fetchFixedExpenseNames } from "../apis/api.fixedexpenses";
 import {
   createSupplierInvoice,
   updateSupplierInvoice,
@@ -97,6 +103,122 @@ function FixedMovementsTooltipList({ items }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Etiquetas que identifican un movimiento proyectado en Saldos futuros. */
+function futureBalanceItemTags(item) {
+  const tags = [];
+
+  if (item.source === "GASTO_FIJO") {
+    tags.push({ text: "Gasto fijo proyectado", tone: "sky" });
+    return tags;
+  }
+
+  if (item.source === "VEP") {
+    tags.push({
+      text: item.overdue ? "VEP vencido sin pagar" : "VEP a vencer",
+      tone: "violet",
+    });
+    return tags;
+  }
+
+  if (item.type === "EGRESO" && item.expense_category) {
+    tags.push({
+      text:
+        EXPENSE_CATEGORY_OPTIONS.find((o) => o.value === item.expense_category)
+          ?.label || item.expense_category,
+      tone: "slate",
+    });
+  }
+  if (item.income_category === "NOTA_CREDITO") {
+    tags.push({
+      text: `NC ${item.credit_note_number || ""}`.trim(),
+      tone: "teal",
+    });
+    if (item.credit_note_invoice_number) {
+      tags.push({
+        text: `Fact. ${utils.formatInvoiceNumber(item.credit_note_invoice_number)}`,
+        tone: "slate",
+      });
+    }
+  }
+  if (item.supplier_name) {
+    tags.push({ text: item.supplier_name, tone: "amber" });
+  }
+  if (item.invoice_number && item.income_category !== "NOTA_CREDITO") {
+    tags.push({
+      text: `Fact. ${utils.formatInvoiceNumber(item.invoice_number)}`,
+      tone: "slate",
+    });
+  }
+  if (item.vep_label) {
+    tags.push({ text: `VEP: ${item.vep_label}`, tone: "violet" });
+  }
+  if (item.is_cheque) {
+    tags.push({
+      text: `Cheque #${item.cheque_number || "s/n"}${item.cheque_bank ? ` · ${item.cheque_bank}` : ""}`,
+      tone: "blue",
+    });
+  } else if (item.payment_method) {
+    tags.push({
+      text: PAYMENT_METHOD_LABELS[item.payment_method] || item.payment_method,
+      tone: "slate",
+    });
+  }
+  // En un cheque emitido el banco propio es el de la chequera: no repetirlo.
+  if (item.bank && item.bank !== item.cheque_bank) {
+    tags.push({ text: item.bank, tone: "slate" });
+  }
+
+  return tags;
+}
+
+const FUTURE_TAG_TONES = {
+  slate: "bg-slate-100 text-slate-600",
+  sky: "bg-sky-100 text-sky-700",
+  violet: "bg-violet-100 text-violet-700",
+  blue: "bg-blue-100 text-blue-700",
+  amber: "bg-amber-100 text-amber-800",
+  teal: "bg-teal-100 text-teal-700",
+};
+
+function FutureBalanceItem({ item }) {
+  const tags = futureBalanceItemTags(item);
+  const isIncome = item.delta > 0;
+
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <span className="block text-xs text-slate-700 break-words">
+          {item.description || "Sin detalle"}
+        </span>
+        {tags.length > 0 && (
+          <span className="flex flex-wrap gap-1 mt-0.5">
+            {tags.map((tag, index) => (
+              <span
+                key={`${tag.text}-${index}`}
+                className={utils.cn(
+                  "text-[10px] leading-4 px-1.5 rounded",
+                  FUTURE_TAG_TONES[tag.tone] || FUTURE_TAG_TONES.slate
+                )}
+              >
+                {tag.text}
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+      <span
+        className={utils.cn(
+          "text-xs font-semibold tabular-nums shrink-0",
+          isIncome ? "text-green-700" : "text-red-600"
+        )}
+      >
+        {isIncome ? "+" : "−"}
+        {utils.formatAmount(item.amount)}
+      </span>
+    </div>
   );
 }
 
@@ -263,6 +385,12 @@ export default function AccountControl() {
   const [kindListFilter, setKindListFilter] = useState("");
   const [pendingListFilter, setPendingListFilter] = useState("");
   const [futureDialogOpen, setFutureDialogOpen] = useState(false);
+  const [fixedExpensesDialogOpen, setFixedExpensesDialogOpen] = useState(false);
+  const [fixedSuggestion, setFixedSuggestion] = useState(null);
+  const pendingSubmitRef = useRef(null);
+  // Una vez que el usuario decidió (usar el nombre sugerido o dejar el suyo)
+  // no volvemos a preguntar por esta carga.
+  const fixedSuggestionResolvedRef = useRef(false);
   const [vepsExpanded, setVepsExpanded] = useState(false);
   const [markingVepId, setMarkingVepId] = useState(null);
   const [vepPaidConfirm, setVepPaidConfirm] = useState(null);
@@ -418,6 +546,12 @@ export default function AccountControl() {
     enabled: futureDialogOpen,
   });
 
+  // Nombres y alias de los gastos fijos, para sugerir el detalle correcto al cargar.
+  const { data: fixedExpenseNamesRes } = useQuery({
+    queryKey: queryFixedExpenseNamesKey(),
+    queryFn: fetchFixedExpenseNames,
+  });
+
   const movements = allData;
 
   const filteredMovements = useMemo(() => {
@@ -460,6 +594,8 @@ export default function AccountControl() {
     queryClient.invalidateQueries({ queryKey: queryUpcomingVepsKey() });
     queryClient.invalidateQueries({ queryKey: queryVepsKey() });
     queryClient.invalidateQueries({ queryKey: queryAccountFutureBalancesKey() });
+    queryClient.invalidateQueries({ queryKey: queryFixedExpensesKey() });
+    queryClient.invalidateQueries({ queryKey: queryFixedExpenseNamesKey() });
     queryClient.invalidateQueries({ queryKey: queryPaychecksKey() });
     queryClient.invalidateQueries({
       queryKey: querySupplierAccountsListKey(),
@@ -864,7 +1000,48 @@ export default function AccountControl() {
     );
   };
 
+  /**
+   * Si el detalle parece ser un gasto fijo escrito de otra forma, frenamos el
+   * guardado y preguntamos. Solo aplica a egresos que todavía no están
+   * vinculados a una plantilla.
+   */
+  const needsFixedExpenseConfirmation = (data) => {
+    if (fixedSuggestionResolvedRef.current) return null;
+    if (movementType !== "EGRESO") return null;
+    if (selectedMovement?.fixed_expense_id) return null;
+
+    return findFixedExpenseSuggestion(
+      data.description,
+      fixedExpenseNamesRes?.data
+    );
+  };
+
+  const handleUseFixedExpenseName = (description) => {
+    const pending = pendingSubmitRef.current;
+    fixedSuggestionResolvedRef.current = true;
+    setFixedSuggestion(null);
+    setValue("description", description);
+    pendingSubmitRef.current = null;
+    if (pending) onSubmit({ ...pending, description });
+  };
+
+  const handleKeepTypedDescription = () => {
+    const pending = pendingSubmitRef.current;
+    fixedSuggestionResolvedRef.current = true;
+    setFixedSuggestion(null);
+    pendingSubmitRef.current = null;
+    if (pending) onSubmit(pending);
+  };
+
   const onSubmit = async (data) => {
+    const suggestion = needsFixedExpenseConfirmation(data);
+    if (suggestion) {
+      pendingSubmitRef.current = data;
+      setFixedSuggestion(suggestion);
+      setIsLoadingSubmit(false);
+      return;
+    }
+
     try {
       setIsLoadingSubmit(true);
       setInvoiceShowErrors(false);
@@ -1105,6 +1282,7 @@ export default function AccountControl() {
       }
       setPage(1);
       setStage("LIST");
+      fixedSuggestionResolvedRef.current = false;
       await refreshMovementsList();
       reset({
         movement_kind: "UNICA VEZ",
@@ -1124,6 +1302,7 @@ export default function AccountControl() {
   };
 
   const onEdit = (movement) => {
+    fixedSuggestionResolvedRef.current = false;
     setSelectedMovement(movement);
     setMovementType(movement.type);
     setIncomeCategory(
@@ -1150,6 +1329,9 @@ export default function AccountControl() {
   };
 
   const onCancel = () => {
+    fixedSuggestionResolvedRef.current = false;
+    pendingSubmitRef.current = null;
+    setFixedSuggestion(null);
     setIsCheque(false);
     setMovementType("INGRESO");
     setIncomeCategory("STANDARD");
@@ -1406,6 +1588,15 @@ export default function AccountControl() {
                 Saldos futuros
               </Button>
               <Button
+                type="button"
+                variant="outlined"
+                size="sm"
+                className="shrink-0"
+                onClick={() => setFixedExpensesDialogOpen(true)}
+              >
+                Gastos fijos
+              </Button>
+              <Button
                 variant={viewAll ? "alternative" : "outlined"}
                 size="sm"
                 onClick={viewAll ? handleViewMonth : handleViewAll}
@@ -1426,7 +1617,7 @@ export default function AccountControl() {
             </div>
 
             <Dialog open={futureDialogOpen} onOpenChange={setFutureDialogOpen}>
-              <DialogContent className="w-[95vw] max-w-lg max-h-[85vh] overflow-hidden flex flex-col p-6 gap-3">
+              <DialogContent className="w-[95vw] max-w-3xl max-h-[85vh] overflow-hidden flex flex-col p-6 gap-3">
                 <div className="flex items-start justify-between gap-2">
                   <DialogTitle className="text-lg font-semibold text-slate-800 pr-6">
                     Saldos futuros
@@ -1442,8 +1633,9 @@ export default function AccountControl() {
                 <p className="text-xs text-slate-500">
                   Próximos 3 meses (día a día desde mañana). Saldo al cierre de
                   cada día según fechas efectivas: incluye ingresos futuros,
-                  cheques en su fecha de vencimiento y VEPs pendientes de pago
-                  en su vencimiento.
+                  cheques en su fecha de vencimiento, VEPs pendientes de pago en
+                  su vencimiento y los gastos fijos de cada mes que todavía no
+                  tienen su movimiento cargado.
                 </p>
                 {!futureBalancesLoading &&
                   !futureBalancesRes?.error &&
@@ -1485,7 +1677,7 @@ export default function AccountControl() {
                       <thead className="sticky top-0 bg-slate-100 z-10">
                         <tr>
                           <th className="text-left font-medium p-3 text-slate-600 border-b border-slate-200">Fecha</th>
-                          <th className="text-right font-medium p-3 text-slate-600 border-b border-slate-200">Movimientos</th>
+                          <th className="text-left font-medium p-3 text-slate-600 border-b border-slate-200">Movimientos</th>
                           <th className="text-right font-medium p-3 text-slate-600 border-b border-slate-200">Saldo</th>
                         </tr>
                       </thead>
@@ -1501,32 +1693,43 @@ export default function AccountControl() {
                             <tr
                               key={row.date}
                               className={utils.cn(
-                                "border-b border-slate-100 last:border-b-0",
+                                "border-b border-slate-100 last:border-b-0 align-top",
                                 row.balance >= 0
                                   ? "bg-green-50/60 hover:bg-green-100/60"
                                   : "bg-red-50/70 hover:bg-red-100/60"
                               )}
                             >
-                              <td className="p-3 text-slate-700">
+                              <td className="p-3 text-slate-700 whitespace-nowrap">
                                 {utils.formatDate(row.date)}
                               </td>
-                              <td
-                                className={utils.cn(
-                                  "p-3 text-right tabular-nums text-xs",
-                                  !row.delta
-                                    ? "text-slate-300"
-                                    : row.delta > 0
-                                      ? "text-green-700"
-                                      : "text-red-600"
+                              <td className="p-3">
+                                {(row.items || []).length === 0 ? (
+                                  <span className="text-xs text-slate-300">—</span>
+                                ) : (
+                                  <div className="flex flex-col gap-1.5">
+                                    {row.items.map((item, index) => (
+                                      <FutureBalanceItem
+                                        key={`${item.source}-${item.id}-${index}`}
+                                        item={item}
+                                      />
+                                    ))}
+                                    {row.items.length > 1 && (
+                                      <span
+                                        className={utils.cn(
+                                          "text-[11px] font-semibold tabular-nums text-right",
+                                          row.delta >= 0 ? "text-green-700" : "text-red-600"
+                                        )}
+                                      >
+                                        Neto del día:{" "}
+                                        {`${row.delta > 0 ? "+" : row.delta < 0 ? "−" : ""}${utils.formatAmount(Math.abs(row.delta))}`}
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
-                              >
-                                {row.delta
-                                  ? `${row.delta > 0 ? "+" : "−"}${utils.formatAmount(Math.abs(row.delta))}`
-                                  : "—"}
                               </td>
                               <td
                                 className={utils.cn(
-                                  "p-3 text-right font-semibold tabular-nums",
+                                  "p-3 text-right font-semibold tabular-nums whitespace-nowrap",
                                   row.balance >= 0 ? "text-green-700" : "text-red-600"
                                 )}
                               >
@@ -2466,6 +2669,18 @@ export default function AccountControl() {
             : undefined
         }
         isCancellingPaymentOrder={isCancellingOp}
+      />
+
+      <FixedExpensesDialog
+        open={fixedExpensesDialogOpen}
+        onOpenChange={setFixedExpensesDialogOpen}
+      />
+
+      <FixedExpenseSuggestionDialog
+        open={Boolean(fixedSuggestion)}
+        suggestion={fixedSuggestion}
+        onUse={handleUseFixedExpenseName}
+        onKeep={handleKeepTypedDescription}
       />
 
       <ConfirmDialog
