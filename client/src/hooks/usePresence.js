@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import useLastActivity from "./useLastActivity";
 import {
   startPresenceSession,
   sendPresenceHeartbeat,
@@ -9,14 +10,6 @@ import {
 const HEARTBEAT_MS = 45000;
 // Sin interaccion durante este tiempo el usuario se reporta como inactivo.
 const IDLE_AFTER_MS = 5 * 60 * 1000;
-const ACTIVITY_EVENTS = [
-  "mousedown",
-  "mousemove",
-  "keydown",
-  "scroll",
-  "touchstart",
-  "click",
-];
 
 function getSessionToken() {
   let token = sessionStorage.presence_token;
@@ -37,7 +30,7 @@ function getSessionToken() {
 export default function usePresence() {
   const location = useLocation();
   const pathRef = useRef(location.pathname);
-  const lastActivityRef = useRef(Date.now());
+  const lastActivityRef = useLastActivity();
 
   pathRef.current = location.pathname;
 
@@ -47,10 +40,6 @@ export default function usePresence() {
 
     const session_token = getSessionToken();
     let cancelled = false;
-
-    const markActivity = () => {
-      lastActivityRef.current = Date.now();
-    };
 
     const isIdle = () =>
       document.visibilityState === "hidden" ||
@@ -84,7 +73,6 @@ export default function usePresence() {
     };
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") markActivity();
       beat();
     };
 
@@ -95,18 +83,12 @@ export default function usePresence() {
     start();
 
     const interval = setInterval(beat, HEARTBEAT_MS);
-    ACTIVITY_EVENTS.forEach((event) =>
-      window.addEventListener(event, markActivity, { passive: true })
-    );
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("pagehide", onPageHide);
 
     return () => {
       cancelled = true;
       clearInterval(interval);
-      ACTIVITY_EVENTS.forEach((event) =>
-        window.removeEventListener(event, markActivity)
-      );
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pagehide", onPageHide);
     };

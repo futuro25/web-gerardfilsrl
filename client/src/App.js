@@ -47,6 +47,7 @@ import Veps from "./components/Veps";
 import _, { capitalize } from "lodash";
 import { useState } from "react";
 import usePresence from "./hooks/usePresence";
+import useAppVersion from "./hooks/useAppVersion";
 import { cn } from "./utils/utils";
 import "./App.css";
 import config from "./config";
@@ -189,12 +190,31 @@ function getTheme() {
   };
 }
 
+function UpdateBanner() {
+  const { updateAvailable, reload } = useAppVersion();
+
+  if (!updateAvailable) return null;
+
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-amber-100 border border-amber-300 text-amber-900 text-sm py-2 px-4 rounded-lg shadow-lg print:hidden">
+      <span>Hay una versión nueva de la aplicación.</span>
+      <button
+        className="rounded bg-amber-900 text-white text-xs font-semibold px-3 py-1 hover:bg-amber-800 whitespace-nowrap"
+        onClick={reload}
+      >
+        Actualizar ahora
+      </button>
+    </div>
+  );
+}
+
 function Layout({ children }) {
   const theme = getTheme();
   const [open, setOpen] = useState(false); // Declare setOpen here
 
   return (
     <div className="flex-col w-full h-screen text-gray-700">
+      <UpdateBanner />
       <nav
         className={cn(
           `left-0 flex justify-between items-center pr-6 w-full h-16 ${theme.textMenuColor} print:hidden ${theme.primaryColor}`
