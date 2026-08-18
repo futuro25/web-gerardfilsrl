@@ -46,6 +46,54 @@ function entityLabel(entity) {
   return ENTITY_LABELS[entity] || entity;
 }
 
+// Nombre legible del registro afectado, tomado de la copia guardada.
+// Las tablas no comparten un unico campo descriptivo, asi que probamos por
+// orden de prioridad los que efectivamente existen en el esquema.
+const LABEL_FIELDS = [
+  "invoice_number",
+  "order_number",
+  "remito_number",
+  "number",
+  "fantasy_name",
+  "name",
+  "username",
+  "contributor",
+  "supplier",
+  "description",
+  "category",
+  "code",
+];
+
+const AMOUNT_FIELDS = ["total", "amount", "total_amount", "total_to_pay", "price"];
+
+function snapshotLabel(snapshot) {
+  if (!snapshot) return null;
+
+  let label = null;
+  for (const field of LABEL_FIELDS) {
+    if (snapshot[field]) {
+      label = String(snapshot[field]);
+      break;
+    }
+  }
+
+  // Personas y empresas guardan el apellido aparte.
+  if (label && snapshot.name && snapshot.last_name && label === snapshot.name) {
+    label = `${snapshot.name} ${snapshot.last_name}`;
+  }
+
+  let amount = null;
+  for (const field of AMOUNT_FIELDS) {
+    if (snapshot[field] != null && snapshot[field] !== "") {
+      amount = utils.formatAmount(snapshot[field]);
+      break;
+    }
+  }
+
+  if (label && amount) return `${label} · ${amount}`;
+  return label || amount;
+}
+
 function formatDateTime(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -281,7 +329,16 @@ export default function AuditLog() {
                                   {entityLabel(row.entity)}
                                 </td>
                                 <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
-                                  {row.entity_id ? `#${row.entity_id}` : "—"}
+                                  <div className="flex flex-col">
+                                    <span>
+                                      {snapshotLabel(row.entity_snapshot) || "—"}
+                                    </span>
+                                    {row.entity_id && (
+                                      <span className="text-[10px] text-slate-400">
+                                        #{row.entity_id}
+                                      </span>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="!text-xs text-left border-b border-slate-100 p-4 pr-8 text-slate-500">
                                   <button
@@ -310,6 +367,18 @@ export default function AuditLog() {
                                         <span className="font-medium text-slate-600">IP: </span>
                                         {row.ip || "—"}
                                       </div>
+                                      {row.entity_snapshot && (
+                                        <div>
+                                          <span className="font-medium text-slate-600">
+                                            {row.action === "delete"
+                                              ? "Registro eliminado:"
+                                              : "Registro afectado:"}
+                                          </span>
+                                          <pre className="mt-1 bg-white border border-slate-200 rounded p-2 overflow-auto max-h-64 text-[11px]">
+{JSON.stringify(row.entity_snapshot, null, 2)}
+                                          </pre>
+                                        </div>
+                                      )}
                                       <div>
                                         <span className="font-medium text-slate-600">Datos enviados:</span>
                                         <pre className="mt-1 bg-white border border-slate-200 rounded p-2 overflow-auto max-h-64 text-[11px]">

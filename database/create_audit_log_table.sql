@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   method TEXT NOT NULL,
   path TEXT NOT NULL,
   payload JSONB,
+  entity_snapshot JSONB,
   status_code INTEGER,
   ok BOOLEAN NOT NULL DEFAULT TRUE,
   error TEXT,
@@ -29,4 +30,5 @@ COMMENT ON COLUMN audit_log.action IS 'create | update | delete';
 COMMENT ON COLUMN audit_log.entity IS 'Recurso afectado segun la ruta: invoices, account-movements, etc.';
 COMMENT ON COLUMN audit_log.entity_id IS 'Id del registro afectado (en los create se toma de la respuesta)';
 COMMENT ON COLUMN audit_log.payload IS 'Datos enviados en el request, sin contraseñas ni archivos';
+COMMENT ON COLUMN audit_log.entity_snapshot IS 'Copia del registro afectado, leida despues de responder: permite ver que factura se elimino, no solo su id';
 COMMENT ON COLUMN audit_log.ok IS 'False cuando la operacion fallo: sirve para ver intentos rechazados';

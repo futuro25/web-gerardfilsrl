@@ -33,6 +33,31 @@ const REDACTED_KEYS = [
 
 const MAX_PAYLOAD_CHARS = 20000;
 
+// Todos los borrados del sistema son logicos (marcan deleted_at) y trabajan
+// sobre la columna id de su propia tabla, asi que el registro afectado sigue
+// disponible despues de la operacion y lo podemos copiar a la auditoria.
+const TABLE_BY_ENTITY = {
+  "account-movements": "account_movements",
+  aportes: "aportes",
+  cashflow: "cashflow",
+  clients: "clients",
+  deliveries: "deliveries",
+  deliverynotes: "deliverynotes",
+  "fixed-expenses": "fixed_expenses",
+  invoices: "invoices",
+  orders: "orders",
+  paychecks: "paychecks",
+  "payment-orders": "payment_orders",
+  payments: "payments",
+  products: "products",
+  "retention-certificates": "retention_payments",
+  "stock-entries": "stock_entries",
+  "supplier-invoices": "supplier_invoices",
+  suppliers: "suppliers",
+  users: "users",
+  veps: "veps",
+};
+
 function shouldSkip(path) {
   return SKIPPED_PREFIXES.some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`)
@@ -123,6 +148,30 @@ function extractResponseInfo(body) {
   return { id, error };
 }
 
+/**
+ * Copia el registro afectado. Se ejecuta despues de haber respondido, asi que
+ * no le agrega ni un milisegundo a la operacion del usuario.
+ */
+async function readSnapshot(entry) {
+  const table = TABLE_BY_ENTITY[entry.entity];
+  if (!table || !entry.entity_id || !entry.ok) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .eq("id", entry.entity_id)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    return redact(data);
+  } catch (e) {
+    console.error("audit_log snapshot", e.message);
+    return null;
+  }
+}
+
 function auditLog(req, res, next) {
   const action = ACTION_BY_METHOD[req.method];
   if (!action || shouldSkip(req.path)) return next();
@@ -137,6 +186,7 @@ function auditLog(req, res, next) {
     method: req.method,
     path: req.originalUrl.slice(0, 300),
     payload: null,
+    entity_snapshot: null,
     ip: getClientIp(req),
     user_agent: String(req.headers["user-agent"] || "").slice(0, 300) || null,
   };
@@ -164,9 +214,11 @@ function auditLog(req, res, next) {
       entry.ok = res.statusCode < 400;
     }
 
-    supabase
-      .from("audit_log")
-      .insert(entry)
+    readSnapshot(entry)
+      .then((snapshot) => {
+        entry.entity_snapshot = snapshot;
+        return supabase.from("audit_log").insert(entry);
+      })
       .then(({ error }) => {
         if (error) console.error("audit_log insert", error.message || error);
       })
