@@ -8,6 +8,25 @@ body {
   font-family: sans-serif;
 }
 
+/*
+ * En los navegadores de celular 100vh mide la pantalla completa, incluida la
+ * franja que tapa la barra de direcciones. El fondo del layout terminaba abajo
+ * de esa franja y las ultimas opciones del menu quedaban fuera de alcance.
+ * dvh usa el alto visible real y se reajusta cuando la barra aparece o se
+ * esconde. La linea con vh queda como respaldo para navegadores viejos.
+ */
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.app-content {
+  height: calc(100vh - 4rem);
+  height: calc(100dvh - 4rem);
+  /* Deja libre la franja del indicador de inicio en los celulares con notch. */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 @media print {
   .no-border {
     border: none !important;

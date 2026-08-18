@@ -213,7 +213,7 @@ function Layout({ children }) {
   const [open, setOpen] = useState(false); // Declare setOpen here
 
   return (
-    <div className="flex-col w-full h-screen text-gray-700">
+    <div className="flex-col w-full app-shell text-gray-700">
       <UpdateBanner />
       <nav
         className={cn(
@@ -240,12 +240,7 @@ function Layout({ children }) {
         {isMobile ? <MobileMenu open={open} setOpen={setOpen} /> : <Profile />}
       </nav>
 
-      <div
-        className="fixed top-16 flex overflow-auto w-full"
-        style={{
-          height: isMobile ? "calc(100vh - 4rem)" : "calc(100vh - 4rem)",
-        }}
-      >
+      <div className="fixed top-16 flex overflow-auto w-full app-content">
         {/* Main content */}
         {isMobile ? (
           <main className="flex-1 bg-white w-[calc(10vh)]">{children}</main>

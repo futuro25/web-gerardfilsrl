@@ -6,6 +6,7 @@ const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const AUTO_RELOAD_TICK_MS = 60 * 1000;
 // Recargamos solos recien despues de este tiempo sin que el usuario toque nada.
 const IDLE_BEFORE_AUTO_RELOAD_MS = 5 * 60 * 1000;
+const AUTO_RELOAD_FLAG = "app_version_auto_reloaded";
 
 /**
  * Version del bundle que este navegador tiene efectivamente cargado: sale del
@@ -35,6 +36,10 @@ function hasUnsavedWork() {
  * Detecta que se publico una version nueva comparando el bundle cargado contra
  * el que sirve el servidor. Resuelve el caso del usuario que deja la pestaña
  * abierta y nunca recarga.
+ *
+ * El chequeo corre tambien con la pestaña en segundo plano, justamente porque
+ * esa es la situacion a resolver: asi la pestaña olvidada se actualiza sola y
+ * el usuario la encuentra al dia cuando vuelve.
  */
 export default function useAppVersion() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -53,7 +58,7 @@ export default function useAppVersion() {
     let cancelled = false;
 
     const check = async () => {
-      if (cancelled || document.visibilityState === "hidden") return;
+      if (cancelled) return;
       try {
         const { version } = await fetchAppVersion();
         if (!cancelled && version && version !== runningVersion) {
@@ -84,9 +89,16 @@ export default function useAppVersion() {
 
     const interval = setInterval(() => {
       const idleFor = Date.now() - lastActivityRef.current;
-      if (idleFor >= IDLE_BEFORE_AUTO_RELOAD_MS && !hasUnsavedWork()) {
-        reload();
-      }
+      if (idleFor < IDLE_BEFORE_AUTO_RELOAD_MS || hasUnsavedWork()) return;
+
+      // Seguro contra el loop: si ya recargamos solos estando en esta misma
+      // version y el desfase sigue, no insistimos. Queda el cartel para que el
+      // usuario decida, en vez de una app recargandose cada cinco minutos.
+      const runningVersion = runningVersionRef.current;
+      if (sessionStorage.getItem(AUTO_RELOAD_FLAG) === runningVersion) return;
+
+      sessionStorage.setItem(AUTO_RELOAD_FLAG, runningVersion);
+      reload();
     }, AUTO_RELOAD_TICK_MS);
 
     return () => clearInterval(interval);
