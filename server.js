@@ -8,6 +8,7 @@ const express = require("express");
 const path = require("path");
 const bodyParser = require("body-parser");
 const routes = require("./routes/routes.js");
+const auditLog = require("./middlewares/auditLog.js");
 const MainController = require("./controllers/UserController.js");
 const app = express();
 const cors = require("cors");
@@ -37,6 +38,9 @@ app.use(bodyParser.json());
 app.get("/api/status", (req, res) => {
   res.json({ message: "ok" });
 });
+
+// Registra toda escritura de la API antes de resolverla.
+app.use("/api", auditLog);
 
 app.use("/api", routes);
 

@@ -1,5 +1,8 @@
 export const queryPaymentsKey = () => ["payments"];
 export const queryUsersKey = () => ["users"];
+export const queryPresenceKey = () => ["presence"];
+export const queryAuditLogKey = (params) => ["audit-log", params];
+export const queryAuditLogFiltersKey = () => ["audit-log-filters"];
 export const queryInvoicesKey = () => ["invoices"];
 export const queryDeliveryKey = () => ["deliveries"];
 export const queryCashflowKey = () => ["cashflow"];

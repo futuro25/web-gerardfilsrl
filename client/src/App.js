@@ -14,6 +14,8 @@ import ForgotPassword from "./components/ForgotPassword";
 import { isMobile } from "react-device-detect";
 import Payments from "./components/Payments";
 import Users from "./components/Users";
+import OnlineUsers from "./components/OnlineUsers";
+import AuditLog from "./components/AuditLog";
 import Home from "./components/Home";
 import Cashflow from "./components/Cashflow";
 import Deliveries from "./components/Deliveries";
@@ -44,6 +46,7 @@ import Aportes from "./components/Aportes";
 import Veps from "./components/Veps";
 import _, { capitalize } from "lodash";
 import { useState } from "react";
+import usePresence from "./hooks/usePresence";
 import { cn } from "./utils/utils";
 import "./App.css";
 import config from "./config";
@@ -94,6 +97,8 @@ export default function App() {
           {userType === "ADMIN" && (
             <>
               <Route path="usuarios" element={<Users />} />
+              <Route path="en-linea" element={<OnlineUsers />} />
+              <Route path="auditoria" element={<AuditLog />} />
             </>
           )}
           <Route path="pagos" element={<Payments />} />
@@ -157,6 +162,9 @@ export default function App() {
 
 function RootLayout() {
   const location = useLocation();
+
+  // Reporta la presencia del usuario logueado mientras navega la plataforma.
+  usePresence();
 
   return (
     <>

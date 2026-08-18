@@ -16,6 +16,8 @@ import {
   ClipboardList,
   FilePlus,
   Receipt,
+  Activity,
+  History,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { MoonLoader } from "react-spinners";
@@ -62,6 +64,8 @@ export default function Home() {
 
   if (sessionStorage.type === "ADMIN") {
     navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios", order: 12 });
+    navItems.push({ label: "En Linea", icon: Activity, path: "/en-linea", order: 13 });
+    navItems.push({ label: "Auditoria", icon: History, path: "/auditoria", order: 14 });
   }
 
   navItems.sort((a, b) => a.order - b.order);

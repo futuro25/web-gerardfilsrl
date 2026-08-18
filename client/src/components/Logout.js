@@ -1,12 +1,11 @@
-import React, {useState} from "react";
-import { useNavigate } from "react-router-dom";
+import React from "react";
+import { endPresenceSession } from "../apis/api.presence";
 
 export default function Logout() {
-  sessionStorage.clear()
-  // window.location.assign('login')
-  window.location.assign('/')
-  // const navigate = useNavigate()
-  // navigate('./login');
+  // Cerramos la sesion de presencia antes de perder el token del sessionStorage.
+  endPresenceSession(sessionStorage.presence_token);
+  sessionStorage.clear();
+  window.location.assign("/");
 
-  return (<div></div>);
+  return <div></div>;
 }

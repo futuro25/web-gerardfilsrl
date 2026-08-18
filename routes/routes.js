@@ -29,6 +29,8 @@ const SupplierInvoiceController = require("../controllers/SupplierInvoiceControl
 const CronController = require("../controllers/CronController.js");
 const PaymentOrderController = require("../controllers/PaymentOrderController.js");
 const UploadController = require("../controllers/UploadController.js");
+const PresenceController = require("../controllers/PresenceController.js");
+const AuditLogController = require("../controllers/AuditLogController.js");
 
 // USERS
 router.get("/users", (req, res, next) =>
@@ -73,6 +75,32 @@ router.patch("/users/:user_id", (req, res, next) =>
 
 router.delete("/users/:user_id", (req, res, next) =>
   UserController.deleteUserById(req, res, next)
+);
+
+// AUDIT LOG (quien cargo, edito o elimino)
+router.get("/audit-log", (req, res, next) =>
+  AuditLogController.getAuditLog(req, res, next)
+);
+
+router.get("/audit-log/filters", (req, res, next) =>
+  AuditLogController.getAuditLogFilters(req, res, next)
+);
+
+// PRESENCE (usuarios en linea)
+router.get("/presence", (req, res, next) =>
+  PresenceController.getPresence(req, res, next)
+);
+
+router.post("/presence/session", (req, res, next) =>
+  PresenceController.startSession(req, res, next)
+);
+
+router.post("/presence/heartbeat", (req, res, next) =>
+  PresenceController.heartbeat(req, res, next)
+);
+
+router.post("/presence/session/end", (req, res, next) =>
+  PresenceController.endSession(req, res, next)
 );
 
 // PAYMENTS
