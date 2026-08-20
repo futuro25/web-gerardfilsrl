@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS retention_certificates (
   issue_date DATE NOT NULL,
   due_date DATE,
   net_amount DECIMAL(15, 2) NOT NULL,
+  total_amount DECIMAL(15, 2),
+  total_to_pay DECIMAL(15, 2),
   profits_condition VARCHAR(50) NOT NULL,
   deleted_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -67,4 +69,6 @@ COMMENT ON COLUMN retention_payments.profits_condition IS 'Condición frente a G
 COMMENT ON COLUMN retention_payments.retention_amount IS 'Monto calculado de retención';
 COMMENT ON COLUMN retention_payments.total_to_pay IS 'Total a pagar al proveedor (total_amount - retention_amount)';
 COMMENT ON COLUMN retention_certificates.certificate_number IS 'Número único del certificado de retención';
+COMMENT ON COLUMN retention_certificates.total_amount IS 'Total de la factura al momento de emitir el certificado (congelado)';
+COMMENT ON COLUMN retention_certificates.total_to_pay IS 'Total a pagar al proveedor al momento de emitir el certificado';
 

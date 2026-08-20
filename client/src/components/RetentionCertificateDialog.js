@@ -52,6 +52,25 @@ export default function RetentionCertificateDialog({
 
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
+  // El certificado congela sus totales al emitirse, así que mandan sobre los
+  // del pago (que puede editarse). El pago y el neto + IVA solo cubren
+  // certificados viejos, o retenciones sin certificado emitido.
+  const iva = c.iva ?? p.iva;
+  const totalFactura =
+    c.total_amount != null
+      ? num(c.total_amount)
+      : p.total_amount != null
+      ? num(p.total_amount)
+      : num(iva) > 0
+      ? num(netAmount) + num(iva)
+      : num(netAmount) * 1.21;
+  const totalToPay =
+    c.total_to_pay != null
+      ? num(c.total_to_pay)
+      : p.total_to_pay != null
+      ? num(p.total_to_pay)
+      : totalFactura - num(retentionAmount);
+
   const downloadPdf = () => {
     try {
       const doc = new jsPDF();
@@ -149,13 +168,6 @@ export default function RetentionCertificateDialog({
       y += 10;
 
       doc.setFontSize(11);
-      const totalFactura =
-        p.total_amount != null ? num(p.total_amount) : num(netAmount) * 1.21;
-      const totalToPay =
-        p.total_to_pay != null
-          ? num(p.total_to_pay)
-          : totalFactura - num(retentionAmount);
-
       const colWidth = (pageWidth - margin * 2) / 3;
       doc.setFont("helvetica", "bold");
       doc.text("Total a Pagar", margin, y);
@@ -238,12 +250,8 @@ export default function RetentionCertificateDialog({
             value={utils.formatAmount(retentionAmount)}
             strong
           />
-          {p.total_amount != null && (
-            <Row label="Total factura" value={utils.formatAmount(p.total_amount)} />
-          )}
-          {p.total_to_pay != null && (
-            <Row label="Total a pagar" value={utils.formatAmount(p.total_to_pay)} />
-          )}
+          <Row label="Total factura" value={utils.formatAmount(totalFactura)} />
+          <Row label="Total a pagar" value={utils.formatAmount(totalToPay)} />
         </div>
 
         <div className="flex items-center justify-end gap-2 mt-6">

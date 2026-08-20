@@ -5,7 +5,7 @@ import { useForm, Controller } from "react-hook-form";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
 import { queryRetentionPaymentsKey, queryRetentionCertificateKey, querySuppliersKey, querySupplierAccountsListKey, queryPendingPaymentItemsKey } from "../apis/queryKeys";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
-import { CopyIcon, EditIcon, TrashIcon, EyeIcon, CloseIcon, ReceiptIcon } from "./icons";
+import { CopyIcon, TrashIcon, EyeIcon, CloseIcon, ReceiptIcon } from "./icons";
 import * as utils from "../utils/utils";
 import Button from "./common/Button";
 import ConfirmDialog from "./common/ConfirmDialog";
@@ -16,14 +16,12 @@ import {
   useRetentionPaymentsQuery,
   useCreateRetentionPaymentMutation,
   useDeleteRetentionPaymentMutation,
-  useUpdateRetentionPaymentMutation,
   useRetentionCertificateQuery,
 } from "../apis/api.retentioncertificates";
 import { useSuppliersQuery } from "../apis/api.suppliers";
 import { Download, FileText } from "lucide-react";
 import { jsPDF } from "jspdf";
 import {
-  RETENTION_TABLE,
   calculateRetention as calcRetention,
   calculateNetAndIVA as calcNetAndIVA,
 } from "../utils/retention";
@@ -72,7 +70,6 @@ const MONTHS = [
 
 export default function RetentionCertificates() {
   const [selectedPayment, setSelectedPayment] = useState(null);
-  const [selectedPaymentToEdit, setSelectedPaymentToEdit] = useState(null);
   const [stage, setStage] = useState("LIST");
   const [viewOnly, setViewOnly] = useState(false);
   const [search, setSearch] = useState("");
@@ -189,11 +186,11 @@ export default function RetentionCertificates() {
 
   // Establecer valores por defecto cuando se crea un nuevo pago
   useEffect(() => {
-    if (stage === "CREATE" && !selectedPaymentToEdit) {
+    if (stage === "CREATE") {
       // Establecer valores por defecto para nuevos pagos
       setValue("profitsCondition", "Inscripto");
     }
-  }, [stage, selectedPaymentToEdit, setValue]);
+  }, [stage, setValue]);
 
   const yearOptions = useMemo(() => {
     const currentYear = DateTime.now().year;
@@ -284,24 +281,6 @@ export default function RetentionCertificates() {
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: useUpdateRetentionPaymentMutation,
-    onSuccess: async (data) => {
-      queryClient.invalidateQueries({ queryKey: queryRetentionPaymentsKey() });
-      
-      // Limpiar estados y volver al listado
-      setStage("LIST");
-      setCalculatedCertificate(null);
-      setIsCalculated(false);
-      setShowCertificate(false);
-      onCancel();
-    },
-    onError: (error) => {
-      console.error("Error actualizando pago:", error);
-      alert("Error al actualizar el pago. Por favor, intente nuevamente.");
-    },
-  });
-
   const deleteMutation = useMutation({
     mutationFn: useDeleteRetentionPaymentMutation,
     onSuccess: () => {
@@ -315,72 +294,6 @@ export default function RetentionCertificates() {
       console.error("Error eliminando pago:", error);
     },
   });
-
-  const onEdit = (payment_id) => {
-    reset();
-    const payment = payments.find((p) => p.id === payment_id) || null;
-    setSelectedPaymentToEdit(payment);
-    setSelectedPayment(payment);
-    setTotalAmount(payment?.total_amount || 0);
-    setNetAmount(payment?.net_amount || 0);
-    setIva(payment?.iva || 0);
-    setCalculatedRetention(payment?.retention_amount || 0);
-    setCalculatedTotalToPay(payment?.total_to_pay || 0);
-    
-    // Establecer valores en el formulario
-    setValue("supplier", payment?.supplier || "");
-    setValue("supplierCuit", payment?.supplier_cuit || "");
-    setValue("issueDate", payment?.issue_date ? payment.issue_date.split("T")[0] : "");
-    setValue("totalAmount", payment?.total_amount || 0);
-    setValue("netAmount", payment?.net_amount || 0);
-    setValue("iva", payment?.iva || 0);
-    setValue("profitsCondition", payment?.profits_condition || "Inscripto");
-
-    const { letter, first4, last8 } = splitInvoiceNumber(payment?.invoice_number);
-    setInvoiceLetter(letter || "A");
-    setInvoiceFirst4(first4);
-    setInvoiceLast8(last8);
-    
-    // Buscar y establecer categoría
-    if (payment?.category_code) {
-      const category = RETENTION_TABLE[payment.category_code];
-      if (category) {
-        setSelectedCategory({
-          code: category.code,
-          description: category.description,
-          id: category.code,
-          label: `${category.code} - ${category.description}`,
-          name: `${category.code} - ${category.description}`,
-        });
-      } else {
-        // Si no se encuentra en la lista, crear un objeto temporal con los datos guardados
-        setSelectedCategory({
-          code: payment.category_code,
-          description: payment.category_detail || "",
-          id: payment.category_code,
-          label: `${payment.category_code} - ${payment.category_detail || ""}`,
-          name: `${payment.category_code} - ${payment.category_detail || ""}`,
-        });
-      }
-    }
-    
-    setIsCalculated(false);
-    setCalculatedCertificate(null);
-    
-    // Buscar y establecer proveedor
-    if (payment?.supplier && suppliers) {
-      const supplier = suppliers.find((s) => s.fantasy_name === payment.supplier);
-      if (supplier) {
-        setSelectedSupplier({
-          id: supplier.id,
-          label: supplier.fantasy_name,
-          name: supplier.fantasy_name,
-        });
-      }
-    }
-    
-    setStage("CREATE");
-  };
 
   const onView = async (payment_id) => {
     const payment = payments.find((p) => p.id === payment_id) || null;
@@ -514,8 +427,23 @@ export default function RetentionCertificates() {
 
       // Montos
       doc.setFontSize(11);
-      const totalToPay = payment.total_to_pay || ((cert.net_amount * 1.21) - (cert.retention_amount || 0));
-      const totalFactura = payment.total_amount || (cert.net_amount * 1.21);
+      const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+      // El certificado manda: sus totales quedaron congelados al emitirlo.
+      // El pago solo cubre certificados viejos que no los tienen guardados.
+      const totalFactura =
+        cert.total_amount != null
+          ? num(cert.total_amount)
+          : payment?.total_amount != null
+          ? num(payment.total_amount)
+          : num(cert.iva) > 0
+          ? num(cert.net_amount) + num(cert.iva)
+          : num(cert.net_amount) * 1.21;
+      const totalToPay =
+        cert.total_to_pay != null
+          ? num(cert.total_to_pay)
+          : payment?.total_to_pay != null
+          ? num(payment.total_to_pay)
+          : totalFactura - num(cert.retention_amount);
 
       // Tabla de montos
       const colWidth = (pageWidth - margin * 2) / 3;
@@ -528,9 +456,9 @@ export default function RetentionCertificates() {
       
       doc.setFontSize(14);
       doc.setFont("helvetica", "bold");
-      doc.text(`$${totalToPay?.toFixed(2) || "0.00"}`, margin, y);
-      doc.text(`$${cert.retention_amount?.toFixed(2) || "0.00"}`, margin + colWidth, y);
-      doc.text(`$${totalFactura?.toFixed(2) || "0.00"}`, margin + colWidth * 2, y);
+      doc.text(`$${totalToPay.toFixed(2)}`, margin, y);
+      doc.text(`$${num(cert.retention_amount).toFixed(2)}`, margin + colWidth, y);
+      doc.text(`$${totalFactura.toFixed(2)}`, margin + colWidth * 2, y);
       y += 20;
 
       // Línea separadora
@@ -573,7 +501,6 @@ export default function RetentionCertificates() {
   const onCancel = () => {
     setStage("LIST");
     setSelectedPayment(null);
-    setSelectedPaymentToEdit(null);
     setViewOnly(false);
     setShowCertificate(false);
     setCertificate(null);
@@ -600,15 +527,6 @@ export default function RetentionCertificates() {
     return `${invoiceLetter}${invoiceFirst4}${invoiceLast8}`;
   };
 
-  const splitInvoiceNumber = (invoiceNumber) => {
-    if (!invoiceNumber) return { letter: "", first4: "", last8: "" };
-    const letter = invoiceNumber.charAt(0);
-    const numbers = invoiceNumber.slice(1);
-    const first4 = numbers.slice(0, 4);
-    const last8 = numbers.slice(4);
-    return { letter, first4, last8 };
-  };
-
   const calculateCertificate = (body) => {
     if (!selectedSupplier) {
       alert("Debe seleccionar un proveedor");
@@ -621,7 +539,7 @@ export default function RetentionCertificates() {
     }
 
     if (!body.issueDate) {
-      alert("Debe ingresar la fecha de emisión");
+      alert("Debe ingresar la fecha de la factura");
       return;
     }
 
@@ -680,11 +598,9 @@ export default function RetentionCertificates() {
       paymentMethod: "",
     };
 
-    if (selectedPaymentToEdit?.id) {
-      updateMutation.mutate({ ...paymentData, id: selectedPaymentToEdit.id });
-    } else {
-      createMutation.mutate(paymentData);
-    }
+    // Un certificado emitido no se edita: para corregirlo se elimina la
+    // retención y se genera una nueva. Por eso el alta es el único camino.
+    createMutation.mutate(paymentData);
   };
 
   const onSubmit = async (body) => {
@@ -886,7 +802,13 @@ export default function RetentionCertificates() {
                           Proveedor
                         </th>
                         <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Fecha Emisión
+                          Fecha Factura
+                        </th>
+                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          Nro Certificado
+                        </th>
+                        <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          Fecha Emisión Certificado
                         </th>
                         <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
                           Importe Total
@@ -935,6 +857,14 @@ export default function RetentionCertificates() {
                             <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
                               {pago.issue_date
                                 ? utils.formatDate(pago.issue_date)
+                                : "-"}
+                            </td>
+                            <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                              {pago.certificate_number || "-"}
+                            </td>
+                            <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
+                              {pago.certificate_issued_date
+                                ? utils.formatDate(pago.certificate_issued_date)
                                 : "-"}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
@@ -989,7 +919,7 @@ export default function RetentionCertificates() {
                       ) : (
                         <tr>
                           <td
-                            colSpan={10}
+                            colSpan={12}
                             className="border-b border-slate-100 p-4 text-slate-500"
                           >
                             {!viewAll && paymentsList.length ? (
@@ -1195,12 +1125,12 @@ export default function RetentionCertificates() {
                             </div>
                           </td>
                         </tr>
-                        {/* Fecha de Emisión */}
+                        {/* Fecha de la factura del proveedor (no la de emisión del certificado) */}
                         <tr>
                           <td>
                             <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
                               <label className="text-slate-500 md:w-32 font-bold">
-                                Fecha Emisión:
+                                Fecha Factura:
                               </label>
                               {viewOnly ? (
                                 <label className="text-slate-500">
@@ -1382,11 +1312,11 @@ export default function RetentionCertificates() {
                                       Resetear
                                     </Button>
                                   )}
-                                  <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                                    {createMutation.isPending || updateMutation.isPending ? (
+                                  <Button type="submit" disabled={createMutation.isPending}>
+                                    {createMutation.isPending ? (
                                       <Spinner />
                                     ) : isCalculated ? (
-                                      selectedPaymentToEdit?.id ? "Actualizar" : "Guardar"
+                                      "Guardar"
                                     ) : (
                                       "Calcular"
                                     )}
@@ -1477,6 +1407,26 @@ export default function RetentionCertificates() {
 
                   {(() => {
                     const certData = calculatedCertificate || certificate;
+                    const num = (v) =>
+                      Number.isFinite(Number(v)) ? Number(v) : 0;
+                    // El certificado congela sus totales al emitirse. El pago
+                    // y el neto + IVA solo cubren certificados viejos que
+                    // todavía no los tienen guardados.
+                    const totalFactura =
+                      certData.total_amount != null
+                        ? num(certData.total_amount)
+                        : selectedPayment?.total_amount != null
+                        ? num(selectedPayment.total_amount)
+                        : num(certData.iva) > 0
+                        ? num(certData.net_amount) + num(certData.iva)
+                        : num(certData.net_amount) * 1.21;
+                    const totalToPay = calculatedCertificate
+                      ? num(calculatedTotalToPay)
+                      : certData.total_to_pay != null
+                      ? num(certData.total_to_pay)
+                      : selectedPayment?.total_to_pay != null
+                      ? num(selectedPayment.total_to_pay)
+                      : totalFactura - num(certData.retention_amount);
                     return (
                       <div className="space-y-4 mb-8">
 
@@ -1551,27 +1501,23 @@ export default function RetentionCertificates() {
                         <div className="flex gap-2 justify-between">
                           <div>
                             <p className="font-semibold">Total a pagar:</p>
-                            <p className="text-xl font-bold">${
-                              calculatedCertificate
-                                ? calculatedTotalToPay?.toFixed(2) || "0.00"
-                                : selectedPayment?.total_to_pay?.toFixed(2) ||
-                                  ((certData.net_amount * 1.21) - (certData.retention_amount || 0)).toFixed(2) ||
-                                  "0.00"
-                            }</p>
+                            <p className="text-xl font-bold">
+                              ${totalToPay.toFixed(2)}
+                            </p>
                           </div>
-                          
-                          
+
+
                             <div>
                               <p className="font-semibold">Monto Retenido:</p>
                               <p className="text-xl font-bold">
-                                ${certData.retention_amount?.toFixed(2) || "0.00"}
+                                ${num(certData.retention_amount).toFixed(2)}
                               </p>
                             </div>
-                          
+
                             <div>
                               <p className="font-semibold">Total Factura:</p>
                               <p className="text-xl font-bold">
-                                ${certData.total_amount?.toFixed(2) || selectedPayment?.total_amount?.toFixed(2) || "0.00"}
+                                ${totalFactura.toFixed(2)}
                               </p>
                             </div>
 
@@ -1599,7 +1545,7 @@ export default function RetentionCertificates() {
           if (!open && !deleteMutation.isPending) setDeleteConfirmPayment(null);
         }}
         title="¿Eliminar retención?"
-        description="El saldo pendiente de la factura se recalculará sin el monto retenido. Esta acción no se puede deshacer."
+        description="El certificado emitido no se puede editar: si los datos son incorrectos, eliminá la retención y generá una nueva. El saldo pendiente de la factura se recalculará sin el monto retenido. Esta acción no se puede deshacer."
         confirmLabel="Eliminar retención"
         cancelLabel="Cancelar"
         variant="destructive"

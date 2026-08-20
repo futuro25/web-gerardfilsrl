@@ -356,6 +356,38 @@ async function enrichRetentionPaymentsInvoiceNumbers(payments) {
   return batchResolveRetentionInvoiceNumbers(withDirectLinks);
 }
 
+// El listado muestra dos fechas distintas: la de la factura (issue_date del
+// pago) y la de emisión del certificado (issued_date del certificado), que es
+// el día en que se generó. Como viven en tablas separadas, se adjuntan acá.
+async function attachCertificateData(payments) {
+  if (!payments?.length) return [];
+
+  const paymentIds = payments.map((p) => p.id).filter(Boolean);
+  if (!paymentIds.length) return payments;
+
+  const { data: certificates, error } = await supabase
+    .from("retention_certificates")
+    .select("retention_payment_id, certificate_number, issued_date")
+    .in("retention_payment_id", paymentIds)
+    .is("deleted_at", null);
+
+  if (error) throw error;
+
+  const certByPaymentId = {};
+  (certificates || []).forEach((cert) => {
+    certByPaymentId[cert.retention_payment_id] = cert;
+  });
+
+  return payments.map((payment) => {
+    const cert = certByPaymentId[payment.id];
+    return {
+      ...payment,
+      certificate_number: cert?.certificate_number || null,
+      certificate_issued_date: cert?.issued_date || null,
+    };
+  });
+}
+
 self.getRetentionPayments = async (req, res) => {
   try {
     const { data: payments, error } = await supabase
@@ -370,9 +402,11 @@ self.getRetentionPayments = async (req, res) => {
       payments || []
     );
 
+    const withCertificates = await attachCertificateData(withInvoiceNumbers);
+
     // Obtener información de cashflow para los pagos que tienen cashflow_id
     const formattedData = await Promise.all(
-      withInvoiceNumbers.map(async (payment) => {
+      withCertificates.map(async (payment) => {
         if (payment.cashflow_id) {
           const { data: cashflow, error: cashflowError } = await supabase
             .from("cashflow")
@@ -621,6 +655,8 @@ self.createRetentionPayment = async (req, res) => {
         issue_date: issueDate,
         due_date: dueDate || null,
         net_amount: netAmount,
+        total_amount: totalAmount,
+        total_to_pay: totalToPay,
         profits_condition: profitsCondition || "Inscripto",
       };
 
@@ -636,7 +672,9 @@ self.createRetentionPayment = async (req, res) => {
 
       return res.json({
         payment: { ...newPayment },
-        certificate: newCertificate || null,
+        certificate: newCertificate
+          ? { ...newCertificate, iva: newPayment.iva }
+          : null,
         movement_sync: movementSync,
       });
     }
@@ -655,6 +693,28 @@ self.createRetentionPayment = async (req, res) => {
 self.updateRetentionPayment = async (req, res) => {
   try {
     const payment_id = req.params.payment_id;
+
+    // Un certificado emitido no se corrige: se elimina y se genera uno nuevo.
+    // Editarlo dejaría el número de certificado y su fecha de emisión
+    // apuntando a datos que ya no son los que se declararon.
+    const { data: issuedCertificate, error: issuedCertificateError } =
+      await supabase
+        .from("retention_certificates")
+        .select("certificate_number")
+        .eq("retention_payment_id", payment_id)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+    if (issuedCertificateError) throw issuedCertificateError;
+
+    if (issuedCertificate) {
+      return res.status(409).json({
+        error:
+          `La retención ya tiene el certificado ${issuedCertificate.certificate_number} emitido y no se puede editar. ` +
+          "Si los datos son incorrectos, eliminá la retención y generá una nueva.",
+      });
+    }
+
     const {
       invoiceNumber,
       categoryCode,
@@ -748,6 +808,8 @@ self.updateRetentionPayment = async (req, res) => {
         issue_date: issueDate,
         due_date: dueDate || null,
         net_amount: netAmount,
+        total_amount: totalAmount,
+        total_to_pay: totalToPay,
         profits_condition: profitsCondition || "Inscripto",
         updated_at: new Date().toISOString(),
       };
@@ -1029,6 +1091,31 @@ self.getRetentionByInvoice = async (req, res) => {
   }
 };
 
+// El certificado congela sus propios totales al emitirse. Solo los
+// certificados anteriores a esa columna llegan sin ellos: para esos, y nada
+// más que para esos, los tomamos prestados del pago asociado.
+const withPaymentTotals = async (certificate) => {
+  if (!certificate) return certificate;
+  if (certificate.total_amount != null && certificate.total_to_pay != null) {
+    return certificate;
+  }
+
+  const { data: payment } = await supabase
+    .from("retention_payments")
+    .select("total_amount, total_to_pay, iva")
+    .eq("id", certificate.retention_payment_id)
+    .maybeSingle();
+
+  if (!payment) return certificate;
+
+  return {
+    ...certificate,
+    total_amount: certificate.total_amount ?? payment.total_amount,
+    total_to_pay: certificate.total_to_pay ?? payment.total_to_pay,
+    iva: certificate.iva ?? payment.iva,
+  };
+};
+
 self.getRetentionCertificate = async (req, res) => {
   try {
     const payment_id = req.params.payment_id;
@@ -1042,7 +1129,7 @@ self.getRetentionCertificate = async (req, res) => {
 
     if (error) throw error;
 
-    res.json(data);
+    res.json(await withPaymentTotals(data));
   } catch (e) {
     res.json({ error: e.message });
   }
@@ -1061,7 +1148,7 @@ self.getRetentionCertificateByNumber = async (req, res) => {
 
     if (error) throw error;
 
-    res.json(data);
+    res.json(await withPaymentTotals(data));
   } catch (e) {
     res.json({ error: e.message });
   }
