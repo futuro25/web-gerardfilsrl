@@ -25,6 +25,11 @@ const {
   resolveMovementBank,
 } = require("../services/accountMovementPayment");
 const {
+  applyTransferFields,
+  isOwnBanksTransfer,
+} = require("../services/accountMovementTransfer");
+const { computeBankBalances } = require("../services/bankBalances");
+const {
   applyEgresoVepFields,
   parseVepId,
   assertVepAvailableForPayment,
@@ -131,6 +136,9 @@ function movementBodyChangesOnlyKind(existing, body) {
   ) {
     return false;
   }
+  if (normOptionalString(existing.bank_to) !== normOptionalString(body.bank_to)) {
+    return false;
+  }
   if ((existing.expense_category || null) !== (body.expense_category || null)) {
     return false;
   }
@@ -205,6 +213,9 @@ function buildMovementUpdateFromBody(body) {
   applyEgresoSupplierFields(update, body);
   applyEgresoVepFields(update, body);
   applyIngresoCreditNoteFields(update, body);
+  // Va último: pisa forma de pago, banco y cheque con lo que corresponde a una
+  // transferencia propia, y limpia bank_to en todos los demás movimientos.
+  applyTransferFields(update, body);
 
   if (body.image_key != null && body.image_key !== "") {
     update.image_key = body.image_key;
@@ -355,7 +366,7 @@ async function getSearchMovementIds(search) {
     .select("id")
     .is("deleted_at", null)
     .or(
-      `description.ilike.${pattern},cheque_number.ilike.${pattern},cheque_bank.ilike.${pattern},bank.ilike.${pattern},invoice_number.ilike.${pattern},credit_note_number.ilike.${pattern}`
+      `description.ilike.${pattern},cheque_number.ilike.${pattern},cheque_bank.ilike.${pattern},bank.ilike.${pattern},bank_to.ilike.${pattern},invoice_number.ilike.${pattern},credit_note_number.ilike.${pattern}`
     );
   if (directErr) throw directErr;
   (direct || []).forEach((row) => ids.add(row.id));
@@ -554,7 +565,7 @@ self.getSummary = async (req, res) => {
     const { data: allMovements, error: allError } = await supabase
       .from("account_movements")
       .select(
-        "id, type, amount, description, is_cheque, cheque_due_date, date, movement_kind"
+        "id, type, amount, description, is_cheque, cheque_due_date, date, movement_kind, expense_category, bank, bank_to"
       )
       .is("deleted_at", null);
 
@@ -588,7 +599,14 @@ self.getSummary = async (req, res) => {
             .toISODate()
         : null;
 
+    const bankBalances = computeBankBalances(allMovements, excludedIds, today);
+
     allMovements.forEach((m) => {
+      // La transferencia entre cuentas propias no es un gasto ni un ingreso:
+      // no va al saldo, ni a los totales del mes, ni a los movimientos fijos.
+      // Su único efecto está en bankBalances.
+      if (isOwnBanksTransfer(m)) return;
+
       const amount = parseFloat(m.amount) || 0;
       const signed = m.type === "INGRESO" ? amount : -amount;
       const effectiveDate =
@@ -637,6 +655,8 @@ self.getSummary = async (req, res) => {
       monthlyExpense,
       totalFixed,
       fixedMovements,
+      bankBalances: bankBalances.banks,
+      unassignedBalance: bankBalances.unassigned,
     });
   } catch (e) {
     console.error("getSummary error:", e.message);
@@ -687,32 +707,28 @@ self.createMovement = async (req, res) => {
     const validationErr = validateMovementBody(req.body);
     if (validationErr) return res.json({ error: validationErr });
 
-    const movement = applyIngresoCreditNoteFields(
-      applyEgresoVepFields(
-        applyEgresoSupplierFields(
-          applyDirectPaymentMethod(
-            {
-              type: req.body.type,
-              responsible: "Sin especificar",
-              movement_kind: normalizeMovementKind(req.body.movement_kind),
-              date: req.body.date,
-              amount: req.body.amount,
-              description: req.body.description || null,
-              is_cheque: req.body.is_cheque || false,
-              cheque_number: req.body.cheque_number || null,
-              cheque_bank: req.body.cheque_bank || null,
-              cheque_due_date: req.body.cheque_due_date || null,
-              bank: resolveMovementBank(req.body),
-              expense_category: req.body.expense_category || null,
-            },
-            req.body
-          ),
-          req.body
-        ),
-        req.body
-      ),
-      req.body
-    );
+    const movement = {
+      type: req.body.type,
+      responsible: "Sin especificar",
+      movement_kind: normalizeMovementKind(req.body.movement_kind),
+      date: req.body.date,
+      amount: req.body.amount,
+      description: req.body.description || null,
+      is_cheque: req.body.is_cheque || false,
+      cheque_number: req.body.cheque_number || null,
+      cheque_bank: req.body.cheque_bank || null,
+      cheque_due_date: req.body.cheque_due_date || null,
+      bank: resolveMovementBank(req.body),
+      expense_category: req.body.expense_category || null,
+    };
+
+    applyDirectPaymentMethod(movement, req.body);
+    applyEgresoSupplierFields(movement, req.body);
+    applyEgresoVepFields(movement, req.body);
+    applyIngresoCreditNoteFields(movement, req.body);
+    // Va último: pisa forma de pago, banco y cheque con lo que corresponde a una
+    // transferencia propia, y limpia bank_to en todos los demás movimientos.
+    applyTransferFields(movement, req.body);
 
     if (movement.expense_category === "VEP" && movement.vep_id) {
       await assertVepAvailableForPayment(movement.vep_id);

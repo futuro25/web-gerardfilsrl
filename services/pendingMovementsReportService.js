@@ -17,6 +17,7 @@ const EXPENSE_CATEGORY_LABELS = {
   VEP: "VEP",
   PAGO_HABERES: "Pago de Haberes",
   SERVICIOS: "Servicios",
+  TRANSFERENCIA_CUENTAS_PROPIAS: "Transferencia a cuentas propias",
   OTRO: "Otro",
 };
 

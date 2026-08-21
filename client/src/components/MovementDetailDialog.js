@@ -197,18 +197,39 @@ export default function MovementDetailDialog({
               )}
             </>
           )}
-          {movement.payment_method && (
+          {movement.payment_method &&
+            movement.expense_category !== "TRANSFERENCIA_CUENTAS_PROPIAS" && (
             <DetailRow label="Forma de pago">
               {PAYMENT_METHOD_LABELS[movement.payment_method] ||
                 movement.payment_method}
             </DetailRow>
           )}
-          {!movement.is_cheque && movement.bank && (
-            <DetailRow
-              label={movement.type === "INGRESO" ? "Banco de ingreso" : "Banco de salida"}
-            >
-              {movement.bank}
+          {movement.expense_category === "TRANSFERENCIA_CUENTAS_PROPIAS" ? (
+            <DetailRow label="Transferencia">
+              <span className="font-medium text-indigo-700">
+                {movement.bank || "?"} → {movement.bank_to || "?"}
+              </span>
+              <span className="block text-xs text-slate-400">
+                Entre cuentas propias · no cambia el saldo total
+              </span>
             </DetailRow>
+          ) : (
+            movement.bank &&
+            // En un cheque emitido el banco propio es el de la chequera, que ya
+            // se muestra abajo en los datos del cheque.
+            !(movement.is_cheque && movement.type === "EGRESO") && (
+              <DetailRow
+                label={
+                  movement.type === "INGRESO"
+                    ? movement.is_cheque
+                      ? "Banco de depósito"
+                      : "Banco de ingreso"
+                    : "Banco de salida"
+                }
+              >
+                {movement.bank}
+              </DetailRow>
+            )
           )}
           {movement.is_cheque && (
             <>

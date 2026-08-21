@@ -43,6 +43,7 @@ import MovementDocumentUpload from "./MovementDocumentUpload";
 import EgresoSupplierFields from "./EgresoSupplierFields";
 import IngresoCreditNoteFields from "./IngresoCreditNoteFields";
 import EgresoVepFields from "./EgresoVepFields";
+import EgresoTransferFields from "./EgresoTransferFields";
 import PaymentOrderFields, { PAYMENT_METHOD_LABELS } from "./PaymentOrderFields";
 import PaymentOrderDialog from "./PaymentOrderDialog";
 import MovementDetailDialog from "./MovementDetailDialog";
@@ -103,6 +104,60 @@ function FixedMovementsTooltipList({ items }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Saldo abierto por cuenta propia. La suma de las filas es el saldo total: las
+ * transferencias entre cuentas propias mueven dos filas y no cambian el total.
+ */
+function BankBalancesCard({ summary }) {
+  const banks = summary?.bankBalances || [];
+  const unassigned = summary?.unassignedBalance ?? 0;
+  const total = summary?.balanceWithoutCheques ?? 0;
+
+  const rows = [...banks];
+  // Lo que no pasó por una cuenta nuestra (efectivo, tarjeta de crédito) solo
+  // se muestra si hay algo: en cero es una fila que no dice nada.
+  if (Math.abs(unassigned) > 0.009) {
+    rows.push({ bank: "Efectivo / sin asignar", balance: unassigned });
+  }
+
+  return (
+    <div className="bg-white border rounded-lg p-4 shadow-sm">
+      <p className="text-xs text-gray-500 uppercase tracking-wide">
+        Saldo por cuenta
+      </p>
+      <p
+        className={utils.cn(
+          "text-xl font-bold mt-1",
+          total >= 0 ? "text-green-600" : "text-red-600"
+        )}
+      >
+        {utils.formatAmount(total)}
+      </p>
+      <ul className="mt-2 flex flex-col gap-1">
+        {rows.map((row) => (
+          <li
+            key={row.bank}
+            className="flex items-center justify-between gap-2 text-xs"
+          >
+            <span className="text-slate-500 truncate">{row.bank}</span>
+            <span
+              className={utils.cn(
+                "font-medium tabular-nums shrink-0",
+                row.balance >= 0 ? "text-slate-700" : "text-red-600"
+              )}
+            >
+              {utils.formatAmount(row.balance)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[10px] text-slate-400 mt-2">
+        Cheques contados en su fecha de vencimiento
+      </p>
+    </div>
   );
 }
 
@@ -251,6 +306,12 @@ const MOVEMENT_KIND_OPTIONS = [
   { value: "FIJO", label: "Fijo" },
 ];
 
+/**
+ * Egreso que solo mueve plata de una cuenta propia a otra: no baja el saldo
+ * total, únicamente el del banco de origen. El back lo excluye del saldo global.
+ */
+const TRANSFER_EXPENSE_CATEGORY = "TRANSFERENCIA_CUENTAS_PROPIAS";
+
 // Concepto del egreso. "FACTURA" exige factura asociada; el resto son
 // excepciones que se registran sin factura.
 const EXPENSE_CATEGORY_OPTIONS = [
@@ -260,6 +321,7 @@ const EXPENSE_CATEGORY_OPTIONS = [
   { value: "VEP", label: "VEP" },
   { value: "PAGO_HABERES", label: "Pago de Haberes" },
   { value: "SERVICIOS", label: "Servicios" },
+  { value: TRANSFER_EXPENSE_CATEGORY, label: "Transferencia a cuentas propias" },
   { value: "OTRO", label: "Otro" },
 ];
 
@@ -406,6 +468,7 @@ export default function AccountControl() {
   const [egresoPaymentShowErrors, setEgresoPaymentShowErrors] = useState(false);
   const [egresoSupplierShowErrors, setEgresoSupplierShowErrors] = useState(false);
   const [egresoVepShowErrors, setEgresoVepShowErrors] = useState(false);
+  const [egresoTransferShowErrors, setEgresoTransferShowErrors] = useState(false);
   const [creditNoteShowErrors, setCreditNoteShowErrors] = useState(false);
   const [invoiceTotalForPo, setInvoiceTotalForPo] = useState(0);
   const invoiceFieldsRef = useRef(null);
@@ -413,6 +476,7 @@ export default function AccountControl() {
   const egresoPaymentFieldsRef = useRef(null);
   const egresoSupplierFieldsRef = useRef(null);
   const egresoVepFieldsRef = useRef(null);
+  const egresoTransferFieldsRef = useRef(null);
   const creditNoteFieldsRef = useRef(null);
   const movementDocumentRef = useRef(null);
   /** Orden de listado por fecha: coincide con el API; default asc (más antiguas primero). */
@@ -721,6 +785,7 @@ export default function AccountControl() {
     cheque_bank: movement.cheque_bank || null,
     cheque_due_date: movement.cheque_due_date || null,
     bank: movement.bank || null,
+    bank_to: movement.bank_to || null,
     expense_category: movement.expense_category || null,
     payment_method: movement.payment_method || null,
     supplier_id: movement.supplier_id || null,
@@ -800,8 +865,15 @@ export default function AccountControl() {
   const requiresInvoice =
     movementType === "EGRESO" && expenseCategory === "FACTURA";
 
+  // La transferencia entre cuentas propias no elige forma de pago: siempre es
+  // transferencia, y el banco lo pide EgresoTransferFields (origen y destino).
+  const isTransferEgreso =
+    movementType === "EGRESO" && expenseCategory === TRANSFER_EXPENSE_CATEGORY;
+
   const requiresPaymentMethod =
-    movementType === "EGRESO" && expenseCategory !== "FACTURA";
+    movementType === "EGRESO" &&
+    expenseCategory !== "FACTURA" &&
+    !isTransferEgreso;
 
   const showsSupplierFields =
     movementType === "EGRESO" &&
@@ -1049,6 +1121,7 @@ export default function AccountControl() {
       setEgresoPaymentShowErrors(false);
       setEgresoSupplierShowErrors(false);
       setEgresoVepShowErrors(false);
+      setEgresoTransferShowErrors(false);
       setCreditNoteShowErrors(false);
 
       if (selectedMovement && movementHasPaymentOrder) {
@@ -1087,6 +1160,20 @@ export default function AccountControl() {
           setIsLoadingSubmit(false);
           window.alert(
             vepValidation.message || "Seleccioná el VEP que estás pagando"
+          );
+          return;
+        }
+      }
+
+      if (isTransferEgreso) {
+        const transferValidation =
+          await egresoTransferFieldsRef.current?.validate();
+        if (!transferValidation?.ok) {
+          setEgresoTransferShowErrors(true);
+          setIsLoadingSubmit(false);
+          window.alert(
+            transferValidation.message ||
+              "Revise los bancos de origen y destino"
           );
           return;
         }
@@ -1163,11 +1250,12 @@ export default function AccountControl() {
         cheque_number: chequeActive ? data.cheque_number : null,
         cheque_bank: chequeActive ? data.cheque_bank : null,
         cheque_due_date: chequeActive ? data.date : null,
-        // Banco propio del ingreso. Los egresos lo definen más abajo, según la
-        // forma de pago; acá quedan en null para no arrastrar un valor viejo del
-        // formulario si se cambió el tipo de movimiento.
-        bank:
-          movementType === "EGRESO" || chequeActive ? null : data.bank || null,
+        // Banco propio del ingreso: la cuenta donde entró la plata o donde se
+        // deposita el cheque recibido. Los egresos lo definen más abajo, según
+        // la forma de pago; acá quedan en null para no arrastrar un valor viejo
+        // del formulario si se cambió el tipo de movimiento.
+        bank: movementType === "EGRESO" ? null : data.bank || null,
+        bank_to: null,
         expense_category: movementType === "EGRESO" ? expenseCategory : null,
         income_category: isCreditNoteIngreso ? "NOTA_CREDITO" : null,
         credit_note_number: null,
@@ -1197,6 +1285,16 @@ export default function AccountControl() {
       if (showsVepFields && egresoVepFieldsRef.current) {
         const vepPayload = egresoVepFieldsRef.current.getPayload();
         body.vep_id = vepPayload.vep_id;
+      }
+
+      if (isTransferEgreso && egresoTransferFieldsRef.current) {
+        const transferPayload = egresoTransferFieldsRef.current.getPayload();
+        body.bank = transferPayload.bank;
+        body.bank_to = transferPayload.bank_to;
+        body.payment_method = transferPayload.payment_method;
+        if (!String(body.description || "").trim()) {
+          body.description = egresoTransferFieldsRef.current.getDescription();
+        }
       }
 
       if (requiresPaymentMethod) {
@@ -1268,6 +1366,7 @@ export default function AccountControl() {
       setEgresoPaymentShowErrors(false);
       setEgresoSupplierShowErrors(false);
       setEgresoVepShowErrors(false);
+      setEgresoTransferShowErrors(false);
       setCreditNoteShowErrors(false);
       invoiceFieldsRef.current?.reset();
       paymentOrderFieldsRef.current?.reset?.();
@@ -1478,7 +1577,7 @@ export default function AccountControl() {
         {stage === "LIST" && (
           <>
             {/* Summary cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 my-4">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <div className="bg-white border rounded-lg p-4 shadow-sm cursor-help hover:border-slate-300 transition-colors text-left w-full">
@@ -1528,6 +1627,7 @@ export default function AccountControl() {
                   {utils.formatAmount(summary?.monthlyExpense ?? 0)}
                 </p>
               </div>
+              <BankBalancesCard summary={summary} />
             </div>
 
             {/* Filters */}
@@ -2011,11 +2111,18 @@ export default function AccountControl() {
                                           : ""}
                                       </span>
                                     )}
-                                    {m.payment_method && m.expense_category !== "FACTURA" && (
-                                      <span className="block text-[10px] text-slate-500">
-                                        {PAYMENT_METHOD_LABELS[m.payment_method] ||
-                                          m.payment_method}
+                                    {m.expense_category === TRANSFER_EXPENSE_CATEGORY ? (
+                                      <span className="block text-[10px] text-indigo-700 font-medium">
+                                        {m.bank || "?"} → {m.bank_to || "?"}
                                       </span>
+                                    ) : (
+                                      m.payment_method &&
+                                      m.expense_category !== "FACTURA" && (
+                                        <span className="block text-[10px] text-slate-500">
+                                          {PAYMENT_METHOD_LABELS[m.payment_method] ||
+                                            m.payment_method}
+                                        </span>
+                                      )
                                     )}
                                     {m.is_cheque && m.cheque_number && (
                                       <span className="block text-[10px] text-blue-600">
@@ -2032,13 +2139,22 @@ export default function AccountControl() {
                                     {utils.formatAmount(m.amount)}
                                     {m.excludes_from_balance && (
                                       <span className="block text-[10px] font-normal text-slate-400">
-                                        sin impacto en saldo
+                                        {m.expense_category === TRANSFER_EXPENSE_CATEGORY
+                                          ? "no cambia el saldo total"
+                                          : "sin impacto en saldo"}
                                       </span>
                                     )}
                                   </td>
                                   <td className="!text-xs border-b border-slate-100 px-2 py-2 sm:px-3 sm:py-3">
                                     <div className="flex items-center justify-end gap-2 sm:gap-2.5 flex-nowrap">
-                                      {m.type === "EGRESO" && (
+                                      {/*
+                                        Una transferencia entre cuentas propias
+                                        no es un gasto: marcarla como fija la
+                                        proyectaría como egreso recurrente.
+                                      */}
+                                      {m.type === "EGRESO" &&
+                                        m.expense_category !==
+                                          TRANSFER_EXPENSE_CATEGORY && (
                                         <button
                                           type="button"
                                           className={utils.cn(
@@ -2318,12 +2434,21 @@ export default function AccountControl() {
 
               {/* Description — opcional para notas de crédito (se autocompleta con el N° de NC) */}
               <Input
-                label={isCreditNoteIngreso ? "Detalle (opcional)" : "Detalle"}
+                label={
+                  isCreditNoteIngreso || isTransferEgreso
+                    ? "Detalle (opcional)"
+                    : "Detalle"
+                }
                 type="text"
-                placeholder="Descripción del movimiento"
+                placeholder={
+                  isTransferEgreso
+                    ? "Se completa con los bancos si lo dejás vacío"
+                    : "Descripción del movimiento"
+                }
                 {...register("description", {
                   validate: (value) =>
                     isCreditNoteIngreso ||
+                    isTransferEgreso ||
                     String(value || "").trim().length > 0 ||
                     "Ingrese el detalle del movimiento",
                 })}
@@ -2363,25 +2488,31 @@ export default function AccountControl() {
                   </div>
 
                   {/*
-                    Banco propio donde entró la plata. Con cheque no se pide: ese
-                    banco es el del cliente que lo emitió, no una cuenta nuestra.
+                    Cuenta propia donde entra la plata. Con cheque es la cuenta
+                    donde se deposita: no confundir con el banco del cheque, que
+                    es el del cliente que lo emitió y se pide más abajo.
                   */}
-                  {!isCheque && (
-                    <div>
-                      <label className="text-xs font-sans text-gray-900 mb-2 block">
-                        Banco de ingreso
-                      </label>
-                      <select
-                        className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"
-                        {...register("bank")}
-                      >
-                        <option value="">Efectivo / no aplica</option>
-                        {utils.getOwnBanks().map((b) => (
-                          <option key={b} value={b}>{b}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
+                  <div>
+                    <label className="text-xs font-sans text-gray-900 mb-2 block">
+                      {isCheque ? "Banco donde se deposita" : "Banco de ingreso"}
+                    </label>
+                    <select
+                      className="w-full border border-gray-100 rounded px-2 h-12 text-sm focus:outline-none focus:border-slate-400"
+                      {...register("bank")}
+                    >
+                      <option value="">
+                        {isCheque ? "A definir" : "Efectivo / no aplica"}
+                      </option>
+                      {utils.getOwnBanks().map((b) => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {isCheque
+                        ? "La cuenta donde se acredita: suma a su saldo el día del vencimiento."
+                        : 'Dejalo en "Efectivo / no aplica" si la plata no entró a una cuenta.'}
+                    </p>
+                  </div>
 
                   {isCheque && (
                     <div className="flex flex-col gap-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -2434,6 +2565,8 @@ export default function AccountControl() {
                   <p className="text-xs text-slate-500 mt-2">
                     {requiresInvoice
                       ? "Registrá la factura y dejala pendiente o pagala con una orden de pago."
+                      : isTransferEgreso
+                      ? "Elegí de qué cuenta sale y a cuál entra. No cambia el saldo total, solo el de cada banco."
                       : expenseCategory === "VEP"
                         ? "Seleccioná el VEP que estás pagando, la forma de pago y podés adjuntar el comprobante (opcional)."
                         : expenseCategory === "SERVICIOS"
@@ -2453,6 +2586,15 @@ export default function AccountControl() {
                   showErrors={egresoVepShowErrors}
                   readOnly={vepFieldsReadOnly}
                   onVepChange={handleVepChange}
+                />
+              )}
+
+              {isTransferEgreso && (
+                <EgresoTransferFields
+                  key={`egreso-transfer-${selectedMovement?.id ?? "new"}-${expenseCategory}`}
+                  ref={egresoTransferFieldsRef}
+                  accountMovement={selectedMovement}
+                  showErrors={egresoTransferShowErrors}
                 />
               )}
 

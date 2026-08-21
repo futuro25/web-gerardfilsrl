@@ -1,6 +1,7 @@
 "use strict";
 
 const supabase = require("../controllers/db");
+const { isOwnBanksTransfer } = require("./accountMovementTransfer");
 const {
   getPaidAmountsByInvoiceIds,
   getRetentionAmountsByInvoiceIds,
@@ -36,7 +37,15 @@ async function getBalanceExcludedMovementIds() {
   return excluded;
 }
 
+/**
+ * Una transferencia entre cuentas propias no cambia cuánta plata hay: solo la
+ * cambia de banco. Se descuenta del saldo global (y de los saldos futuros) acá,
+ * en un único lugar; el saldo por banco la suma aparte, con signo en cada cuenta.
+ *
+ * Requiere que la fila traiga `type` y `expense_category`.
+ */
 function movementCountsInBalance(movement, excludedIds) {
+  if (isOwnBanksTransfer(movement)) return false;
   return !excludedIds.has(movement.id);
 }
 

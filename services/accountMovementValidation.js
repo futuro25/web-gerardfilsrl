@@ -5,6 +5,7 @@ const { validateEgresoVepFields } = require("./accountMovementVep");
 const {
   validateIngresoCreditNoteFields,
 } = require("./accountMovementCreditNote");
+const { validateTransferFields } = require("./accountMovementTransfer");
 
 function parseAmount(value) {
   const n = parseFloat(value);
@@ -40,6 +41,9 @@ function validateMovementBody(body) {
       return "Concepto del egreso requerido";
     }
   }
+
+  const transferErr = validateTransferFields(body);
+  if (transferErr) return transferErr;
 
   const vepErr = validateEgresoVepFields(body);
   if (vepErr) return vepErr;

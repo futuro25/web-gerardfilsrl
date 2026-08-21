@@ -32,7 +32,11 @@ async function computeFutureBalances(options = {}) {
 
   const { data: rows, error } = await supabase
     .from("account_movements")
-    .select("id, type, amount, date, is_cheque, cheque_due_date, created_at")
+    // expense_category entra para que movementCountsInBalance pueda descartar
+    // las transferencias entre cuentas propias.
+    .select(
+      "id, type, amount, date, is_cheque, cheque_due_date, created_at, expense_category"
+    )
     .is("deleted_at", null);
   if (error) throw error;
 

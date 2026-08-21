@@ -12,6 +12,12 @@ const PAYMENT_METHODS = new Set([
 const EXPENSE_WITH_SUPPLIER_FIELDS = new Set(["OTRO", "SERVICIOS"]);
 const EXPENSE_REQUIRES_SUPPLIER = new Set(["SERVICIOS"]);
 
+/**
+ * Transferencia entre cuentas propias. Vive acá y no en accountMovementTransfer
+ * para no armar un ciclo de requires: ese módulo necesita OWN_BANKS de este.
+ */
+const TRANSFER_EXPENSE_CATEGORY = "TRANSFERENCIA_CUENTAS_PROPIAS";
+
 /** Cuentas propias. Un cheque recibido puede ser de otro banco; la plata nuestra no. */
 const OWN_BANKS = new Set(["GALICIA", "PROVINCIA"]);
 
@@ -44,24 +50,31 @@ function validateOwnBank(paymentMethod, bank) {
 }
 
 /**
- * Banco propio del movimiento. En un cheque emitido es el de la chequera, que ya
- * viene en cheque_bank. En un cheque recibido queda null a propósito: ese banco
- * es del cliente, no nuestro.
+ * Banco propio del movimiento: la cuenta nuestra por la que se mueve la plata.
+ *
+ * En un cheque emitido es el de la chequera, que ya viene en cheque_bank. En un
+ * cheque recibido `cheque_bank` es el banco del cliente, no el nuestro: el
+ * propio es la cuenta donde se deposita, que el formulario manda en `bank`.
  */
 function resolveMovementBank(body) {
-  if (body.payment_method === "CHEQUE" || body.is_cheque) {
-    return body.type === "EGRESO" ? normalizeBank(body.cheque_bank) : null;
+  if (body.type === "EGRESO" && (body.payment_method === "CHEQUE" || body.is_cheque)) {
+    return normalizeBank(body.cheque_bank);
   }
   return normalizeBank(body.bank);
 }
 
-/** Egresos con concepto distinto de factura de proveedor llevan forma de pago en el movimiento. */
+/**
+ * Egresos con concepto distinto de factura de proveedor llevan forma de pago en
+ * el movimiento. La transferencia entre cuentas propias queda afuera: su forma
+ * de pago es siempre transferencia y la fija applyTransferFields.
+ */
 function requiresDirectPaymentMethod(type, expenseCategory) {
   return (
     type === "EGRESO" &&
     expenseCategory != null &&
     expenseCategory !== "" &&
-    expenseCategory !== "FACTURA"
+    expenseCategory !== "FACTURA" &&
+    expenseCategory !== TRANSFER_EXPENSE_CATEGORY
   );
 }
 
@@ -149,6 +162,7 @@ function applyDirectPaymentMethod(movement, body) {
 
 module.exports = {
   PAYMENT_METHODS,
+  TRANSFER_EXPENSE_CATEGORY,
   PAYMENT_METHODS_WITH_OWN_BANK,
   OWN_BANKS,
   EXPENSE_WITH_SUPPLIER_FIELDS,
