@@ -122,6 +122,15 @@ function parseRoute(path) {
   return { entity, entity_id: idSegment || null };
 }
 
+// Los escaneos automaticos golpean rutas que no existen (/api/v1/...,
+// /api/auth/...) y llenaban la auditoria de 404 sin ningun valor. Express deja
+// req.route sin definir cuando ningun handler matcheo la ruta: ese es el caso
+// que descartamos. Los 404 que devuelven los controladores ("VEP no encontrado")
+// si matchearon una ruta, asi que se siguen auditando como intentos fallidos.
+function isUnmatchedRoute(req, res) {
+  return res.statusCode === 404 && !req.route;
+}
+
 function getClientIp(req) {
   const forwarded = req.headers["x-forwarded-for"];
   if (forwarded) return String(forwarded).split(",")[0].trim();
@@ -205,6 +214,8 @@ function auditLog(req, res, next) {
 
   // La auditoria nunca debe romper ni demorar la respuesta al usuario.
   res.on("finish", () => {
+    if (isUnmatchedRoute(req, res)) return;
+
     // Recien aca el body esta completo: en los uploads lo llena multer, que
     // corre despues de este middleware.
     entry.payload = buildPayload(req);

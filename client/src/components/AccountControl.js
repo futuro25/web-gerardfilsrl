@@ -403,6 +403,10 @@ function mergeMovementAfterOpCancel(prev, movementId, opId, result) {
       null,
     invoice_paid_amount: paidAmount,
     invoice_remaining_amount: remainingAmount,
+    invoice_credit_amount: Math.max(
+      0,
+      Math.round((paidAmount + retentionAmount - total) * 100) / 100
+    ),
     invoice_fully_paid: fullyPaid,
     invoice_payment_pending:
       category === "FACTURA" && Boolean(prev.supplier_invoice_id) && !fullyPaid,
@@ -1223,6 +1227,27 @@ export default function AccountControl() {
               poValidation.message || "Revise los datos de la orden de pago"
             );
             return;
+          }
+          // Pagar de más está permitido (ej: un cheque mayor a la factura),
+          // pero se confirma porque suele ser un error de tipeo.
+          const poAmount =
+            parseFloat(paymentOrderFieldsRef.current.getPayload().amount) || 0;
+          const invoiceTotalAmount =
+            parseFloat(invoiceFieldsRef.current?.getTotalAmount?.()) || 0;
+          const overpayAmount =
+            Math.round((poAmount - invoiceTotalAmount) * 100) / 100;
+          if (overpayAmount > 0.009) {
+            const confirmed = window.confirm(
+              `El monto de la orden de pago supera el total de la factura ` +
+                `(${utils.formatAmount(invoiceTotalAmount)}) en ` +
+                `${utils.formatAmount(overpayAmount)}.\n\n` +
+                `La factura queda saldada y la diferencia se registra como saldo ` +
+                `a favor del proveedor en su cuenta corriente. ¿Continuar?`
+            );
+            if (!confirmed) {
+              setIsLoadingSubmit(false);
+              return;
+            }
           }
         }
       }
@@ -2085,6 +2110,12 @@ export default function AccountControl() {
                                         {m.has_payment_order && m.invoice_remaining_amount > 0.009
                                           ? `Saldo pendiente: ${utils.formatAmount(m.invoice_remaining_amount)}`
                                           : "Factura pendiente de pago"}
+                                      </span>
+                                    )}
+                                    {m.invoice_credit_amount > 0.009 && (
+                                      <span className="block text-[10px] text-emerald-700 font-medium">
+                                        Saldo a favor:{" "}
+                                        {utils.formatAmount(m.invoice_credit_amount)}
                                       </span>
                                     )}
                                     {m.has_payment_order && m.payment_order_number && (

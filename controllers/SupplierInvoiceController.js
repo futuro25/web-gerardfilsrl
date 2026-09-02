@@ -92,6 +92,7 @@ self.getSupplierInvoices = async (req, res) => {
         invoice_retention_amount: summary.retentionAmount,
         invoice_settled_amount: summary.settledAmount,
         invoice_remaining_amount: summary.remainingAmount,
+        invoice_credit_amount: summary.creditAmount,
         payment_orders: summary.orders,
       };
     });
@@ -253,6 +254,7 @@ self.getPurchaseInvoices = async (req, res) => {
         invoice_retention_amount: summary.retentionAmount,
         invoice_settled_amount: summary.settledAmount,
         invoice_remaining_amount: summary.remainingAmount,
+        invoice_credit_amount: summary.creditAmount,
         payment_order: orderSummary(order),
         payment_orders: invOrders.map(orderSummary),
         taxes: taxesByInvoice[inv.id] || [],

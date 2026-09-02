@@ -31,6 +31,8 @@ function buildPaymentSummary(invoice, orders, retentionAmount = 0) {
   const retention = roundMoney(retentionAmount);
   const settledAmount = roundMoney(paidAmount + retention);
   const remainingAmount = roundMoney(Math.max(0, total - settledAmount));
+  // Se pagó más que la factura: el excedente queda como saldo a favor del proveedor.
+  const creditAmount = roundMoney(Math.max(0, settledAmount - total));
   const fullyPaid = remainingAmount <= 0.009;
 
   return {
@@ -39,6 +41,7 @@ function buildPaymentSummary(invoice, orders, retentionAmount = 0) {
     retentionAmount: retention,
     settledAmount,
     remainingAmount,
+    creditAmount,
     fullyPaid,
     orders: orders || [],
     orderCount: (orders || []).length,

@@ -91,6 +91,11 @@ function isZeroBalance(balance) {
   return Math.abs(parseFloat(balance) || 0) < 0.01;
 }
 
+/** Saldo negativo: se pagó de más y queda a favor del proveedor. */
+function isCreditBalance(balance) {
+  return (parseFloat(balance) || 0) < -0.009;
+}
+
 export default function SupplierCurrentAccounts() {
   const navigate = useNavigate();
   const [stage, setStage] = useState("LIST");
@@ -337,6 +342,11 @@ export default function SupplierCurrentAccounts() {
                                   )}
                                 >
                                   {utils.formatAmount(balance)}
+                                  {isCreditBalance(balance) && (
+                                    <span className="block text-[10px] font-normal text-emerald-600">
+                                      saldo a favor
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="p-3 text-center">
                                   <button
@@ -400,7 +410,11 @@ export default function SupplierCurrentAccounts() {
                     negative
                   />
                   <SummaryCard
-                    label="Saldo"
+                    label={
+                      isCreditBalance(summary?.balance)
+                        ? "Saldo a favor"
+                        : "Saldo"
+                    }
                     value={summary?.balance ?? 0}
                     highlight
                   />

@@ -188,8 +188,14 @@ export default function PaymentOrderDialog({
   });
 
   const paymentMethod = watch("payment_method");
+  const amountValue = watch("amount");
   const isCheque = paymentMethod === "CHEQUE";
   const isCreditNote = paymentMethod === "NOTA DE CREDITO";
+  // Pagar de más está permitido: el excedente queda como saldo a favor del proveedor.
+  const overpayAmount = Math.max(
+    0,
+    Math.round(((parseFloat(amountValue) || 0) - remainingAmount) * 100) / 100
+  );
   // En cheque el banco propio sale de la chequera (cheque_bank), no de este campo.
   const needsOwnBank = utils.paymentMethodUsesOwnBank(paymentMethod);
   const formInitializedFor = useRef(null);
@@ -223,10 +229,14 @@ export default function PaymentOrderDialog({
     if (!item) return;
     const payAmount = parseFloat(data.amount);
     if (payAmount > remainingAmount + 0.009) {
-      window.alert(
-        `El monto no puede superar el saldo pendiente (${utils.formatAmount(remainingAmount)})`
+      const excess = Math.round((payAmount - remainingAmount) * 100) / 100;
+      const confirmed = window.confirm(
+        `El monto supera el saldo pendiente (${utils.formatAmount(remainingAmount)}) ` +
+          `en ${utils.formatAmount(excess)}.\n\n` +
+          `La factura queda saldada y la diferencia se registra como saldo a favor ` +
+          `del proveedor en su cuenta corriente. ¿Continuar?`
       );
-      return;
+      if (!confirmed) return;
     }
     try {
       const chequeData =
@@ -564,21 +574,37 @@ export default function PaymentOrderDialog({
               {...register("amount", {
                 required: "Ingrese el monto",
                 min: { value: 0.01, message: "El monto debe ser mayor a 0" },
-                max: {
-                  value: remainingAmount,
-                  message: `No puede superar ${utils.formatAmount(remainingAmount)}`,
-                },
               })}
               intent={errors.amount ? "danger" : "default"}
               helperText={
                 errors.amount?.message ||
                 (remainingAmount < invoiceTotal
-                  ? `Saldo pendiente: ${utils.formatAmount(remainingAmount)}. Podés pagar un monto menor.`
+                  ? `Saldo pendiente: ${utils.formatAmount(remainingAmount)}. Podés pagar un monto menor o mayor.`
                   : retentionPayment && invoiceTotal > 0
                     ? `Total factura: ${utils.formatAmount(invoiceTotal)}. Neto sugerido: ${utils.formatAmount(suggestedPayAmount)}.`
-                    : `Máximo: ${utils.formatAmount(remainingAmount)}`)
+                    : `Saldo pendiente: ${utils.formatAmount(remainingAmount)}`)
               }
             />
+
+            {overpayAmount > 0.009 && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 flex flex-col gap-1">
+                <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                  Pago mayor al saldo pendiente
+                </p>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500 text-xs">
+                    Saldo a favor del proveedor
+                  </span>
+                  <span className="font-semibold text-emerald-800">
+                    {utils.formatAmount(overpayAmount)}
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-700">
+                  La factura queda saldada y la diferencia se acredita en la cuenta
+                  corriente del proveedor.
+                </p>
+              </div>
+            )}
 
             {/* Description */}
             <Input

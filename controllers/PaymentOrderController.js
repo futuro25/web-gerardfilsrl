@@ -10,6 +10,7 @@ const {
   sumOrderAmounts,
   invoiceTotal,
   isInvoiceFullyPaid,
+  roundMoney,
 } = require("../services/invoicePaymentSummary");
 const {
   getInvoiceByMovementId,
@@ -21,9 +22,6 @@ const {
   validateOwnBank,
   normalizeBank,
 } = require("../services/accountMovementPayment");
-const {
-  netMovementAmount,
-} = require("../services/accountMovementRetentionAmount");
 
 const PAYMENT_METHODS = new Set([
   "TRANSFERENCIA",
@@ -328,11 +326,9 @@ self.createPaymentOrder = async (req, res) => {
       0,
       invoiceTotalAmount - paidSoFar - retentionAmount
     );
-    if (payAmount > remainingBefore + 0.009) {
-      return res.json({
-        error: `El monto supera el saldo pendiente (${remainingBefore.toFixed(2)})`,
-      });
-    }
+    // Se admite pagar de más (ej: un cheque mayor a la factura). El excedente
+    // queda como saldo a favor del proveedor en su cuenta corriente.
+    const creditAmount = roundMoney(Math.max(0, payAmount - remainingBefore));
 
     const { data: movement, error: movFetchErr } = await supabase
       .from("account_movements")
@@ -396,8 +392,9 @@ self.createPaymentOrder = async (req, res) => {
     if (fullyPaid) {
       const paymentFields = buildMovementPaymentFields({
         payment_method,
-        // La salida de Control es lo que se pagó: el total menos la retención.
-        amount: netMovementAmount(invoiceTotalAmount, retentionAmount),
+        // La salida de Control es lo que realmente se pagó: la suma de las OP.
+        // Sin excedente equivale al total de la factura menos la retención.
+        amount: roundMoney(paidAfter),
         cheque_number,
         cheque_bank,
         cheque_due_date,
@@ -466,6 +463,7 @@ self.createPaymentOrder = async (req, res) => {
         0,
         invoiceTotalAmount - paidAfter - retentionAmount
       ),
+      credit_amount: creditAmount,
     });
   } catch (e) {
     console.error("createPaymentOrder error:", e.message);
@@ -548,7 +546,7 @@ self.cancelPaymentOrder = async (req, res) => {
       const latest = remainingOrders[remainingOrders.length - 1];
       movementUpdate = buildMovementPaymentFields({
         payment_method: latest.payment_method,
-        amount: netMovementAmount(invoiceTotal(invoice), retentionAmount),
+        amount: roundMoney(paidRemaining),
         cheque_number: latest.cheque_number,
         cheque_bank: latest.cheque_bank,
         cheque_due_date: latest.cheque_due_date,
