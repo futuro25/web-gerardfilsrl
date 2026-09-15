@@ -6,8 +6,8 @@ const {
   attachPaycheckSupplier,
 } = require("../controllers/PaycheckController");
 
-const CHEQUES_DUE_DAYS = 60;
-const VEPS_DUE_DAYS = 60;
+const CHEQUES_DUE_DAYS = 90;
+const VEPS_DUE_DAYS = 90;
 const FUTURE_BALANCE_DAYS = 60;
 
 const EXPENSE_CATEGORY_LABELS = {
@@ -312,36 +312,34 @@ function buildFutureBalancesSectionHtml(future) {
     ? rows[rows.length - 1].balance
     : currentBalance;
 
+  const flatItems = [];
+  let runningBalance = currentBalance;
+  rows.forEach((row) => {
+    row.items.forEach((item) => {
+      runningBalance += item.delta;
+      flatItems.push({ date: row.date, item, balance: runningBalance });
+    });
+  });
+
   const rowsHtml =
-    rows.length === 0
+    flatItems.length === 0
       ? `<tr><td colspan="3" style="padding:16px;text-align:center;color:#64748b;">No hay movimientos proyectados en los próximos ${future?.days ?? FUTURE_BALANCE_DAYS} días.</td></tr>`
-      : rows
-          .map((row) => {
-            const itemsHtml = row.items
-              .map((item) => {
-                const label = futureItemLabel(item);
-                const labelHtml = label
-                  ? `<br><small style="color:#64748b;">${escapeHtml(label)}</small>`
-                  : "";
-                const color = item.delta > 0 ? "#15803d" : "#dc2626";
-                return `<div style="margin-bottom:6px;">
-                  <span>${escapeHtml(item.description || "Sin detalle")}</span>
-                  <span style="color:${color};font-weight:600;"> ${signedAmount(item.delta)}</span>
-                  ${labelHtml}
-                </div>`;
-              })
-              .join("");
-
-            const netHtml =
-              row.items.length > 1
-                ? `<div style="margin-top:4px;font-weight:600;color:${row.delta > 0 ? "#15803d" : "#dc2626"};">Neto del día: ${signedAmount(row.delta)}</div>`
-                : "";
-
-            const negative = row.balance < 0;
+      : flatItems
+          .map(({ date, item, balance }) => {
+            const label = futureItemLabel(item);
+            const labelHtml = label
+              ? `<br><small style="color:#64748b;">${escapeHtml(label)}</small>`
+              : "";
+            const color = item.delta > 0 ? "#15803d" : "#dc2626";
+            const negative = balance < 0;
             return `<tr style="background:${negative ? "#fef2f2" : "#f0fdf4"};">
-              <td style="padding:10px;border-bottom:1px solid #e2e8f0;vertical-align:top;white-space:nowrap;">${escapeHtml(itemDate(row))}</td>
-              <td style="padding:10px;border-bottom:1px solid #e2e8f0;vertical-align:top;">${itemsHtml}${netHtml}</td>
-              <td style="padding:10px;border-bottom:1px solid #e2e8f0;vertical-align:top;text-align:right;font-weight:700;white-space:nowrap;color:${negative ? "#dc2626" : "#15803d"};">${formatAmount(row.balance)}</td>
+              <td style="padding:10px;border-bottom:1px solid #e2e8f0;vertical-align:top;white-space:nowrap;">${escapeHtml(itemDate({ date }))}</td>
+              <td style="padding:10px;border-bottom:1px solid #e2e8f0;vertical-align:top;">
+                <span>${escapeHtml(item.description || "Sin detalle")}</span>
+                <span style="color:${color};font-weight:600;"> ${signedAmount(item.delta)}</span>
+                ${labelHtml}
+              </td>
+              <td style="padding:10px;border-bottom:1px solid #e2e8f0;vertical-align:top;text-align:right;font-weight:700;white-space:nowrap;color:${negative ? "#dc2626" : "#15803d"};">${formatAmount(balance)}</td>
             </tr>`;
           })
           .join("");
@@ -350,7 +348,8 @@ function buildFutureBalancesSectionHtml(future) {
     <div style="margin-top:28px;padding-top:24px;border-top:2px solid #e2e8f0;">
       <h2 style="margin:0 0 4px;font-size:18px;color:#0f766e;">Saldos Futuros <span style="font-size:13px;font-weight:normal;color:#b45309;">(en revisión)</span></h2>
       <p style="margin:0 0 12px;font-size:13px;color:#64748b;">
-        Próximos ${future?.days ?? FUTURE_BALANCE_DAYS} días. Solo se listan los días con movimientos.
+        Próximos ${future?.days ?? FUTURE_BALANCE_DAYS} días. Solo se listan los días con movimientos,
+        cada movimiento en su propia fila con el saldo proyectado luego de aplicarlo.
         Incluye movimientos con fecha futura, cheques en su vencimiento, VEPs pendientes
         y gastos fijos que todavía no tienen su movimiento cargado.
       </p>
@@ -368,7 +367,7 @@ function buildFutureBalancesSectionHtml(future) {
         <thead>
           <tr style="background:#f0fdfa;">
             <th style="text-align:left;padding:8px 10px;">Fecha</th>
-            <th style="text-align:left;padding:8px 10px;">Movimientos del día</th>
+            <th style="text-align:left;padding:8px 10px;">Movimiento</th>
             <th style="text-align:right;padding:8px 10px;">Saldo proyectado</th>
           </tr>
         </thead>
@@ -510,12 +509,13 @@ function buildReportText(movements, summary, cheques, chequesSummary, veps, veps
   if (futureRows.length === 0) {
     lines.push("Sin movimientos proyectados en el período.");
   } else {
+    let runningBalance = future?.currentBalance ?? 0;
     futureRows.forEach((row) => {
-      lines.push(`${itemDate(row)} — saldo ${formatAmount(row.balance)}`);
       row.items.forEach((item) => {
+        runningBalance += item.delta;
         const label = futureItemLabel(item);
         lines.push(
-          `   ${signedAmount(item.delta)} | ${item.description || "Sin detalle"}${label ? ` | ${label}` : ""}`
+          `${itemDate(row)} | ${signedAmount(item.delta)} | ${item.description || "Sin detalle"}${label ? ` | ${label}` : ""} | saldo ${formatAmount(runningBalance)}`
         );
       });
     });
