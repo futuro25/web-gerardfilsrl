@@ -23,6 +23,8 @@ const {
   applyDirectPaymentMethod,
   applyEgresoSupplierFields,
   resolveMovementBank,
+  normalizeBank,
+  OWN_BANKS,
 } = require("../services/accountMovementPayment");
 const {
   applyTransferFields,
@@ -427,6 +429,12 @@ async function getSearchMovementIds(search) {
   return [...ids];
 }
 
+/** Banco propio válido para filtrar por cuenta (Control2), o null si no aplica. */
+function resolveBankScope(value) {
+  const normalized = normalizeBank(value);
+  return normalized && OWN_BANKS.has(normalized) ? normalized : null;
+}
+
 function emptyMovementsPage(page, limit) {
   return {
     data: [],
@@ -447,6 +455,7 @@ self.getMovements = async (req, res) => {
       sortBy: sortByParam,
       pending,
       search,
+      bank,
     } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     const ascending = String(dateOrderParam || "asc").toLowerCase() !== "desc";
@@ -456,6 +465,9 @@ self.getMovements = async (req, res) => {
         ? "created_at"
         : "date";
     const pendingOnly = isPendingFilter(pending);
+    // Filtro por cuenta propia (Control2): movimientos donde esa cuenta es
+    // origen o destino (una transferencia entre cuentas propias toca ambas).
+    const bankScope = resolveBankScope(bank);
 
     const searchIds = search ? await getSearchMovementIds(search) : null;
     if (searchIds && !searchIds.length) {
@@ -489,6 +501,10 @@ self.getMovements = async (req, res) => {
         const startDate = DateTime.fromObject({ year: parseInt(year), month: parseInt(month), day: 1 }).toISODate();
         const endDate = DateTime.fromObject({ year: parseInt(year), month: parseInt(month), day: 1 }).endOf("month").toISODate();
         query = query.gte("date", startDate).lte("date", endDate);
+      }
+
+      if (bankScope) {
+        query = query.or(`bank.eq.${bankScope},bank_to.eq.${bankScope}`);
       }
 
       const { data, error, count } = await query;
@@ -531,6 +547,10 @@ self.getMovements = async (req, res) => {
       query = query.gte("date", startDate).lte("date", endDate);
     }
 
+    if (bankScope) {
+      query = query.or(`bank.eq.${bankScope},bank_to.eq.${bankScope}`);
+    }
+
     const { data, error, count } = await query;
 
     if (error) throw error;
@@ -560,7 +580,9 @@ self.getMovements = async (req, res) => {
 
 self.getSummary = async (req, res) => {
   try {
-    const { month, year } = req.query;
+    const { month, year, bank } = req.query;
+    // Filtro por cuenta propia (Control2): saldo y totales de un solo banco.
+    const bankScope = resolveBankScope(bank);
     const today = DateTime.now().toISODate();
 
     // Current balance: all movements with effective date <= today
@@ -602,11 +624,16 @@ self.getSummary = async (req, res) => {
         : null;
 
     const bankBalances = computeBankBalances(allMovements, excludedIds, today);
+    // Saldo "con cheques" de cada banco: se ignora la fecha de vencimiento
+    // pasando una fecha de corte muy lejana, así los cheques a vencer también suman.
+    const bankBalancesWithCheques = bankScope
+      ? computeBankBalances(allMovements, excludedIds, "9999-12-31")
+      : null;
 
     allMovements.forEach((m) => {
       // La transferencia entre cuentas propias no es un gasto ni un ingreso:
       // no va al saldo, ni a los totales del mes, ni a los movimientos fijos.
-      // Su único efecto está en bankBalances.
+      // Su único efecto está en bankBalances (ahí sí se contabiliza en origen y destino).
       if (isOwnBanksTransfer(m)) return;
 
       const amount = parseFloat(m.amount) || 0;
@@ -620,7 +647,10 @@ self.getSummary = async (req, res) => {
         !endDate ||
         (effectiveDate >= startDate && effectiveDate <= endDate);
 
-      if (isFixed && inMonth) {
+      // Con banco seleccionado, solo cuentan los movimientos de esa cuenta.
+      const matchesBankScope = !bankScope || (m.bank || null) === bankScope;
+
+      if (isFixed && inMonth && matchesBankScope) {
         totalFixed += signed;
         fixedMovements.push({
           id: m.id,
@@ -633,10 +663,15 @@ self.getSummary = async (req, res) => {
       }
 
       if (!movementCountsInBalance(m, excludedIds)) return;
+      if (!matchesBankScope) return;
 
-      balanceWithCheques += signed;
-      if (!m.is_cheque || !m.cheque_due_date || m.cheque_due_date <= today) {
-        balanceWithoutCheques += signed;
+      // El saldo por banco (con y sin cheques) sale de bankBalances/bankBalancesWithCheques,
+      // que ya contemplan el efecto de las transferencias entre cuentas propias.
+      if (!bankScope) {
+        balanceWithCheques += signed;
+        if (!m.is_cheque || !m.cheque_due_date || m.cheque_due_date <= today) {
+          balanceWithoutCheques += signed;
+        }
       }
 
       if (startDate && endDate && effectiveDate >= startDate && effectiveDate <= endDate) {
@@ -647,6 +682,13 @@ self.getSummary = async (req, res) => {
         }
       }
     });
+
+    if (bankScope) {
+      balanceWithoutCheques =
+        bankBalances.banks.find((b) => b.bank === bankScope)?.balance ?? 0;
+      balanceWithCheques =
+        bankBalancesWithCheques.banks.find((b) => b.bank === bankScope)?.balance ?? 0;
+    }
 
     fixedMovements.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
 
@@ -659,6 +701,7 @@ self.getSummary = async (req, res) => {
       fixedMovements,
       bankBalances: bankBalances.banks,
       unassignedBalance: bankBalances.unassigned,
+      bankScope,
     });
   } catch (e) {
     console.error("getSummary error:", e.message);
@@ -681,8 +724,11 @@ self.getUpcomingCheques = async (req, res) => {
     const days = Math.min(Math.max(parseInt(req.query.days, 10) || 15, 1), 90);
     const today = DateTime.now().toISODate();
     const until = DateTime.now().plus({ days }).toISODate();
+    // Filtro por cuenta propia (Control2): en un cheque, `bank` ya es la cuenta
+    // propia que corresponde (chequera propia en egresos, cuenta de depósito en ingresos).
+    const bankScope = resolveBankScope(req.query.bank);
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("account_movements")
       .select("*")
       .eq("is_cheque", true)
@@ -690,6 +736,12 @@ self.getUpcomingCheques = async (req, res) => {
       .gte("cheque_due_date", today)
       .lte("cheque_due_date", until)
       .order("cheque_due_date", { ascending: true });
+
+    if (bankScope) {
+      query = query.eq("bank", bankScope);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 

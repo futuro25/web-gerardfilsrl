@@ -9,6 +9,7 @@ export const fetchAccountMovements = async ({
   sortBy = "document",
   pending,
   search,
+  bank,
 }) => {
   const params = new URLSearchParams({
     page: String(page),
@@ -27,6 +28,9 @@ export const fetchAccountMovements = async ({
   if (searchTerm) {
     params.set("search", searchTerm);
   }
+  if (bank) {
+    params.set("bank", String(bank));
+  }
   const res = await fetch(`${BASE_URL}?${params.toString()}`, {
     method: "GET",
     headers: { "Content-Type": "application/json" },
@@ -35,11 +39,14 @@ export const fetchAccountMovements = async ({
   return res.json();
 };
 
-export const fetchAccountMovementsSummary = async ({ month, year }) => {
+export const fetchAccountMovementsSummary = async ({ month, year, bank }) => {
   const params = new URLSearchParams();
   if (month && year) {
     params.set("month", String(month));
     params.set("year", String(year));
+  }
+  if (bank) {
+    params.set("bank", String(bank));
   }
   const res = await fetch(`${BASE_URL}/summary?${params.toString()}`, {
     method: "GET",
@@ -49,8 +56,11 @@ export const fetchAccountMovementsSummary = async ({ month, year }) => {
   return res.json();
 };
 
-export const fetchUpcomingCheques = async (days = 15) => {
+export const fetchUpcomingCheques = async (days = 15, bank) => {
   const params = new URLSearchParams({ days: String(days) });
+  if (bank) {
+    params.set("bank", String(bank));
+  }
   const res = await fetch(`${BASE_URL}/upcoming-cheques?${params}`, {
     method: "GET",
     headers: { "Content-Type": "application/json" },

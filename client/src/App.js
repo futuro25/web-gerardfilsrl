@@ -2,6 +2,7 @@
 
 import {
   NavLink,
+  Navigate,
   Route,
   Routes,
   Outlet,
@@ -39,6 +40,7 @@ import RetentionCertificates from "./components/RetentionCertificates";
 import RetentionCalculator from "./components/RetentionCalculator";
 import FiscalExports from "./components/FiscalExports";
 import AccountControl from "./components/AccountControl";
+import AccountControl2 from "./components/AccountControl2";
 import SupplierCurrentAccounts from "./components/SupplierCurrentAccounts";
 import PendingInvoicesList from "./components/PendingInvoicesList";
 import PurchaseInvoices from "./components/PurchaseInvoices";
@@ -65,9 +67,16 @@ export default function App() {
   const [searchParams] = useSearchParams();
   const user = sessionStorage.email || null;
   const userType = sessionStorage.type || null;
+  const username = sessionStorage.username || null;
   const inviteId = searchParams.get("inviteId") || null;
   const location = useLocation();
   const [open, setOpen] = useState(false); // Moved useState hook to top level
+
+  // Christian Mastronardi: acceso restringido a Stock, Pedidos y Egreso de Mercaderia.
+  const restrictedRoutes =
+    username === "cmastronardi"
+      ? ["stock", "pedidos", "remitos", "logout", "", "home"]
+      : null;
 
   if (user === undefined || user === null) {
     return (
@@ -90,6 +99,13 @@ export default function App() {
     );
   }
 
+  if (
+    restrictedRoutes &&
+    !restrictedRoutes.includes(location.pathname.replace(/^\//, ""))
+  ) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <Routes>
       <Route path="/">
@@ -98,6 +114,12 @@ export default function App() {
           {userType === "ADMIN" && (
             <>
               <Route path="usuarios" element={<Users />} />
+              <Route path="en-linea" element={<OnlineUsers />} />
+              <Route path="auditoria" element={<AuditLog />} />
+            </>
+          )}
+          {userType !== "ADMIN" && username === "caro" && (
+            <>
               <Route path="en-linea" element={<OnlineUsers />} />
               <Route path="auditoria" element={<AuditLog />} />
             </>
@@ -118,6 +140,7 @@ export default function App() {
           <Route path="libros-selector" element={<BooksNavigation />} />
           <Route path="exportacion-fiscal" element={<FiscalExports />} />
           <Route path="control" element={<AccountControl />} />
+          <Route path="control2" element={<AccountControl2 />} />
           <Route path="cuentas-corrientes" element={<SupplierCurrentAccounts />} />
           <Route path="facturas-pendientes" element={<PendingInvoicesList />} />
           <Route path="facturas-compras" element={<PurchaseInvoices />} />

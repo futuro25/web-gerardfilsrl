@@ -44,7 +44,7 @@ export const queryRetentionByInvoiceKey = ({
 ];
 export const queryAccountMovementsKey = (params) => ["account-movements", params];
 export const queryAccountMovementsSummaryKey = (params) => ["account-movements-summary", params];
-export const queryUpcomingChequesKey = () => ["upcoming-cheques"];
+export const queryUpcomingChequesKey = (params) => ["upcoming-cheques", params];
 export const queryAccountFutureBalancesKey = () => ["account-movements-future-balances"];
 export const queryFixedExpensesKey = () => ["fixed-expenses"];
 export const queryFixedExpenseNamesKey = () => ["fixed-expense-names"];

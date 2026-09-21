@@ -11,6 +11,7 @@ import {
   Banknote,
   FileDown,
   Landmark,
+  Building2,
   PiggyBank,
   Wallet,
   ClipboardList,
@@ -36,6 +37,7 @@ export default function Home() {
     { label: "Facturas Ventas", icon: FileText, path: "/entregas", order: 6 },
     // { label: "Cashflow", icon: CircleDollarSign, path: "/cashflow", order: 7 },
     { label: "Control", icon: Landmark, path: "/control", order: 7.5 },
+    { label: "Control 2", icon: Building2, path: "/control2", order: 7.51 },
     {
       label: "Cuentas Corrientes",
       icon: Wallet,
@@ -64,6 +66,18 @@ export default function Home() {
 
   if (sessionStorage.type === "ADMIN") {
     navItems.push({ label: "Usuarios", icon: UserPlus, path: "/usuarios", order: 12 });
+    navItems.push({ label: "En Linea", icon: Activity, path: "/en-linea", order: 13 });
+    navItems.push({ label: "Auditoria", icon: History, path: "/auditoria", order: 14 });
+  }
+
+  // Acceso restringido para Christian Mastronardi: solo estos 3 modulos.
+  if (sessionStorage.username === "cmastronardi") {
+    const allowedPaths = ["/stock", "/pedidos", "/remitos", "/logout"];
+    navItems = navItems.filter((item) => allowedPaths.includes(item.path));
+  }
+
+  // Acceso adicional para Carolina Lacunza: En Linea y Auditoria.
+  if (sessionStorage.username === "caro") {
     navItems.push({ label: "En Linea", icon: Activity, path: "/en-linea", order: 13 });
     navItems.push({ label: "Auditoria", icon: History, path: "/auditoria", order: 14 });
   }
