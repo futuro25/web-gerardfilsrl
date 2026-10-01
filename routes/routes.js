@@ -137,6 +137,10 @@ router.patch("/retention-certificates/payments/:payment_id", (req, res, next) =>
   RetentionCertificatesController.updateRetentionPayment(req, res, next)
 );
 
+router.patch("/retention-certificates/payments/:payment_id/retention-date", (req, res, next) =>
+  RetentionCertificatesController.updateRetentionDate(req, res, next)
+);
+
 router.delete("/retention-certificates/payments/:payment_id", (req, res, next) =>
   RetentionCertificatesController.deleteRetentionPayment(req, res, next)
 );

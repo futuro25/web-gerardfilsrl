@@ -54,6 +54,21 @@ export const useUpdateRetentionPaymentMutation = async (body) => {
   return res.json();
 };
 
+export const useUpdateRetentionDateMutation = async ({ id, retentionDate }) => {
+  const res = await fetch(`${BASE_URL}/payments/${id}/retention-date`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ retentionDate }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.error) {
+    throw new Error(data?.error || "Error en la petición");
+  }
+  return data;
+};
+
 export const useDeleteRetentionPaymentMutation = async (id) => {
   const res = await fetch(`${BASE_URL}/payments/${id}`, {
     method: "DELETE",

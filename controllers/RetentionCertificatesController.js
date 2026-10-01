@@ -240,6 +240,28 @@ async function calculateMonthlyRetention(
  * Genera un número de certificado único y elegante
  * Formato: CR-YYYYMMDD-NNNN (ej: CR-20241225-0001)
  */
+// Fecha de la retención (issued_date del certificado). Si no se informa, es
+// la de hoy. Se acepta solo YYYY-MM-DD para no guardar fechas corridas por
+// la zona horaria.
+function todayISODate() {
+  // "en-CA" formatea como YYYY-MM-DD; se usa la hora de Argentina para que
+  // después de las 21 h no quede el día siguiente (UTC).
+  return new Date().toLocaleDateString("en-CA", {
+    timeZone: "America/Argentina/Buenos_Aires",
+  });
+}
+
+function parseRetentionDate(value) {
+  if (value == null || value === "") return null;
+  const str = String(value).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(str)) return null;
+  const d = new Date(`${str}T00:00:00Z`);
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== str) {
+    return null;
+  }
+  return str;
+}
+
 async function generateCertificateNumber() {
   const now = new Date();
   const year = now.getFullYear();
@@ -502,7 +524,13 @@ self.createRetentionPayment = async (req, res) => {
       paymentMethod,
       supplierInvoiceId,
       accountMovementId,
+      retentionDate,
     } = req.body;
+
+    const parsedRetentionDate = parseRetentionDate(retentionDate);
+    if (retentionDate && !parsedRetentionDate) {
+      return res.json({ error: "La fecha de la retención no es válida." });
+    }
 
     let parsedSupplierInvoiceId =
       supplierInvoiceId != null && supplierInvoiceId !== ""
@@ -645,7 +673,7 @@ self.createRetentionPayment = async (req, res) => {
       const certificate = {
         retention_payment_id: newPayment.id,
         certificate_number: certificateNumber,
-        issued_date: new Date().toISOString().split("T")[0],
+        issued_date: parsedRetentionDate || todayISODate(),
         retention_amount: retentionAmount,
         category_code: categoryCode,
         category_detail: categoryDetail || "",
@@ -730,7 +758,13 @@ self.updateRetentionPayment = async (req, res) => {
       cashflowCategory,
       cashflowService,
       paymentMethod,
+      retentionDate,
     } = req.body;
+
+    const parsedRetentionDate = parseRetentionDate(retentionDate);
+    if (retentionDate && !parsedRetentionDate) {
+      return res.json({ error: "La fecha de la retención no es válida." });
+    }
 
     // Vínculos y retenciones vigentes antes de la edición: sirven para saber
     // qué importe debería tener hoy el movimiento de Control.
@@ -827,7 +861,7 @@ self.updateRetentionPayment = async (req, res) => {
           ...certificateData,
           retention_payment_id: payment_id,
           certificate_number: certificateNumber,
-          issued_date: new Date().toISOString().split("T")[0],
+          issued_date: parsedRetentionDate || todayISODate(),
         });
       }
     }
@@ -849,6 +883,51 @@ self.updateRetentionPayment = async (req, res) => {
     res.json({ ...updatedPayment, movement_sync: movementSync });
   } catch (e) {
     console.error("Error updating retention payment:", e.message);
+    res.json({ error: e.message });
+  }
+};
+
+// La fecha de la retención es lo único que se puede corregir con el
+// certificado ya emitido: no cambia importes ni el cálculo (que depende de la
+// fecha de la factura), solo el día en que se practicó la retención.
+self.updateRetentionDate = async (req, res) => {
+  try {
+    const payment_id = req.params.payment_id;
+    const parsedRetentionDate = parseRetentionDate(req.body?.retentionDate);
+    if (!parsedRetentionDate) {
+      return res
+        .status(400)
+        .json({ error: "Ingresá una fecha de retención válida." });
+    }
+
+    const { data: certificate, error: certError } = await supabase
+      .from("retention_certificates")
+      .select("id")
+      .eq("retention_payment_id", payment_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (certError) throw certError;
+
+    if (!certificate) {
+      return res.status(404).json({
+        error: "La retención no tiene un certificado emitido.",
+      });
+    }
+
+    const { data: updated, error } = await supabase
+      .from("retention_certificates")
+      .update({
+        issued_date: parsedRetentionDate,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", certificate.id)
+      .select()
+      .single();
+    if (error) throw error;
+
+    res.json(updated);
+  } catch (e) {
+    console.error("Error updating retention date:", e.message);
     res.json({ error: e.message });
   }
 };

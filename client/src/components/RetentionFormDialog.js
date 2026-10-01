@@ -15,6 +15,13 @@ import { useSuppliersQuery } from "../apis/api.suppliers";
 import { useCreateRetentionPaymentMutation } from "../apis/api.retentioncertificates";
 import { querySuppliersKey } from "../apis/queryKeys";
 
+function todayDateInput() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
 function toDateInput(value) {
   if (!value) return "";
   return String(value).slice(0, 10);
@@ -52,6 +59,7 @@ export default function RetentionFormDialog({
   const [totalAmount, setTotalAmount] = useState("");
   const [issueDate, setIssueDate] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [retentionDate, setRetentionDate] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -66,6 +74,13 @@ export default function RetentionFormDialog({
     setDueDate("");
     setErrorMsg("");
   }, [open, supplier, invoice]);
+
+  // La fecha de la retención arranca en hoy solo al abrir el diálogo: si se
+  // reiniciara junto con el resto, la carga tardía de proveedores pisaría la
+  // fecha que eligió el usuario.
+  useEffect(() => {
+    if (open) setRetentionDate(todayDateInput());
+  }, [open]);
 
   // Sin régimen cargado el sistema asume "No inscripto", que es la alícuota más
   // alta. Se avisa en vez de dejar que pase inadvertido.
@@ -100,6 +115,10 @@ export default function RetentionFormDialog({
       setErrorMsg("Ingresá la fecha de emisión.");
       return;
     }
+    if (!retentionDate) {
+      setErrorMsg("Ingresá la fecha de la retención.");
+      return;
+    }
     if (!total || total <= 0) {
       setErrorMsg("Ingresá un importe total válido.");
       return;
@@ -116,6 +135,7 @@ export default function RetentionFormDialog({
         supplierCuit,
         issueDate,
         dueDate: dueDate || null,
+        retentionDate,
         totalAmount: total,
         netAmount: preview.netAmount,
         iva: preview.iva,
@@ -245,6 +265,13 @@ export default function RetentionFormDialog({
             onChange={(e) => setDueDate(e.target.value)}
           />
         </div>
+
+        <Input
+          label="Fecha de la retención"
+          type="date"
+          value={retentionDate}
+          onChange={(e) => setRetentionDate(e.target.value)}
+        />
 
         {/* Preview */}
         <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 flex flex-col gap-1.5">

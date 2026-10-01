@@ -16,10 +16,11 @@ import {
   useRetentionPaymentsQuery,
   useCreateRetentionPaymentMutation,
   useDeleteRetentionPaymentMutation,
+  useUpdateRetentionDateMutation,
   useRetentionCertificateQuery,
 } from "../apis/api.retentioncertificates";
 import { useSuppliersQuery } from "../apis/api.suppliers";
-import { Download, FileText } from "lucide-react";
+import { Download, FileText, Pencil, Check, X, CalendarDays } from "lucide-react";
 import { jsPDF } from "jspdf";
 import {
   calculateRetention as calcRetention,
@@ -95,6 +96,10 @@ export default function RetentionCertificates() {
   const [cashflowService, setCashflowService] = useState("");
   const [paymentMethod, setPaymentMethod] = useState(utils.getPaymentMethods()[0] || "EFECTIVO");
   const [deleteConfirmPayment, setDeleteConfirmPayment] = useState(null);
+  const [editingDatePaymentId, setEditingDatePaymentId] = useState(null);
+  const [editingDateValue, setEditingDateValue] = useState("");
+  // Borrador de la fecha al editarla desde el certificado abierto (null = no se edita)
+  const [certDateDraft, setCertDateDraft] = useState(null);
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -281,6 +286,43 @@ export default function RetentionCertificates() {
     },
   });
 
+  const updateDateMutation = useMutation({
+    mutationFn: useUpdateRetentionDateMutation,
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryRetentionPaymentsKey() });
+      setCertificate((prev) =>
+        prev && String(prev.retention_payment_id) === String(variables.id)
+          ? { ...prev, issued_date: data?.issued_date ?? variables.retentionDate }
+          : prev
+      );
+      setCertDateDraft(null);
+      queryClient.invalidateQueries({
+        queryKey: queryRetentionCertificateKey(variables.id),
+      });
+      setEditingDatePaymentId(null);
+      setEditingDateValue("");
+    },
+    onError: (error) => {
+      alert(error.message || "No se pudo actualizar la fecha de la retención.");
+    },
+  });
+
+  const startEditingDate = (pago) => {
+    setEditingDatePaymentId(pago.id);
+    setEditingDateValue(
+      String(pago.certificate_issued_date || "").slice(0, 10) ||
+        DateTime.now().toISODate()
+    );
+  };
+
+  const saveEditingDate = () => {
+    if (!editingDateValue) return;
+    updateDateMutation.mutate({
+      id: editingDatePaymentId,
+      retentionDate: editingDateValue,
+    });
+  };
+
   const deleteMutation = useMutation({
     mutationFn: useDeleteRetentionPaymentMutation,
     onSuccess: () => {
@@ -305,6 +347,7 @@ export default function RetentionCertificates() {
     try {
       const cert = await useRetentionCertificateQuery(payment_id);
       if (cert && !cert.error) {
+        setCertDateDraft(null);
         setCertificate(cert);
         setShowCertificate(true);
       }
@@ -317,6 +360,7 @@ export default function RetentionCertificates() {
     try {
       const cert = await useRetentionCertificateQuery(payment_id);
       if (cert && !cert.error) {
+        setCertDateDraft(null);
         setCertificate(cert);
         setShowCertificate(true);
       } else {
@@ -520,6 +564,7 @@ export default function RetentionCertificates() {
     setValue("profitsCondition", "Inscripto");
     reset({
       profitsCondition: "Inscripto",
+      retentionDate: DateTime.now().toISODate(),
     });
   };
 
@@ -543,6 +588,11 @@ export default function RetentionCertificates() {
       return;
     }
 
+    if (!body.retentionDate) {
+      alert("Debe ingresar la fecha de la retención");
+      return;
+    }
+
     if (!totalAmount || totalAmount <= 0) {
       alert("Debe ingresar un importe total válido");
       return;
@@ -560,7 +610,7 @@ export default function RetentionCertificates() {
     // Crear certificado calculado
     const calculatedCert = {
       certificate_number: tempCertificateNumber,
-      issued_date: new Date().toISOString().split("T")[0],
+      issued_date: body.retentionDate || DateTime.now().toISODate(),
       retention_amount: calculatedRetention,
       category_code: selectedCategory.code,
       category_detail: selectedCategory.description,
@@ -588,6 +638,7 @@ export default function RetentionCertificates() {
       supplier: selectedSupplier.name,
       supplierCuit: body.supplierCuit,
       issueDate: body.issueDate,
+      retentionDate: body.retentionDate,
       dueDate: null,
       totalAmount: totalAmount,
       netAmount: netAmount,
@@ -618,6 +669,7 @@ export default function RetentionCertificates() {
     const formValues = {
       supplierCuit: calculatedCertificate.supplier_cuit,
       issueDate: calculatedCertificate.issue_date,
+      retentionDate: calculatedCertificate.issued_date,
       profitsCondition: calculatedCertificate.profits_condition,
     };
     
@@ -669,6 +721,7 @@ export default function RetentionCertificates() {
               onClick={() => {
                 reset({
                   profitsCondition: "Inscripto",
+                  retentionDate: DateTime.now().toISODate(),
                 });
                 setStage("CREATE");
                 setSelectedSupplier(null);
@@ -808,7 +861,7 @@ export default function RetentionCertificates() {
                           Nro Certificado
                         </th>
                         <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
-                          Fecha Emisión Certificado
+                          Fecha Retención
                         </th>
                         <th className="border-b font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
                           Importe Total
@@ -862,10 +915,56 @@ export default function RetentionCertificates() {
                             <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
                               {pago.certificate_number || "-"}
                             </td>
-                            <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
-                              {pago.certificate_issued_date
-                                ? utils.formatDate(pago.certificate_issued_date)
-                                : "-"}
+                            <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500 whitespace-nowrap">
+                              {editingDatePaymentId === pago.id ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="date"
+                                    autoFocus
+                                    value={editingDateValue}
+                                    onChange={(e) => setEditingDateValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") saveEditingDate();
+                                      if (e.key === "Escape") setEditingDatePaymentId(null);
+                                    }}
+                                    className="rounded border border-slate-200 px-1 py-0.5 text-xs"
+                                  />
+                                  <button
+                                    type="button"
+                                    title="Guardar fecha"
+                                    className="text-emerald-600 hover:text-emerald-800 disabled:opacity-50"
+                                    disabled={!editingDateValue || updateDateMutation.isPending}
+                                    onClick={saveEditingDate}
+                                  >
+                                    {updateDateMutation.isPending ? <Spinner /> : <Check className="w-4 h-4" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="Cancelar"
+                                    className="text-slate-400 hover:text-slate-600"
+                                    disabled={updateDateMutation.isPending}
+                                    onClick={() => setEditingDatePaymentId(null)}
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  {pago.certificate_issued_date
+                                    ? utils.formatDate(pago.certificate_issued_date)
+                                    : "-"}
+                                  {pago.certificate_number && (
+                                    <button
+                                      type="button"
+                                      title="Editar fecha de la retención"
+                                      className="text-slate-400 hover:text-slate-700"
+                                      onClick={() => startEditingDate(pago)}
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100 p-4 text-slate-500">
                               ${pago.total_amount?.toFixed(2) || "0.00"}
@@ -891,6 +990,15 @@ export default function RetentionCertificates() {
                                 >
                                   <FileText className="w-4 h-4" />
                                 </button>
+                                {pago.certificate_number && (
+                                  <button
+                                    className="flex items-center justify-center w-8 h-8 text-slate-600 hover:text-slate-900"
+                                    title="Editar fecha de la retención"
+                                    onClick={() => startEditingDate(pago)}
+                                  >
+                                    <CalendarDays className="w-4 h-4" />
+                                  </button>
+                                )}
                                 <button
                                   className="flex items-center justify-center w-8 h-8 text-indigo-600 hover:text-indigo-800"
                                   title="Descargar PDF"
@@ -1151,6 +1259,25 @@ export default function RetentionCertificates() {
                                 />
                               )}
                               {errors.issueDate && (
+                                <span className="px-2 text-red-500">* Obligatorio</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        {/* Fecha en que se practica la retención (emisión del certificado) */}
+                        <tr>
+                          <td>
+                            <div className="p-4 flex flex-col md:flex-row gap-2 md:gap-4 md:items-center">
+                              <label className="text-slate-500 md:w-32 font-bold">
+                                Fecha Retención:
+                              </label>
+                              <input
+                                type="date"
+                                defaultValue={DateTime.now().toISODate()}
+                                {...register("retentionDate", { required: true })}
+                                className="rounded border border-slate-200 p-4 text-slate-500 md:w-64"
+                              />
+                              {errors.retentionDate && (
                                 <span className="px-2 text-red-500">* Obligatorio</span>
                               )}
                             </div>
@@ -1438,9 +1565,59 @@ export default function RetentionCertificates() {
 
                           <div>
                             <p className="font-semibold">Fecha de Emisión:</p>
-                            <p>
-                              {utils.formatDate(certData.issued_date)}
-                            </p>
+                            {!calculatedCertificate && certDateDraft !== null ? (
+                              <div className="flex items-center gap-1 print:hidden">
+                                <input
+                                  type="date"
+                                  autoFocus
+                                  value={certDateDraft}
+                                  onChange={(e) => setCertDateDraft(e.target.value)}
+                                  className="rounded border border-slate-200 px-2 py-1 text-sm"
+                                />
+                                <button
+                                  type="button"
+                                  title="Guardar fecha"
+                                  className="text-emerald-600 hover:text-emerald-800 disabled:opacity-50"
+                                  disabled={!certDateDraft || updateDateMutation.isPending}
+                                  onClick={() =>
+                                    updateDateMutation.mutate({
+                                      id: certData.retention_payment_id,
+                                      retentionDate: certDateDraft,
+                                    })
+                                  }
+                                >
+                                  {updateDateMutation.isPending ? <Spinner /> : <Check className="w-4 h-4" />}
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Cancelar"
+                                  className="text-slate-400 hover:text-slate-600"
+                                  disabled={updateDateMutation.isPending}
+                                  onClick={() => setCertDateDraft(null)}
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="flex items-center gap-1">
+                                {utils.formatDate(certData.issued_date)}
+                                {!calculatedCertificate && certData.retention_payment_id && (
+                                  <button
+                                    type="button"
+                                    title="Editar fecha de la retención"
+                                    className="text-slate-400 hover:text-slate-700 print:hidden"
+                                    onClick={() =>
+                                      setCertDateDraft(
+                                        String(certData.issued_date || "").slice(0, 10) ||
+                                          DateTime.now().toISODate()
+                                      )
+                                    }
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </p>
+                            )}
                           </div>
                         </div>
 
