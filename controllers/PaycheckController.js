@@ -9,7 +9,8 @@ const _ = require("lodash");
 
 // Resuelve el proveedor (y nº de orden) de cada cheque a partir del movimiento
 // de Control vinculado (movement_id): puede provenir de una orden de pago o de
-// una factura de proveedor cargada directamente en Control.
+// una factura de proveedor cargada directamente en Control. Los cheques cargados
+// desde Cashflow se vinculan por cashflow_id y toman el proveedor del egreso.
 async function attachPaycheckSupplier(paychecks) {
   if (!paychecks?.length) return paychecks || [];
 
@@ -18,12 +19,18 @@ async function attachPaycheckSupplier(paychecks) {
       paychecks.map((p) => p.movement_id).filter((v) => v != null)
     ),
   ];
+  const cashflowIds = [
+    ...new Set(
+      paychecks.map((p) => p.cashflow_id).filter((v) => v != null)
+    ),
+  ];
   const paycheckIds = paychecks.map((p) => p.id);
 
   const [
     { data: orders },
     { data: invoices },
     { data: movementsByPaycheck },
+    { data: cashflows },
   ] = await Promise.all([
     movementIds.length
       ? supabase
@@ -44,6 +51,12 @@ async function attachPaycheckSupplier(paychecks) {
       .select("id, paycheck_id, supplier_id")
       .in("paycheck_id", paycheckIds)
       .is("deleted_at", null),
+    cashflowIds.length
+      ? supabase
+          .from("cashflow")
+          .select("id, type, provider")
+          .in("id", cashflowIds)
+      : Promise.resolve({ data: [] }),
   ]);
 
   const orderByMovement = {};
@@ -62,10 +75,20 @@ async function attachPaycheckSupplier(paychecks) {
       movementByPaycheckId[m.paycheck_id] = m;
   });
 
+  // En Cashflow, provider es un proveedor solo en los egresos (en los ingresos
+  // es un cliente).
+  const cashflowSupplierById = {};
+  (cashflows || []).forEach((c) => {
+    const supplierId = parseInt(c.provider, 10);
+    if (c.type === "EGRESO" && !Number.isNaN(supplierId))
+      cashflowSupplierById[c.id] = supplierId;
+  });
+
   const supplierIds = [
     ...new Set(
       [...(orders || []), ...(invoices || []), ...(movementsByPaycheck || [])]
         .map((r) => r.supplier_id)
+        .concat(Object.values(cashflowSupplierById))
         .filter((v) => v != null)
     ),
   ];
@@ -90,6 +113,7 @@ async function attachPaycheckSupplier(paychecks) {
       order?.supplier_id ??
       invoice?.supplier_id ??
       linkedMovement?.supplier_id ??
+      (p.cashflow_id != null ? cashflowSupplierById[p.cashflow_id] : null) ??
       null;
     return {
       ...p,
@@ -144,6 +168,7 @@ self.createPaycheck = async (req, res) => {
       due_date: req.body.due_date,
       type: req.body.type,
       movement_id: req.body.movement_id || null,
+      cashflow_id: req.body.cashflow_id || null,
     };
 
     const { data: newPaycheck, error } = await supabase

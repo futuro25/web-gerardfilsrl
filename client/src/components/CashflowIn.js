@@ -186,7 +186,7 @@ export default function CashflowIn({}) {
           due_date: chequeData.paymentDate,
           amount: Number(data.amount),
           type: "IN",
-          movement_id: movement[0].id,
+          cashflow_id: movement[0].id,
         });
       }
 

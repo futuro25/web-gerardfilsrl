@@ -233,12 +233,12 @@ export default function Cashflow() {
 
   const getPaymentInfo = (movementId, payment) => {
     if (payment === utils.getPaycheckString()) {
-      const paycheckData = paychecks?.find((p) => p.movement_id === movementId);
+      const paycheckData = paychecks?.find((p) => p.cashflow_id === movementId);
 
       return (
         <div
           className="text-xs text-gray-500 cursor-pointer"
-          onClick={() => navigate(`/cheques?id=${paycheckData.id}`)}
+          onClick={() => paycheckData && navigate(`/cheques?id=${paycheckData.id}`)}
         >{`CHEQUE # ${paycheckData?.number} ${paycheckData?.bank}`}</div>
       );
     } else {
@@ -915,7 +915,7 @@ export default function Cashflow() {
                                 Movimiento ID
                               </p>
                               <p className="text-gray-900 break-all">
-                                {cheque.movement_id}
+                                {cheque.cashflow_id ?? cheque.movement_id}
                               </p>
                             </div>
                           </div>

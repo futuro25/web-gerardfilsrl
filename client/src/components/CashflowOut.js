@@ -95,7 +95,7 @@ export default function CashflowOut() {
           due_date: chequeData.paymentDate,
           amount: Number(data.amount),
           type: "OUT",
-          movement_id: movement[0].id,
+          cashflow_id: movement[0].id,
         });
       }
 
