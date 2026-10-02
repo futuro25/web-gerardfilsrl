@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { DateTime } from "luxon";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
+import { PaperClipIcon } from "@heroicons/react/24/outline";
 import { EditIcon, TrashIcon, CloseIcon } from "./icons";
 import * as utils from "../utils/utils";
 import { Input } from "./common/Input";
@@ -17,6 +18,7 @@ import {
   useUpdatePaycheckMutation,
   useDeletePaycheckMutation,
 } from "../apis/api.paychecks";
+import { fetchInvoiceImageUrl } from "../apis/api.uploads";
 import { queryPaychecksKey } from "../apis/queryKeys";
 export default function Paychecks() {
   const canManagePaychecks = sessionStorage.username === "lgedeon";
@@ -85,9 +87,23 @@ export default function Paychecks() {
     if (!list || !search) return list || [];
     const term = search.toLowerCase();
     return list.filter((d) =>
-      (d.number && d.number.toLowerCase().includes(term)) ||
-      (d.bank && d.bank.toLowerCase().includes(term))
+      [d.number, d.bank, d.supplier_name, d.client_name, d.concept, d.order_number]
+        .some((value) => value && value.toLowerCase().includes(term))
     );
+  };
+
+  // La ventana se abre antes de pedir la URL firmada para que el navegador no
+  // la bloquee como popup.
+  const openAttachment = async (key) => {
+    const win = window.open("", "_blank");
+    try {
+      const { url } = await fetchInvoiceImageUrl(key);
+      if (win) win.location.href = url;
+      else window.open(url, "_blank");
+    } catch (e) {
+      if (win) win.close();
+      alert(e.message || "No se pudo abrir el comprobante");
+    }
   };
 
   const dataToShow = data?.filter(
@@ -411,7 +427,7 @@ export default function Paychecks() {
                           Movimiento
                         </th>
                         <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
-                          Proveedor
+                          Proveedor / Detalle
                         </th>
                         <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
                           Banco
@@ -456,18 +472,46 @@ export default function Paychecks() {
                               {paycheck.type === "IN" ? "Ingreso" : "Egreso"}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
-                              {paycheck.supplier_name ? (
-                                <div className="flex flex-col">
-                                  <span>{paycheck.supplier_name}</span>
-                                  {paycheck.order_number && (
+                              <div className="flex items-start gap-2">
+                                {paycheck.supplier_name ? (
+                                  <div className="flex flex-col">
+                                    <span>{paycheck.supplier_name}</span>
+                                    {paycheck.order_number && (
+                                      <span className="text-[10px] text-slate-400">
+                                        {paycheck.order_number}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : paycheck.client_name ? (
+                                  <div className="flex flex-col">
+                                    <span>{paycheck.client_name}</span>
                                     <span className="text-[10px] text-slate-400">
-                                      {paycheck.order_number}
+                                      Cliente
                                     </span>
-                                  )}
-                                </div>
-                              ) : (
-                                <span className="text-slate-300">—</span>
-                              )}
+                                  </div>
+                                ) : paycheck.concept ? (
+                                  <span
+                                    className="italic text-slate-400 max-w-xs truncate"
+                                    title={paycheck.concept}
+                                  >
+                                    {paycheck.concept}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300">—</span>
+                                )}
+                                {paycheck.attachment_key && (
+                                  <button
+                                    type="button"
+                                    title="Ver comprobante"
+                                    className="shrink-0 text-slate-400 hover:text-slate-700"
+                                    onClick={() =>
+                                      openAttachment(paycheck.attachment_key)
+                                    }
+                                  >
+                                    <PaperClipIcon className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
                               {paycheck.bank}

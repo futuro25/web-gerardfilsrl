@@ -10,7 +10,9 @@ const _ = require("lodash");
 // Resuelve el proveedor (y nº de orden) de cada cheque a partir del movimiento
 // de Control vinculado (movement_id): puede provenir de una orden de pago o de
 // una factura de proveedor cargada directamente en Control. Los cheques cargados
-// desde Cashflow se vinculan por cashflow_id y toman el proveedor del egreso.
+// desde Cashflow se vinculan por cashflow_id y toman el proveedor del egreso (o
+// el cliente, si es un ingreso). Cuando no hay proveedor ni cliente, el listado
+// muestra el concepto (descripción del movimiento) y su comprobante adjunto.
 async function attachPaycheckSupplier(paychecks) {
   if (!paychecks?.length) return paychecks || [];
 
@@ -30,6 +32,7 @@ async function attachPaycheckSupplier(paychecks) {
     { data: orders },
     { data: invoices },
     { data: movementsByPaycheck },
+    { data: movementsById },
     { data: cashflows },
   ] = await Promise.all([
     movementIds.length
@@ -48,13 +51,20 @@ async function attachPaycheckSupplier(paychecks) {
       : Promise.resolve({ data: [] }),
     supabase
       .from("account_movements")
-      .select("id, paycheck_id, supplier_id")
+      .select("id, paycheck_id, supplier_id, description, image_key")
       .in("paycheck_id", paycheckIds)
       .is("deleted_at", null),
+    movementIds.length
+      ? supabase
+          .from("account_movements")
+          .select("id, description, image_key")
+          .in("id", movementIds)
+          .is("deleted_at", null)
+      : Promise.resolve({ data: [] }),
     cashflowIds.length
       ? supabase
           .from("cashflow")
-          .select("id, type, provider")
+          .select("id, type, provider, description")
           .in("id", cashflowIds)
       : Promise.resolve({ data: [] }),
   ]);
@@ -74,14 +84,24 @@ async function attachPaycheckSupplier(paychecks) {
     if (m.paycheck_id != null && !movementByPaycheckId[m.paycheck_id])
       movementByPaycheckId[m.paycheck_id] = m;
   });
+  const movementById = {};
+  (movementsById || []).forEach((m) => {
+    movementById[m.id] = m;
+  });
+  const cashflowById = {};
+  (cashflows || []).forEach((c) => {
+    cashflowById[c.id] = c;
+  });
 
   // En Cashflow, provider es un proveedor solo en los egresos (en los ingresos
   // es un cliente).
   const cashflowSupplierById = {};
+  const cashflowClientById = {};
   (cashflows || []).forEach((c) => {
-    const supplierId = parseInt(c.provider, 10);
-    if (c.type === "EGRESO" && !Number.isNaN(supplierId))
-      cashflowSupplierById[c.id] = supplierId;
+    const providerId = parseInt(c.provider, 10);
+    if (Number.isNaN(providerId)) return;
+    if (c.type === "EGRESO") cashflowSupplierById[c.id] = providerId;
+    else cashflowClientById[c.id] = providerId;
   });
 
   const supplierIds = [
@@ -104,9 +124,27 @@ async function attachPaycheckSupplier(paychecks) {
     });
   }
 
+  const clientIds = [...new Set(Object.values(cashflowClientById))];
+  const clientById = {};
+  if (clientIds.length) {
+    const { data: clients } = await supabase
+      .from("clients")
+      .select("id, fantasy_name, name")
+      .in("id", clientIds);
+    (clients || []).forEach((c) => {
+      clientById[c.id] = c.fantasy_name || c.name || null;
+    });
+  }
+
   return paychecks.map((p) => {
     const linkedMovement = movementByPaycheckId[p.id] || null;
     const movementId = p.movement_id ?? linkedMovement?.id ?? null;
+    const movement =
+      (p.movement_id != null ? movementById[p.movement_id] : null) ||
+      linkedMovement;
+    const cashflow = p.cashflow_id != null ? cashflowById[p.cashflow_id] : null;
+    const clientId =
+      p.cashflow_id != null ? cashflowClientById[p.cashflow_id] ?? null : null;
     const order = movementId != null ? orderByMovement[movementId] : null;
     const invoice = movementId != null ? invoiceByMovement[movementId] : null;
     const supplierId =
@@ -120,6 +158,9 @@ async function attachPaycheckSupplier(paychecks) {
       supplier_id: supplierId,
       supplier_name: supplierId != null ? supplierById[supplierId] || null : null,
       order_number: order?.order_number || null,
+      client_name: clientId != null ? clientById[clientId] || null : null,
+      concept: movement?.description || cashflow?.description || null,
+      attachment_key: movement?.image_key || null,
     };
   });
 }
