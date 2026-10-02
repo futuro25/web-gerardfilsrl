@@ -88,25 +88,32 @@ async function syncMovementDocumentDateFromInvoice(invoice) {
 
 async function softDeletePaymentOrders({ movementId, supplierInvoiceId }) {
   const ids = new Set();
+  const paycheckIds = new Set();
 
   if (movementId) {
     const { data, error } = await supabase
       .from("payment_orders")
-      .select("id")
+      .select("id, paycheck_id")
       .eq("account_movement_id", movementId)
       .is("deleted_at", null);
     if (error) throw error;
-    (data || []).forEach((o) => ids.add(o.id));
+    (data || []).forEach((o) => {
+      ids.add(o.id);
+      if (o.paycheck_id) paycheckIds.add(o.paycheck_id);
+    });
   }
 
   if (supplierInvoiceId) {
     const { data, error } = await supabase
       .from("payment_orders")
-      .select("id")
+      .select("id, paycheck_id")
       .eq("supplier_invoice_id", supplierInvoiceId)
       .is("deleted_at", null);
     if (error) throw error;
-    (data || []).forEach((o) => ids.add(o.id));
+    (data || []).forEach((o) => {
+      ids.add(o.id);
+      if (o.paycheck_id) paycheckIds.add(o.paycheck_id);
+    });
   }
 
   if (!ids.size) return;
@@ -118,6 +125,17 @@ async function softDeletePaymentOrders({ movementId, supplierInvoiceId }) {
     .in("id", [...ids])
     .is("deleted_at", null);
   if (error) throw error;
+
+  // Cada OP con cheque tiene su propio registro en paychecks: si no se da de
+  // baja junto con la OP, el cheque queda vivo en el listado.
+  if (paycheckIds.size) {
+    const { error: paycheckError } = await supabase
+      .from("paychecks")
+      .update({ deleted_at: deletedAt })
+      .in("id", [...paycheckIds])
+      .is("deleted_at", null);
+    if (paycheckError) throw paycheckError;
+  }
 }
 
 async function softDeleteRetentionsForInvoice({ supplierInvoiceId, accountMovementId }) {
@@ -195,7 +213,7 @@ async function cascadeDeleteSupplierInvoiceForMovement(movementId) {
   return invoice;
 }
 
-/** Elimina en cascada OP, retenciones, factura, cheque vinculado y el movimiento. */
+/** Elimina en cascada OP, retenciones, factura, cheques vinculados y el movimiento. */
 async function cascadeDeleteMovementAndRelated(movement) {
   const movementId = movement.id;
 
@@ -219,15 +237,18 @@ async function cascadeDeleteMovementAndRelated(movement) {
     }
   }
 
-  if (movement.paycheck_id) {
-    const { error: paycheckError } = await supabase
-      .from("paychecks")
-      .update({ deleted_at: new Date().toISOString() })
-      .eq("id", movement.paycheck_id)
-      .is("deleted_at", null);
-    if (paycheckError) {
-      console.error("Error deleting linked paycheck:", paycheckError);
-    }
+  // Un movimiento puede tener varios cheques (uno por OP). Las OPs viejas no
+  // guardan paycheck_id, así que también se buscan por movement_id.
+  const paycheckFilter = movement.paycheck_id
+    ? `movement_id.eq.${movementId},id.eq.${movement.paycheck_id}`
+    : `movement_id.eq.${movementId}`;
+  const { error: paycheckError } = await supabase
+    .from("paychecks")
+    .update({ deleted_at: new Date().toISOString() })
+    .or(paycheckFilter)
+    .is("deleted_at", null);
+  if (paycheckError) {
+    console.error("Error deleting linked paychecks:", paycheckError);
   }
 
   await clearVepPaymentByMovementId(movementId);

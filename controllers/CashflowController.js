@@ -184,6 +184,17 @@ self.deleteCashflowById = async (req, res) => {
 
     if (error) throw error;
 
+    // El cheque cargado junto con el movimiento no debe quedar vivo en el listado
+    const { error: paycheckError } = await supabase
+      .from("paychecks")
+      .update(update)
+      .eq("cashflow_id", cashflow_id)
+      .is("deleted_at", null);
+
+    if (paycheckError) {
+      console.error("Error eliminando cheque relacionado:", paycheckError);
+    }
+
     // Also delete related taxes (hard delete)
     const { data: deletedTaxes, error: taxesError } = await supabase
       .from("taxes")
