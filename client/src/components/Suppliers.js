@@ -302,11 +302,11 @@ export default function Suppliers() {
                   <table className="border-collapse table-auto w-full text-sm">
                     <thead>
                       <tr>
-                        <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-center w-10">
-                          Estado
-                        </th>
                         <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                           Razón Social
+                        </th>
+                        <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-left">
+                          Estado CUIT
                         </th>
                         <th className="border-b  font-medium p-4  pt-0 pb-3 text-slate-400 text-left">
                           Nombre y Apellido
@@ -332,7 +332,10 @@ export default function Suppliers() {
                               index % 2 === 0 && "bg-gray-50"
                             )}
                           >
-                            <td className="border-b border-slate-100 p-4 text-center align-middle">
+                            <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
+                              {supplier.fantasy_name}
+                            </td>
+                            <td className="!text-xs text-left border-b border-slate-100 p-4">
                               <CuitStatusDot
                                 loading={
                                   cuitStatusesLoading &&
@@ -340,9 +343,6 @@ export default function Suppliers() {
                                 }
                                 status={supplierCuitStatus(supplier)}
                               />
-                            </td>
-                            <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
-                              {supplier.fantasy_name}
                             </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4  text-slate-500 ">
                               {[supplier.name, supplier.last_name]
