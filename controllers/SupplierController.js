@@ -3,7 +3,7 @@
 const self = {};
 const supabase = require("./db");
 const _ = require("lodash");
-const { getCuitStatus } = require("../services/arcaPadron");
+const { getCuitStatus, getCuitStatuses } = require("../services/arcaPadron");
 
 self.getSuppliers = async (req, res) => {
   try {
@@ -192,9 +192,38 @@ self.deleteSupplierById = async (req, res) => {
 // Estado del CUIT en el padron de ARCA (activo, condicion de IVA y Ganancias).
 self.getCuitStatus = async (req, res) => {
   try {
-    res.json(await getCuitStatus(req.params.cuit));
+    res.json(await getCuitStatus(req.params.cuit, { refresh: req.query.refresh === "1" }));
   } catch (e) {
     console.error("get cuit status", e.message);
+    res.status(e.status || 500).json({ error: e.message });
+  }
+};
+
+// Estado de varios CUITs (?cuits=a,b,c) para el listado de proveedores.
+self.getCuitStatuses = async (req, res) => {
+  try {
+    const cuits = String(req.query.cuits || "").split(",").filter(Boolean);
+    res.json(await getCuitStatuses(cuits));
+  } catch (e) {
+    console.error("get cuit statuses", e.message);
+    res.status(e.status || 500).json({ error: e.message });
+  }
+};
+
+// Estado del CUIT de un proveedor, para la orden de pago.
+self.getSupplierCuitStatus = async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("suppliers")
+      .select("cuit")
+      .eq("id", req.params.supplier_id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data?.cuit) return res.json({ sinCuit: true });
+
+    res.json(await getCuitStatus(data.cuit));
+  } catch (e) {
+    console.error("get supplier cuit status", e.message);
     res.status(e.status || 500).json({ error: e.message });
   }
 };

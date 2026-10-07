@@ -16,6 +16,7 @@ import {
   fetchPaymentOrdersByInvoice,
 } from "../apis/api.paymentorders";
 import { fetchRetentionByInvoice } from "../apis/api.retentioncertificates";
+import { fetchSupplierCuitStatus } from "../apis/api.suppliers";
 import {
   querySupplierInvoiceByMovementKey,
   queryPaymentOrdersNextNumberKey,
@@ -25,9 +26,11 @@ import {
   queryPurchaseInvoicesKey,
   querySupplierAccountsListKey,
   queryRetentionByInvoiceKey,
+  querySupplierCuitStatusKey,
 } from "../apis/queryKeys";
 import { retentionLookupParams, invoiceSupportsRetention } from "../utils/retentionInvoice";
 import { PAYMENT_METHOD_OPTIONS } from "./PaymentOrderFields";
+import { getCuitStatusInfo } from "./CuitStatus";
 
 const today = DateTime.now().toFormat("yyyy-MM-dd");
 
@@ -107,6 +110,24 @@ export default function PaymentOrderDialog({
         : fetchPaymentOrdersByInvoice(ordersInvoiceId),
     enabled: open && Boolean(ordersMovementId || ordersInvoiceId),
   });
+
+  // Estado del CUIT del proveedor en ARCA. No bloquea la carga del formulario.
+  const {
+    data: cuitStatus,
+    isLoading: cuitStatusLoading,
+    error: cuitStatusError,
+  } = useQuery({
+    queryKey: querySupplierCuitStatusKey(item?.supplier_id),
+    queryFn: () => fetchSupplierCuitStatus(item.supplier_id),
+    enabled: open && Boolean(item?.supplier_id),
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+  const cuitInfo = item?.supplier_id
+    ? getCuitStatusInfo(cuitStatusError ? { error: cuitStatusError.message } : cuitStatus, {
+        loading: cuitStatusLoading,
+      })
+    : null;
 
   const existingOrders = ordersRes?.data || [];
   const paidSoFar = existingOrders.reduce(
@@ -227,6 +248,13 @@ export default function PaymentOrderDialog({
 
   const onSubmit = async (data) => {
     if (!item) return;
+    if (cuitInfo?.tone === "inactive") {
+      const confirmed = window.confirm(
+        `${cuitInfo.label}.\n\n` +
+          `¿Seguro que querés emitir la orden de pago igualmente?`
+      );
+      if (!confirmed) return;
+    }
     const payAmount = parseFloat(data.amount);
     if (payAmount > remainingAmount + 0.009) {
       const excess = Math.round((payAmount - remainingAmount) * 100) / 100;
@@ -335,6 +363,22 @@ export default function PaymentOrderDialog({
           </div>
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+            {cuitInfo?.tone === "active" && (
+              <p className="text-sm font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">
+                {cuitInfo.label}
+              </p>
+            )}
+            {cuitInfo?.tone === "inactive" && (
+              <p className="text-sm font-medium text-red-800 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                {cuitInfo.label}
+              </p>
+            )}
+            {cuitInfo?.tone === "unknown" && (
+              <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
+                {cuitInfo.label}
+              </p>
+            )}
+
             {/* Order number */}
             <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
               <span className="text-xs text-slate-500 uppercase tracking-wide">

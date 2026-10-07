@@ -10,6 +10,11 @@ export const getFeatureFlagValue = (feature) => {
 
 export const tw = String.raw;
 
+/** CUIT solo con digitos ("30-71558105-8" -> "30715581058"); "" si no hay. */
+export function normalizeCuitDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
 export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }

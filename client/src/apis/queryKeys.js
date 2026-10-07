@@ -7,6 +7,8 @@ export const queryInvoicesKey = () => ["invoices"];
 export const queryDeliveryKey = () => ["deliveries"];
 export const queryCashflowKey = () => ["cashflow"];
 export const querySuppliersKey = () => ["suppliers"];
+export const queryCuitStatusesKey = (cuits) => ["cuit-statuses", cuits];
+export const querySupplierCuitStatusKey = (supplierId) => ["supplier-cuit-status", supplierId];
 export const queryProductsKey = () => ["products"];
 export const queryDeliveryNotesKey = () => ["deliverynotes"];
 export const queryDeliveryNotesByIdKey = (id) => ["deliverynote", id];

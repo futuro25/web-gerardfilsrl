@@ -181,7 +181,20 @@ async function storeTicket(env, ticket) {
   if (error) console.error("arca_tokens: no se pudo guardar el ticket", error.message);
 }
 
-async function getTicket() {
+// Si varias consultas arrancan a la vez sin ticket, comparten un unico pedido a
+// WSAA: un segundo pedido simultaneo seria rechazado por ARCA.
+let pendingTicket = null;
+
+function getTicket() {
+  if (!pendingTicket) {
+    pendingTicket = requestTicket().finally(() => {
+      pendingTicket = null;
+    });
+  }
+  return pendingTicket;
+}
+
+async function requestTicket() {
   const env = getEnv();
   if (cachedTicket?.env === env && isTicketValid(cachedTicket)) return cachedTicket;
 
@@ -287,10 +300,7 @@ function formatPersona(cuit, persona) {
   };
 }
 
-async function getCuitStatus(rawCuit) {
-  const cuit = normalizeCuit(rawCuit);
-  if (!isValidCuit(cuit)) throw new ArcaError("CUIT invalido", 400);
-
+async function fetchCuitStatus(cuit) {
   const { cuit: representada } = getCredentials();
   const { token, sign } = await getTicket();
 
@@ -320,4 +330,119 @@ async function getCuitStatus(rawCuit) {
   return formatPersona(cuit, body.getPersona_v2Response.personaReturn);
 }
 
-module.exports = { getCuitStatus, isValidCuit, normalizeCuit, ArcaError };
+// ---------------------------------------------------------------------------
+// Cache en base: el estado de un CUIT cambia poco y el listado de proveedores
+// consultaria ARCA una vez por proveedor en cada carga.
+// ---------------------------------------------------------------------------
+
+const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const BULK_CONCURRENCY = 4;
+
+function isFresh(row) {
+  return row && Date.now() - new Date(row.checked_at).getTime() < CACHE_MAX_AGE_MS;
+}
+
+async function readCache(cuits) {
+  const { data, error } = await supabase
+    .from("arca_cuit_status")
+    .select("cuit, status, checked_at")
+    .in("cuit", cuits);
+  if (error) {
+    console.error("arca_cuit_status: no se pudo leer el cache", error.message);
+    return {};
+  }
+  return Object.fromEntries((data || []).map((row) => [row.cuit, row]));
+}
+
+async function writeCache(status) {
+  const { error } = await supabase.from("arca_cuit_status").upsert({
+    cuit: status.cuit,
+    active: status.activo,
+    status,
+    checked_at: status.consultadoEn,
+  });
+  if (error) console.error("arca_cuit_status: no se pudo guardar", error.message);
+}
+
+async function fetchAndCache(cuit) {
+  let status;
+  try {
+    status = await fetchCuitStatus(cuit);
+  } catch (e) {
+    if (e.status !== 404) throw e;
+    // Un CUIT que no existe en el padron se guarda como inactivo.
+    status = {
+      cuit,
+      activo: false,
+      estadoClave: "INEXISTENTE",
+      razonSocial: null,
+      observaciones: [e.message],
+      consultadoEn: new Date().toISOString(),
+    };
+  }
+  await writeCache(status);
+  return status;
+}
+
+async function getCuitStatus(rawCuit, { refresh = false } = {}) {
+  const cuit = normalizeCuit(rawCuit);
+  if (!isValidCuit(cuit)) throw new ArcaError("CUIT invalido", 400);
+
+  const cached = refresh ? null : (await readCache([cuit]))[cuit];
+  if (isFresh(cached)) return cached.status;
+  try {
+    return await fetchAndCache(cuit);
+  } catch (e) {
+    // Si ARCA no responde, mejor un dato viejo que ninguno.
+    if (cached) return { ...cached.status, desactualizado: true };
+    throw e;
+  }
+}
+
+function summarize(status) {
+  return {
+    cuit: status.cuit,
+    activo: status.activo,
+    estadoClave: status.estadoClave,
+    razonSocial: status.razonSocial,
+    consultadoEn: status.consultadoEn,
+    ...(status.desactualizado ? { desactualizado: true } : {}),
+  };
+}
+
+// Devuelve { [cuit]: resumen | { error } } para varios CUITs a la vez.
+async function getCuitStatuses(rawCuits) {
+  const result = {};
+  const cuits = [...new Set(rawCuits.map(normalizeCuit).filter(Boolean))];
+  const valid = cuits.filter((cuit) => {
+    if (isValidCuit(cuit)) return true;
+    result[cuit] = { error: "CUIT invalido" };
+    return false;
+  });
+  if (!valid.length) return result;
+
+  const cache = await readCache(valid);
+  const pending = [];
+  valid.forEach((cuit) => {
+    if (isFresh(cache[cuit])) result[cuit] = summarize(cache[cuit].status);
+    else pending.push(cuit);
+  });
+  if (pending.length) getCredentials(); // corta antes si ARCA no esta configurado
+
+  const worker = async () => {
+    while (pending.length) {
+      const cuit = pending.shift();
+      try {
+        result[cuit] = summarize(await fetchAndCache(cuit));
+      } catch (e) {
+        result[cuit] = cache[cuit]
+          ? summarize({ ...cache[cuit].status, desactualizado: true })
+          : { error: e.message };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: BULK_CONCURRENCY }, worker));
+  return result;
+}
+
+module.exports = { getCuitStatus, getCuitStatuses, isValidCuit, normalizeCuit, ArcaError };

@@ -111,3 +111,23 @@ export const useSuppliersByEmailQuery = async (search) => {
 
   return res.json();
 };
+
+/** Estado en ARCA de varios CUITs: { [cuit]: { activo, estadoClave, ... } | { error } }. */
+export const fetchCuitStatuses = async (cuits) => {
+  const res = await fetch(
+    `${BASE_URL}/cuit/status?cuits=${encodeURIComponent(cuits.join(","))}`
+  );
+  if (!res.ok) {
+    await throwServerError(res);
+  }
+  return res.json();
+};
+
+/** Estado en ARCA del CUIT de un proveedor. */
+export const fetchSupplierCuitStatus = async (supplierId) => {
+  const res = await fetch(`${BASE_URL}/${supplierId}/cuit-status`);
+  if (!res.ok) {
+    await throwServerError(res);
+  }
+  return res.json();
+};

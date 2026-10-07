@@ -14,8 +14,10 @@ import {
   useCreateSupplierMutation,
   useUpdateSupplierMutation,
   useDeleteSupplierMutation,
+  fetchCuitStatuses,
 } from "../apis/api.suppliers";
-import { querySuppliersKey } from "../apis/queryKeys";
+import { querySuppliersKey, queryCuitStatusesKey } from "../apis/queryKeys";
+import { CuitStatusDot } from "./CuitStatus";
 import config from "../config";
 
 var moment = require("moment");
@@ -44,6 +46,29 @@ export default function Suppliers() {
     queryKey: querySuppliersKey(),
     queryFn: useSuppliersQuery,
   });
+
+  // Estado en ARCA de todos los proveedores (el backend lo cachea 6 hs).
+  const cuits = [
+    ...new Set((data || []).map((s) => utils.normalizeCuitDigits(s.cuit)).filter(Boolean)),
+  ].sort();
+  const {
+    data: cuitStatuses,
+    isLoading: cuitStatusesLoading,
+    error: cuitStatusesError,
+  } = useQuery({
+    queryKey: queryCuitStatusesKey(cuits),
+    queryFn: () => fetchCuitStatuses(cuits),
+    enabled: cuits.length > 0,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+
+  const supplierCuitStatus = (supplier) => {
+    const cuit = utils.normalizeCuitDigits(supplier.cuit);
+    if (!cuit) return { sinCuit: true };
+    if (cuitStatusesError) return { error: cuitStatusesError.message };
+    return cuitStatuses?.[cuit];
+  };
 
   useEffect(() => {
     if (createParam) {
@@ -277,6 +302,9 @@ export default function Suppliers() {
                   <table className="border-collapse table-auto w-full text-sm">
                     <thead>
                       <tr>
+                        <th className="border-b  font-medium p-4 pt-0 pb-3 text-slate-400 text-center w-10">
+                          Estado
+                        </th>
                         <th className="border-b  font-medium p-4 pr-8 pt-0 pb-3 text-slate-400 text-left">
                           Razón Social
                         </th>
@@ -304,6 +332,15 @@ export default function Suppliers() {
                               index % 2 === 0 && "bg-gray-50"
                             )}
                           >
+                            <td className="border-b border-slate-100 p-4 text-center align-middle">
+                              <CuitStatusDot
+                                loading={
+                                  cuitStatusesLoading &&
+                                  Boolean(utils.normalizeCuitDigits(supplier.cuit))
+                                }
+                                status={supplierCuitStatus(supplier)}
+                              />
+                            </td>
                             <td className="!text-xs text-left border-b border-slate-100  p-4 pr-8 text-slate-500 ">
                               {supplier.fantasy_name}
                             </td>
