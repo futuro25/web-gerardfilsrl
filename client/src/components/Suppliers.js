@@ -192,6 +192,7 @@ export default function Suppliers() {
     reset();
     const user = data.find((user) => user.id === user_id) || null;
     setSelectedSupplier(user);
+    setViewOnly(false);
     setStage("CREATE");
   };
 
@@ -204,6 +205,7 @@ export default function Suppliers() {
 
   const onCreate = () => {
     setSelectedSupplier(null);
+    setViewOnly(false);
     setStage("CREATE");
   };
 
@@ -235,7 +237,8 @@ export default function Suppliers() {
     if (stage === "LIST") {
       navigate("/home");
     } else {
-      setStage("LIST");
+      // Igual que Cancelar: si no, el modo vista queda activo para la proxima edicion.
+      onCancel();
     }
   };
 
