@@ -175,6 +175,10 @@ router.get("/suppliers/email/:email", (req, res, next) =>
   SupplierController.getSupplierByEmail(req, res, next)
 );
 
+router.get("/suppliers/cuit/:cuit/status", (req, res, next) =>
+  SupplierController.getCuitStatus(req, res, next)
+);
+
 router.post("/suppliers", (req, res, next) =>
   SupplierController.createSupplier(req, res, next)
 );

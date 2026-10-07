@@ -3,6 +3,7 @@
 const self = {};
 const supabase = require("./db");
 const _ = require("lodash");
+const { getCuitStatus } = require("../services/arcaPadron");
 
 self.getSuppliers = async (req, res) => {
   try {
@@ -185,6 +186,16 @@ self.deleteSupplierById = async (req, res) => {
   } catch (e) {
     console.error("delete supplier by id", e.message);
     res.status(500).json({ error: e.message });
+  }
+};
+
+// Estado del CUIT en el padron de ARCA (activo, condicion de IVA y Ganancias).
+self.getCuitStatus = async (req, res) => {
+  try {
+    res.json(await getCuitStatus(req.params.cuit));
+  } catch (e) {
+    console.error("get cuit status", e.message);
+    res.status(e.status || 500).json({ error: e.message });
   }
 };
 
