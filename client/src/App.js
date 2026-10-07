@@ -72,11 +72,9 @@ export default function App() {
   const location = useLocation();
   const [open, setOpen] = useState(false); // Moved useState hook to top level
 
-  // Christian Mastronardi: acceso restringido a Stock, Pedidos y Egreso de Mercaderia.
-  const restrictedRoutes =
-    username === "cmastronardi"
-      ? ["stock", "pedidos", "remitos", "logout", "", "home"]
-      : null;
+  // Christian Mastronardi: acceso a todo excepto Control y Control 2.
+  const blockedRoutes =
+    username === "cmastronardi" ? ["control", "control2"] : null;
 
   if (user === undefined || user === null) {
     return (
@@ -100,8 +98,8 @@ export default function App() {
   }
 
   if (
-    restrictedRoutes &&
-    !restrictedRoutes.includes(location.pathname.replace(/^\//, ""))
+    blockedRoutes &&
+    blockedRoutes.includes(location.pathname.replace(/^\/|\/$/g, ""))
   ) {
     return <Navigate to="/" replace />;
   }
@@ -140,7 +138,9 @@ export default function App() {
           <Route path="libros-selector" element={<BooksNavigation />} />
           <Route path="exportacion-fiscal" element={<FiscalExports />} />
           <Route path="control" element={<AccountControl />} />
-          <Route path="control2" element={<AccountControl2 />} />
+          {username === "lgedeon" && (
+            <Route path="control2" element={<AccountControl2 />} />
+          )}
           <Route path="cuentas-corrientes" element={<SupplierCurrentAccounts />} />
           <Route path="facturas-pendientes" element={<PendingInvoicesList />} />
           <Route path="facturas-compras" element={<PurchaseInvoices />} />

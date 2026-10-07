@@ -70,16 +70,21 @@ export default function Home() {
     navItems.push({ label: "Auditoria", icon: History, path: "/auditoria", order: 14 });
   }
 
-  // Acceso restringido para Christian Mastronardi: solo estos 3 modulos.
+  // Christian Mastronardi: acceso a todo excepto Control y Control 2.
   if (sessionStorage.username === "cmastronardi") {
-    const allowedPaths = ["/stock", "/pedidos", "/remitos", "/logout"];
-    navItems = navItems.filter((item) => allowedPaths.includes(item.path));
+    const blockedPaths = ["/control", "/control2"];
+    navItems = navItems.filter((item) => !blockedPaths.includes(item.path));
   }
 
   // Acceso adicional para Carolina Lacunza: En Linea y Auditoria.
   if (sessionStorage.username === "caro") {
     navItems.push({ label: "En Linea", icon: Activity, path: "/en-linea", order: 13 });
     navItems.push({ label: "Auditoria", icon: History, path: "/auditoria", order: 14 });
+  }
+
+  // Control 2 temporalmente visible solo para lgedeon.
+  if (sessionStorage.username !== "lgedeon") {
+    navItems = navItems.filter((item) => item.path !== "/control2");
   }
 
   navItems.sort((a, b) => a.order - b.order);
