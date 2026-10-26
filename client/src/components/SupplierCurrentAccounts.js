@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftIcon } from "@heroicons/react/24/solid";
-import { Eye, Receipt } from "lucide-react";
+import { Eye, Receipt, FileSpreadsheet } from "lucide-react";
+import { saveAs } from "file-saver";
 import { DateTime } from "luxon";
 import { EyeIcon } from "./icons";
 import { Input } from "./common/Input";
@@ -10,6 +11,7 @@ import Spinner from "./common/Spinner";
 import PurchaseInvoiceDetailDialog from "./PurchaseInvoiceDetailDialog";
 import PaymentOrderViewDialog from "./PaymentOrderViewDialog";
 import * as utils from "../utils/utils";
+import { buildSupplierAccountsExcelBlob } from "../utils/supplierAccountsExcelExport";
 import {
   fetchAllSupplierAccounts,
   fetchSupplierAccount,
@@ -215,6 +217,14 @@ export default function SupplierCurrentAccounts() {
       ? accountsList.filter((row) => isZeroBalance(row.summary?.balance)).length
       : 0;
 
+  const downloadExcel = () => {
+    const blob = buildSupplierAccountsExcelBlob(filteredList);
+    saveAs(
+      blob,
+      `cuentas_corrientes_${DateTime.now().toFormat("yyyy-MM-dd")}.xlsx`
+    );
+  };
+
   const movements = accountData?.movements || [];
   const summary = accountData?.summary;
   const detailSupplier = accountData?.supplier;
@@ -258,6 +268,16 @@ export default function SupplierCurrentAccounts() {
                 />
                 Ocultar saldo en cero
               </label>
+              <button
+                type="button"
+                onClick={downloadExcel}
+                disabled={listLoading || filteredList.length === 0}
+                className="inline-flex items-center justify-center gap-2 shrink-0 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-emerald-700 disabled:opacity-50"
+                title="Descargar listado en Excel"
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                Descargar Excel
+              </button>
             </div>
 
             {listLoading && <Spinner />}
