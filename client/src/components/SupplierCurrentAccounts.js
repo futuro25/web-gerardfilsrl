@@ -231,6 +231,8 @@ export default function SupplierCurrentAccounts() {
   const supplierFiscalClose = (supplier) =>
     getFiscalYearClose(cuitStatuses?.[utils.normalizeCuitDigits(supplier?.cuit)]);
 
+  const fiscalCloseMonth = (supplier) => supplierFiscalClose(supplier)?.month;
+
   const searchLower = search.trim().toLowerCase();
   const matchesSearch = (row) => {
     if (!searchLower) return true;
@@ -260,7 +262,7 @@ export default function SupplierCurrentAccounts() {
   // nada del saldo a fin de ese año.
   const downloadExcel = () => {
     if (exportYear === "ACTUAL") {
-      const blob = buildSupplierAccountsExcelBlob(filteredList);
+      const blob = buildSupplierAccountsExcelBlob(filteredList, fiscalCloseMonth);
       saveAs(
         blob,
         `cuentas_corrientes_${DateTime.now().toFormat("yyyy-MM-dd")}.xlsx`
@@ -270,7 +272,8 @@ export default function SupplierCurrentAccounts() {
     const year = Number(exportYear);
     const blob = buildSupplierAccountsYearExcelBlob(
       (accountsList || []).filter(matchesSearch),
-      year
+      year,
+      fiscalCloseMonth
     );
     saveAs(blob, `cuentas_corrientes_${year}.xlsx`);
   };

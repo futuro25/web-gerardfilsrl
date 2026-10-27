@@ -1,6 +1,13 @@
 import * as XLSX from "xlsx-js-style";
 
-const HEADERS = ["Proveedor", "Razón social", "CUIT", "Movimientos", "Saldo"];
+const HEADERS = [
+  "Proveedor",
+  "Razón social",
+  "CUIT",
+  "Cierre ejercicio",
+  "Movimientos",
+  "Saldo",
+];
 
 const HEADER_STYLE = {
   font: { bold: true, color: { rgb: "FF000000" } },
@@ -74,26 +81,28 @@ function toBlob(worksheet, sheetName) {
 /**
  * Genera el .xlsx en el navegador con el listado de proveedores y su saldo.
  * `rows` son los items de /api/supplier-accounts ({ supplier, summary, movement_count }).
+ * `fiscalCloseOf(supplier)` devuelve el mes de cierre de ejercicio según ARCA.
  */
-export function buildSupplierAccountsExcelBlob(rows) {
+export function buildSupplierAccountsExcelBlob(rows, fiscalCloseOf = () => "") {
   const data = rows.map((row) => {
     const s = row.supplier || {};
     return [
       s.fantasy_name || s.name || "",
       legalName(s),
       s.cuit || "",
+      fiscalCloseOf(s) || "",
       row.movement_count ?? 0,
       round2(row.summary?.balance),
     ];
   });
 
-  const total = round2(data.reduce((acc, r) => acc + r[4], 0));
+  const total = round2(data.reduce((acc, r) => acc + r[5], 0));
   const worksheet = buildSheet(
     HEADERS,
     data,
-    ["TOTAL", "", "", "", total],
-    [4],
-    [36, 36, 16, 13, 18]
+    ["TOTAL", "", "", "", "", total],
+    [5],
+    [36, 36, 16, 16, 13, 18]
   );
   return toBlob(worksheet, "Cuentas corrientes");
 }
@@ -115,12 +124,17 @@ export function supplierAccountYears(rows) {
  * al 31/12 (o a hoy si es el año en curso). Se omiten los proveedores sin
  * saldo ni movimientos en el año.
  */
-export function buildSupplierAccountsYearExcelBlob(rows, year) {
+export function buildSupplierAccountsYearExcelBlob(
+  rows,
+  year,
+  fiscalCloseOf = () => ""
+) {
   const isCurrent = year === new Date().getFullYear();
   const headers = [
     "Proveedor",
     "Razón social",
     "CUIT",
+    "Cierre ejercicio",
     `Saldo al 01/01/${year}`,
     `Facturado ${year}`,
     `Pagado ${year}`,
@@ -150,6 +164,7 @@ export function buildSupplierAccountsYearExcelBlob(rows, year) {
       s.fantasy_name || s.name || "",
       legalName(s),
       s.cuit || "",
+      fiscalCloseOf(s) || "",
       round2(opening),
       round2(debit),
       round2(credit),
@@ -161,9 +176,9 @@ export function buildSupplierAccountsYearExcelBlob(rows, year) {
   const worksheet = buildSheet(
     headers,
     data,
-    ["TOTAL", "", "", sum(3), sum(4), sum(5), sum(6)],
-    [3, 4, 5, 6],
-    [36, 36, 16, 20, 18, 18, 20]
+    ["TOTAL", "", "", "", sum(4), sum(5), sum(6), sum(7)],
+    [4, 5, 6, 7],
+    [36, 36, 16, 16, 20, 18, 18, 20]
   );
   return toBlob(worksheet, `Cuentas corrientes ${year}`);
 }
