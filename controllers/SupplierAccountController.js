@@ -346,6 +346,56 @@ function computeSummary(
   };
 }
 
+function yearOf(date) {
+  const y = parseInt(String(date || "").slice(0, 4), 10);
+  return Number.isFinite(y) ? y : null;
+}
+
+/**
+ * Movimientos agrupados por año (fecha propia de cada movimiento, no la de la
+ * factura que concilian): debit suma deuda, credit la cancela. Con el mismo
+ * criterio de signo que computeSummary, así la suma de todos los años da el saldo.
+ */
+function computeYearly(
+  cashflowRows,
+  supplierInvoices,
+  paymentOrders,
+  retentions,
+  creditNotes
+) {
+  const yearly = {};
+  const add = (date, field, amount) => {
+    const year = yearOf(date) ?? "sin_fecha";
+    if (!yearly[year]) yearly[year] = { debit: 0, credit: 0 };
+    yearly[year][field] += amount;
+  };
+
+  supplierCashflowRows(cashflowRows).forEach((r) => {
+    const abs = Math.abs(parseAmount(r.amount));
+    const reference = r.reference ? String(r.reference).trim() : "";
+    const isInvoice = r.type === "EGRESO" && reference;
+    add(r.date, r.type === "INGRESO" || isInvoice ? "debit" : "credit", abs);
+  });
+  (supplierInvoices || []).forEach((inv) =>
+    add(effectiveInvoiceDate(inv), "debit", parseAmount(inv.total ?? inv.amount))
+  );
+  (paymentOrders || []).forEach((po) =>
+    add(
+      po.payment_date || po.created_at?.slice?.(0, 10),
+      "credit",
+      Math.abs(parseAmount(po.amount))
+    )
+  );
+  (retentions || []).forEach((rp) =>
+    add(rp.issue_date, "credit", Math.abs(parseAmount(rp.retention_amount)))
+  );
+  (creditNotes || []).forEach((cn) =>
+    add(cn.date, "credit", Math.abs(parseAmount(cn.amount)))
+  );
+
+  return yearly;
+}
+
 async function buildMergedAccountData(
   cashflowRows,
   supplierInvoices,
@@ -445,7 +495,7 @@ self.getAllSupplierAccounts = async (req, res) => {
     const { data: paymentOrders, error: paymentOrdersError } = await supabase
       .from("payment_orders")
       .select(
-        "supplier_id, supplier_invoice_id, cashflow_id, account_movement_id, amount"
+        "supplier_id, supplier_invoice_id, cashflow_id, account_movement_id, amount, payment_date, created_at"
       )
       .is("deleted_at", null);
 
@@ -511,9 +561,18 @@ self.getAllSupplierAccounts = async (req, res) => {
         supplierCreditNotes
       );
 
+      const yearly = computeYearly(
+        supplierCashflow,
+        supplierControlInvoices,
+        supplierOrders,
+        supplierRetentions,
+        supplierCreditNotes
+      );
+
       return {
         supplier,
         summary,
+        yearly,
         movement_count:
           supplierCashflow.length +
           supplierControlInvoices.length +

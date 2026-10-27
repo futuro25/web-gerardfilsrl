@@ -270,6 +270,11 @@ function formatPersona(cuit, persona) {
     estadoClave: generales.estadoClave || null,
     razonSocial,
     tipoPersona: generales.tipoPersona || null,
+    // Mes (1-12) de cierre del ejercicio comercial. Las personas fisicas cierran
+    // en diciembre y ARCA a veces no lo informa para ellas.
+    mesCierre:
+      Number(generales.mesCierre) ||
+      (generales.tipoPersona === "FISICA" ? 12 : null),
     domicilioFiscal: domicilio
       ? {
           direccion: domicilio.direccion || null,
@@ -338,8 +343,20 @@ async function fetchCuitStatus(cuit) {
 const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const BULK_CONCURRENCY = 4;
 
+// Los registros guardados antes de que se agregara mesCierre traen el dato
+// derivado si es persona fisica (diciembre); el resto se vuelve a consultar.
+function withMesCierre(status) {
+  if (!status || status.mesCierre !== undefined) return status;
+  if (status.tipoPersona === "FISICA") return { ...status, mesCierre: 12 };
+  return status;
+}
+
 function isFresh(row) {
-  return row && Date.now() - new Date(row.checked_at).getTime() < CACHE_MAX_AGE_MS;
+  return (
+    row &&
+    withMesCierre(row.status).mesCierre !== undefined &&
+    Date.now() - new Date(row.checked_at).getTime() < CACHE_MAX_AGE_MS
+  );
 }
 
 async function readCache(cuits) {
@@ -376,6 +393,7 @@ async function fetchAndCache(cuit) {
       activo: false,
       estadoClave: "INEXISTENTE",
       razonSocial: null,
+      mesCierre: null,
       observaciones: [e.message],
       consultadoEn: new Date().toISOString(),
     };
@@ -389,22 +407,24 @@ async function getCuitStatus(rawCuit, { refresh = false } = {}) {
   if (!isValidCuit(cuit)) throw new ArcaError("CUIT invalido", 400);
 
   const cached = refresh ? null : (await readCache([cuit]))[cuit];
-  if (isFresh(cached)) return cached.status;
+  if (isFresh(cached)) return withMesCierre(cached.status);
   try {
     return await fetchAndCache(cuit);
   } catch (e) {
     // Si ARCA no responde, mejor un dato viejo que ninguno.
-    if (cached) return { ...cached.status, desactualizado: true };
+    if (cached) return { ...withMesCierre(cached.status), desactualizado: true };
     throw e;
   }
 }
 
-function summarize(status) {
+function summarize(rawStatus) {
+  const status = withMesCierre(rawStatus);
   return {
     cuit: status.cuit,
     activo: status.activo,
     estadoClave: status.estadoClave,
     razonSocial: status.razonSocial,
+    mesCierre: status.mesCierre ?? null,
     consultadoEn: status.consultadoEn,
     ...(status.desactualizado ? { desactualizado: true } : {}),
   };
@@ -427,8 +447,7 @@ async function getCuitStatuses(rawCuits) {
     if (isFresh(cache[cuit])) result[cuit] = summarize(cache[cuit].status);
     else pending.push(cuit);
   });
-  if (pending.length) getCredentials(); // corta antes si ARCA no esta configurado
-
+  // Sin credenciales de ARCA cada consulta falla enseguida y se usa el cache.
   const worker = async () => {
     while (pending.length) {
       const cuit = pending.shift();

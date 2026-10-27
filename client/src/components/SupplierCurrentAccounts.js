@@ -11,17 +11,25 @@ import Spinner from "./common/Spinner";
 import PurchaseInvoiceDetailDialog from "./PurchaseInvoiceDetailDialog";
 import PaymentOrderViewDialog from "./PaymentOrderViewDialog";
 import * as utils from "../utils/utils";
-import { buildSupplierAccountsExcelBlob } from "../utils/supplierAccountsExcelExport";
+import {
+  buildSupplierAccountsExcelBlob,
+  buildSupplierAccountsYearExcelBlob,
+  supplierAccountYears,
+} from "../utils/supplierAccountsExcelExport";
 import {
   fetchAllSupplierAccounts,
   fetchSupplierAccount,
 } from "../apis/api.supplieraccounts";
 import { fetchPurchaseInvoices } from "../apis/api.supplierinvoices";
+import { fetchCuitStatuses, fetchSupplierCuitStatus } from "../apis/api.suppliers";
 import {
   querySupplierAccountsListKey,
   querySupplierAccountKey,
   queryPurchaseInvoicesKey,
+  queryCuitStatusesKey,
+  querySupplierCuitStatusKey,
 } from "../apis/queryKeys";
+import { getFiscalYearClose } from "./CuitStatus";
 
 function categoryLabel(m) {
   if (m.category === "FACTURA_CONTROL") return "Factura";
@@ -104,6 +112,7 @@ export default function SupplierCurrentAccounts() {
   const [selectedSupplierId, setSelectedSupplierId] = useState(null);
   const [search, setSearch] = useState("");
   const [hideZeroBalance, setHideZeroBalance] = useState(true);
+  const [exportYear, setExportYear] = useState("ACTUAL");
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [poDialogOpen, setPoDialogOpen] = useState(false);
@@ -128,6 +137,15 @@ export default function SupplierCurrentAccounts() {
     queryFn: () => fetchSupplierAccount(selectedSupplierId),
     enabled: stage === "DETAIL" && Boolean(selectedSupplierId),
   });
+
+  const { data: detailCuitStatus, isLoading: detailCuitLoading } = useQuery({
+    queryKey: querySupplierCuitStatusKey(selectedSupplierId),
+    queryFn: () => fetchSupplierCuitStatus(selectedSupplierId),
+    enabled: stage === "DETAIL" && Boolean(selectedSupplierId),
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+  const detailFiscalClose = getFiscalYearClose(detailCuitStatus);
 
   const { data: purchaseInvoicesRes } = useQuery({
     queryKey: queryPurchaseInvoicesKey({
@@ -191,25 +209,46 @@ export default function SupplierCurrentAccounts() {
     }
   };
 
+  // Cierre de ejercicio de cada proveedor según ARCA (cacheado en el servidor).
+  const cuits = useMemo(
+    () =>
+      [
+        ...new Set(
+          (accountsList || [])
+            .map((row) => utils.normalizeCuitDigits(row.supplier?.cuit))
+            .filter(Boolean)
+        ),
+      ].sort(),
+    [accountsList]
+  );
+  const { data: cuitStatuses, isLoading: cuitStatusesLoading } = useQuery({
+    queryKey: queryCuitStatusesKey(cuits),
+    queryFn: () => fetchCuitStatuses(cuits),
+    enabled: cuits.length > 0,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+  const supplierFiscalClose = (supplier) =>
+    getFiscalYearClose(cuitStatuses?.[utils.normalizeCuitDigits(supplier?.cuit)]);
+
   const searchLower = search.trim().toLowerCase();
+  const matchesSearch = (row) => {
+    if (!searchLower) return true;
+    const s = row.supplier;
+    const haystack = [s.fantasy_name, s.name, s.last_name, s.cuit]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(searchLower);
+  };
   const filteredList =
     accountsList?.filter((row) => {
       if (hideZeroBalance && isZeroBalance(row.summary?.balance)) {
         return false;
       }
-      if (!searchLower) return true;
-      const s = row.supplier;
-      const haystack = [
-        s.fantasy_name,
-        s.name,
-        s.last_name,
-        s.cuit,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(searchLower);
+      return matchesSearch(row);
     }) ?? [];
+  const exportYears = supplierAccountYears(accountsList);
 
   const totalSuppliers = accountsList?.length ?? 0;
   const hiddenZeroCount =
@@ -217,12 +256,23 @@ export default function SupplierCurrentAccounts() {
       ? accountsList.filter((row) => isZeroBalance(row.summary?.balance)).length
       : 0;
 
+  // Por año no se aplica "ocultar saldo en cero": el saldo de hoy no dice
+  // nada del saldo a fin de ese año.
   const downloadExcel = () => {
-    const blob = buildSupplierAccountsExcelBlob(filteredList);
-    saveAs(
-      blob,
-      `cuentas_corrientes_${DateTime.now().toFormat("yyyy-MM-dd")}.xlsx`
+    if (exportYear === "ACTUAL") {
+      const blob = buildSupplierAccountsExcelBlob(filteredList);
+      saveAs(
+        blob,
+        `cuentas_corrientes_${DateTime.now().toFormat("yyyy-MM-dd")}.xlsx`
+      );
+      return;
+    }
+    const year = Number(exportYear);
+    const blob = buildSupplierAccountsYearExcelBlob(
+      (accountsList || []).filter(matchesSearch),
+      year
     );
+    saveAs(blob, `cuentas_corrientes_${year}.xlsx`);
   };
 
   const movements = accountData?.movements || [];
@@ -268,10 +318,26 @@ export default function SupplierCurrentAccounts() {
                 />
                 Ocultar saldo en cero
               </label>
+              <select
+                value={exportYear}
+                onChange={(e) => setExportYear(e.target.value)}
+                className="shrink-0 rounded border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700 shadow"
+                title="Qué saldo exportar"
+              >
+                <option value="ACTUAL">Saldo actual</option>
+                {exportYears.map((y) => (
+                  <option key={y} value={String(y)}>
+                    Año {y}
+                  </option>
+                ))}
+              </select>
               <button
                 type="button"
                 onClick={downloadExcel}
-                disabled={listLoading || filteredList.length === 0}
+                disabled={
+                  listLoading ||
+                  (exportYear === "ACTUAL" && filteredList.length === 0)
+                }
                 className="inline-flex items-center justify-center gap-2 shrink-0 rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow hover:bg-emerald-700 disabled:opacity-50"
                 title="Descargar listado en Excel"
               >
@@ -312,6 +378,9 @@ export default function SupplierCurrentAccounts() {
                           <th className="border-b font-medium p-3 text-slate-400 text-left hidden sm:table-cell">
                             CUIT
                           </th>
+                          <th className="border-b font-medium p-3 text-slate-400 text-left hidden md:table-cell">
+                            Cierre ejercicio
+                          </th>
                           <th className="border-b font-medium p-3 text-slate-400 text-right">
                             Saldo
                           </th>
@@ -324,7 +393,7 @@ export default function SupplierCurrentAccounts() {
                         {filteredList.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={4}
+                              colSpan={5}
                               className="p-4 text-center text-slate-500"
                             >
                               No hay proveedores para mostrar
@@ -352,6 +421,12 @@ export default function SupplierCurrentAccounts() {
                                 </td>
                                 <td className="p-3 text-slate-500 text-xs hidden sm:table-cell">
                                   {row.supplier.cuit || "—"}
+                                </td>
+                                <td className="p-3 text-slate-500 text-xs hidden md:table-cell">
+                                  {supplierFiscalClose(row.supplier)?.month ||
+                                    (cuitStatusesLoading && row.supplier.cuit
+                                      ? "..."
+                                      : "—")}
                                 </td>
                                 <td
                                   className={utils.cn(
@@ -403,6 +478,16 @@ export default function SupplierCurrentAccounts() {
 
             {!detailLoading && !detailError && accountData && (
               <>
+                <p className="text-xs text-slate-500 mt-4">
+                  CUIT {detailSupplier?.cuit || "—"} · Cierre de ejercicio:{" "}
+                  <span className="font-medium text-slate-700">
+                    {detailFiscalClose
+                      ? `${detailFiscalClose.month} (próximo ${detailFiscalClose.nextClose})`
+                      : detailCuitLoading
+                      ? "consultando ARCA..."
+                      : "sin dato en ARCA"}
+                  </span>
+                </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 my-4">
                   <SummaryCard
                     label="Egresos (Cashflow)"

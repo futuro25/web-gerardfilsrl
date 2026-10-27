@@ -6,3 +6,5 @@ env-local.sh
 client/src/.DS_Store
 client/.DS_Store
 .DS_Store
+# Certificado y clave de ARCA
+afip/

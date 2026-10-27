@@ -30,6 +30,36 @@ export function getCuitStatusInfo(status, { loading = false } = {}) {
   };
 }
 
+const MONTHS = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
+// Cierre de ejercicio informado por ARCA (status.mesCierre, 1-12), como
+// { month: "Diciembre", nextClose: "31/12/2026" } o null si no hay dato.
+export function getFiscalYearClose(status) {
+  const month = Number(status?.mesCierre);
+  if (!month || month < 1 || month > 12) return null;
+  const today = new Date();
+  let year = today.getFullYear();
+  if (month < today.getMonth() + 1) year += 1;
+  const lastDay = new Date(year, month, 0).getDate();
+  return {
+    month: MONTHS[month - 1],
+    nextClose: `${lastDay}/${String(month).padStart(2, "0")}/${year}`,
+  };
+}
+
 const TEXT_COLORS = {
   active: "text-emerald-700",
   inactive: "text-red-700",

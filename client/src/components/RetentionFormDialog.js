@@ -11,9 +11,10 @@ import {
   calculateRetention,
   profitsConditionFromTaxRegime,
 } from "../utils/retention";
-import { useSuppliersQuery } from "../apis/api.suppliers";
+import { useSuppliersQuery, fetchSupplierCuitStatus } from "../apis/api.suppliers";
 import { useCreateRetentionPaymentMutation } from "../apis/api.retentioncertificates";
-import { querySuppliersKey } from "../apis/queryKeys";
+import { querySuppliersKey, querySupplierCuitStatusKey } from "../apis/queryKeys";
+import { getFiscalYearClose } from "./CuitStatus";
 
 function todayDateInput() {
   const now = new Date();
@@ -44,6 +45,16 @@ export default function RetentionFormDialog({
     const id = invoice.supplier_id ?? invoice.supplier?.id ?? null;
     return (suppliers || []).find((s) => String(s.id) === String(id)) || null;
   }, [suppliers, invoice]);
+
+  // Cierre de ejercicio del proveedor según ARCA. No bloquea el formulario.
+  const { data: cuitStatus, isLoading: cuitStatusLoading } = useQuery({
+    queryKey: querySupplierCuitStatusKey(supplier?.id),
+    queryFn: () => fetchSupplierCuitStatus(supplier.id),
+    enabled: open && Boolean(supplier?.id),
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+  const fiscalClose = getFiscalYearClose(cuitStatus);
 
   const supplierName =
     supplier?.fantasy_name ||
@@ -183,6 +194,18 @@ export default function RetentionFormDialog({
               {supplierName || "—"}
             </span>
           </div>
+          {supplier?.id && (
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500 text-xs">Cierre de ejercicio</span>
+              <span className="font-medium text-slate-700 text-right">
+                {cuitStatusLoading
+                  ? "Consultando ARCA..."
+                  : fiscalClose
+                  ? `${fiscalClose.month} (próximo ${fiscalClose.nextClose})`
+                  : "Sin dato en ARCA"}
+              </span>
+            </div>
+          )}
           {invoice.invoice_number && (
             <div className="flex justify-between text-sm">
               <span className="text-slate-500 text-xs">Factura</span>
