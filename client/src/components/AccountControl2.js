@@ -2199,7 +2199,9 @@ export default function AccountControl2() {
                                   <td className={utils.cn(
                                     "!text-xs text-right border-b border-slate-100 p-3 font-medium",
                                     m.type === "INGRESO" ? "text-green-600" : "text-red-600",
-                                    m.excludes_from_balance && "opacity-60"
+                                    m.excludes_from_balance &&
+                                      m.expense_category === TRANSFER_EXPENSE_CATEGORY &&
+                                      "opacity-60"
                                   )}>
                                     {m.type === "INGRESO" ? "+" : "-"}
                                     {utils.formatAmount(m.amount)}
