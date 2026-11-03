@@ -2203,11 +2203,10 @@ export default function AccountControl2() {
                                   )}>
                                     {m.type === "INGRESO" ? "+" : "-"}
                                     {utils.formatAmount(m.amount)}
-                                    {m.excludes_from_balance && (
+                                    {m.excludes_from_balance &&
+                                      m.expense_category === TRANSFER_EXPENSE_CATEGORY && (
                                       <span className="block text-[10px] font-normal text-slate-400">
-                                        {m.expense_category === TRANSFER_EXPENSE_CATEGORY
-                                          ? "no cambia el saldo total"
-                                          : "sin impacto en saldo"}
+                                        no cambia el saldo total
                                       </span>
                                     )}
                                   </td>
