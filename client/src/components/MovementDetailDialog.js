@@ -164,7 +164,7 @@ export default function MovementDetailDialog({
           </DetailRow>
           <DetailRow label="Clasificación">
             {movement.movement_kind === "FIJO" ? "Fijo" : "Única vez"}
-            {movement.invoice_payment_pending && (
+            {(movement.invoice_payment_pending || movement.payment_pending) && (
               <span className="ml-2 text-xs text-amber-700">· Pendiente de pago</span>
             )}
           </DetailRow>

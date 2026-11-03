@@ -9,8 +9,21 @@ const {
   invoiceTotal,
 } = require("./invoicePaymentSummary");
 
+/** Egresos sin factura cargados como pendientes de pago. */
+async function getManualPendingMovementIds() {
+  const { data, error } = await supabase
+    .from("account_movements")
+    .select("id")
+    .eq("payment_pending", true)
+    .is("deleted_at", null);
+
+  if (error) throw error;
+  return (data || []).map((m) => m.id);
+}
+
 /**
- * Movimientos vinculados a factura de proveedor sin saldar no impactan saldo de caja.
+ * Movimientos vinculados a factura de proveedor sin saldar y egresos pendientes
+ * de pago no impactan saldo de caja.
  */
 async function getBalanceExcludedMovementIds() {
   const { data: invoices, error: invErr } = await supabase
@@ -34,6 +47,9 @@ async function getBalanceExcludedMovementIds() {
     }
   });
 
+  const manualPendingIds = await getManualPendingMovementIds();
+  manualPendingIds.forEach((id) => excluded.add(id));
+
   return excluded;
 }
 
@@ -50,6 +66,7 @@ function movementCountsInBalance(movement, excludedIds) {
 }
 
 module.exports = {
+  getManualPendingMovementIds,
   getBalanceExcludedMovementIds,
   movementCountsInBalance,
 };

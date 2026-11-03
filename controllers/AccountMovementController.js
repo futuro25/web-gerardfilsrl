@@ -4,6 +4,7 @@ const self = {};
 const supabase = require("./db");
 const { DateTime } = require("luxon");
 const {
+  getManualPendingMovementIds,
   getBalanceExcludedMovementIds,
   movementCountsInBalance,
 } = require("../services/accountMovementBalance");
@@ -22,6 +23,7 @@ const {
 const {
   applyDirectPaymentMethod,
   applyEgresoSupplierFields,
+  isPaymentPending,
   resolveMovementBank,
   normalizeBank,
   OWN_BANKS,
@@ -204,6 +206,7 @@ function buildMovementUpdateFromBody(body) {
       // y los egresos con factura, que no pasan por ahí.
       bank: resolveMovementBank(body),
       expense_category: body.expense_category || null,
+      payment_pending: isPaymentPending(body),
     },
     body
   );
@@ -226,10 +229,17 @@ function buildMovementUpdateFromBody(body) {
   return { update };
 }
 
-/** Omite payment_method si es null (p. ej. facturas de proveedor antes de pagar). */
+/**
+ * Omite payment_method si es null (p. ej. facturas de proveedor antes de pagar).
+ * Un egreso pendiente sí lo guarda en null: al volver a pendiente no debe
+ * conservar la forma de pago anterior.
+ */
 function stripNullPaymentMethod(row) {
   const out = { ...row };
-  if (out.payment_method == null || out.payment_method === "") {
+  if (
+    !out.payment_pending &&
+    (out.payment_method == null || out.payment_method === "")
+  ) {
     delete out.payment_method;
   }
   return out;
@@ -326,7 +336,7 @@ async function attachInvoicePaymentFlags(movements) {
   });
 }
 
-/** Movimientos de Control con factura con saldo pendiente. */
+/** Movimientos de Control con factura con saldo pendiente o egresos pendientes de pago. */
 async function getPendingMovementIds() {
   const { data: invoices, error: invErr } = await supabase
     .from("supplier_invoices")
@@ -339,7 +349,7 @@ async function getPendingMovementIds() {
   const paidByInvoiceId = await getPaidAmountsByInvoiceIds(invoiceIds);
   const retentionByInvoiceId = await getRetentionAmountsByInvoiceIds(invoiceIds);
 
-  return (invoices || [])
+  const invoicePendingIds = (invoices || [])
     .filter(
       (inv) =>
         !isInvoiceFullyPaid(
@@ -350,6 +360,9 @@ async function getPendingMovementIds() {
     )
     .map((inv) => inv.account_movement_id)
     .filter((id) => id != null);
+
+  const manualPendingIds = await getManualPendingMovementIds();
+  return [...new Set([...invoicePendingIds, ...manualPendingIds])];
 }
 
 function isPendingFilter(value) {
@@ -492,7 +505,7 @@ self.getMovements = async (req, res) => {
         .select("*", { count: "exact" })
         .is("deleted_at", null)
         .in("id", pendingIds)
-        .eq("expense_category", "FACTURA")
+        .or("expense_category.eq.FACTURA,payment_pending.eq.true")
         .order(sortField, { ascending })
         .order("id", { ascending })
         .range(offset, offset + parseInt(limit) - 1);
@@ -774,6 +787,7 @@ self.createMovement = async (req, res) => {
       cheque_due_date: req.body.cheque_due_date || null,
       bank: resolveMovementBank(req.body),
       expense_category: req.body.expense_category || null,
+      payment_pending: isPaymentPending(req.body),
     };
 
     applyDirectPaymentMethod(movement, req.body);

@@ -18,6 +18,19 @@ const EXPENSE_REQUIRES_SUPPLIER = new Set(["SERVICIOS"]);
  */
 const TRANSFER_EXPENSE_CATEGORY = "TRANSFERENCIA_CUENTAS_PROPIAS";
 
+/**
+ * Egresos sin factura que se pueden cargar como pendientes de pago. FACTURA tiene
+ * su propio estado (órdenes de pago) y VEP su propio circuito.
+ */
+const EXPENSE_WITH_PENDING_PAYMENT = new Set([
+  "GASTOS_BANCARIOS",
+  "IMPUESTOS",
+  "PAGO_HABERES",
+  "SERVICIOS",
+  TRANSFER_EXPENSE_CATEGORY,
+  "OTRO",
+]);
+
 /** Cuentas propias. Un cheque recibido puede ser de otro banco; la plata nuestra no. */
 const OWN_BANKS = new Set(["GALICIA", "PROVINCIA"]);
 
@@ -78,6 +91,15 @@ function requiresDirectPaymentMethod(type, expenseCategory) {
   );
 }
 
+/** True si el body carga un egreso sin factura como pendiente de pago. */
+function isPaymentPending(body) {
+  return (
+    body?.type === "EGRESO" &&
+    EXPENSE_WITH_PENDING_PAYMENT.has(body?.expense_category) &&
+    body?.payment_pending === true
+  );
+}
+
 function validateEgresoSupplierFields(body) {
   if (body.type !== "EGRESO" || body.expense_category !== "SERVICIOS") {
     return null;
@@ -119,6 +141,8 @@ function validateDirectPaymentMethod(body) {
   if (!requiresDirectPaymentMethod(body.type, body.expense_category)) {
     return null;
   }
+  // La forma de pago se completa al pagarlo.
+  if (isPaymentPending(body)) return null;
   if (!body.payment_method || !PAYMENT_METHODS.has(body.payment_method)) {
     return "Forma de pago requerida";
   }
@@ -136,6 +160,18 @@ function validateDirectPaymentMethod(body) {
 function applyDirectPaymentMethod(movement, body) {
   if (!requiresDirectPaymentMethod(body.type, body.expense_category)) {
     delete movement.payment_method;
+    return movement;
+  }
+
+  // Sin pago todavía: no queda forma de pago ni cheque. El banco se conserva para
+  // que el movimiento siga figurando en esa cuenta en Control 2.
+  if (isPaymentPending(body)) {
+    movement.payment_method = null;
+    movement.bank = normalizeBank(body.bank);
+    movement.is_cheque = false;
+    movement.cheque_number = null;
+    movement.cheque_bank = null;
+    movement.cheque_due_date = null;
     return movement;
   }
 
@@ -168,6 +204,7 @@ module.exports = {
   EXPENSE_WITH_SUPPLIER_FIELDS,
   EXPENSE_REQUIRES_SUPPLIER,
   requiresDirectPaymentMethod,
+  isPaymentPending,
   validateEgresoSupplierFields,
   validateDirectPaymentMethod,
   validateOwnBank,

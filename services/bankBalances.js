@@ -16,10 +16,11 @@ const UNASSIGNED = "SIN_ASIGNAR";
  *
  * Las transferencias entre cuentas propias son el único movimiento que toca dos
  * cuentas: restan en el banco de origen y suman en el de destino, y por eso se
- * cuentan acá aunque estén excluidas del saldo global.
+ * cuentan acá aunque estén excluidas del saldo global. Si están pendientes de
+ * pago todavía no se hicieron, así que no tocan ninguna cuenta.
  *
  * @param {Array} movements filas con type, amount, bank, bank_to, expense_category, is_cheque, cheque_due_date
- * @param {Set<number>} excludedIds movimientos que no impactan saldo (facturas impagas)
+ * @param {Set<number>} excludedIds movimientos que no impactan saldo (facturas impagas y egresos pendientes)
  * @param {string} today fecha ISO
  */
 function computeBankBalances(movements, excludedIds, today) {
@@ -36,6 +37,7 @@ function computeBankBalances(movements, excludedIds, today) {
     const amount = parseFloat(m.amount);
     if (!Number.isFinite(amount)) return;
     if (m.is_cheque && m.cheque_due_date && m.cheque_due_date > today) return;
+    if (excludedIds.has(m.id)) return;
 
     if (isOwnBanksTransfer(m)) {
       add(m.bank, -amount);

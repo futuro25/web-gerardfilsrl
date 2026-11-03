@@ -466,6 +466,7 @@ export default function AccountControl() {
   const [invoiceShowErrors, setInvoiceShowErrors] = useState(false);
   const [togglingFixedId, setTogglingFixedId] = useState(null);
   const [invoicePayMode, setInvoicePayMode] = useState("pending");
+  const [movementPaymentPending, setMovementPaymentPending] = useState(false);
   const [payOrderOpen, setPayOrderOpen] = useState(false);
   const [payOrderMovement, setPayOrderMovement] = useState(null);
   const [paymentOrderShowErrors, setPaymentOrderShowErrors] = useState(false);
@@ -798,6 +799,7 @@ export default function AccountControl() {
     income_category: movement.income_category || null,
     credit_note_number: movement.credit_note_number || null,
     credit_note_invoice_id: movement.credit_note_invoice_id || null,
+    payment_pending: Boolean(movement.payment_pending),
     ...overrides,
   });
 
@@ -878,6 +880,13 @@ export default function AccountControl() {
     movementType === "EGRESO" &&
     expenseCategory !== "FACTURA" &&
     !isTransferEgreso;
+
+  // Egresos sin factura. VEP queda afuera: tiene su propio circuito de pago.
+  const canMarkPaymentPending =
+    movementType === "EGRESO" && !requiresInvoice && expenseCategory !== "VEP";
+  const paymentPending = canMarkPaymentPending && movementPaymentPending;
+  // La forma de pago de un pendiente se completa al registrar el pago.
+  const collectsPaymentMethod = requiresPaymentMethod && !paymentPending;
 
   const showsSupplierFields =
     movementType === "EGRESO" &&
@@ -1195,7 +1204,7 @@ export default function AccountControl() {
         }
       }
 
-      if (requiresPaymentMethod) {
+      if (collectsPaymentMethod) {
         const payValidation = await egresoPaymentFieldsRef.current?.validate();
         if (!payValidation?.ok) {
           setEgresoPaymentShowErrors(true);
@@ -1286,6 +1295,7 @@ export default function AccountControl() {
         credit_note_number: null,
         credit_note_invoice_id: null,
         payment_method: null,
+        payment_pending: paymentPending,
         supplier_id: null,
         invoice_number: null,
       };
@@ -1322,7 +1332,7 @@ export default function AccountControl() {
         }
       }
 
-      if (requiresPaymentMethod) {
+      if (collectsPaymentMethod) {
         const payPayload = egresoPaymentFieldsRef.current.getPayload();
         body.payment_method = payPayload.payment_method;
         body.is_cheque = payPayload.is_cheque;
@@ -1335,6 +1345,9 @@ export default function AccountControl() {
         }
       } else if (movementType === "EGRESO" && !requiresInvoice) {
         body.payment_method = null;
+        if (paymentPending && !isTransferEgreso) {
+          body.bank = selectedMovement?.bank || null;
+        }
       }
 
       if (showsMovementDocumentUpload && movementDocumentRef.current) {
@@ -1385,6 +1398,7 @@ export default function AccountControl() {
       setIncomeCategory("STANDARD");
       setExpenseCategory("FACTURA");
       setInvoicePayMode("pending");
+      setMovementPaymentPending(false);
       setSelectedMovement(null);
       setInvoiceShowErrors(false);
       setPaymentOrderShowErrors(false);
@@ -1437,6 +1451,7 @@ export default function AccountControl() {
     setInvoicePayMode(
       movement.invoice_payment_pending ? "pending" : "pay_now"
     );
+    setMovementPaymentPending(Boolean(movement.payment_pending));
     reset({
       movement_kind: movement.movement_kind || "UNICA VEZ",
       date: movement.date ? DateTime.fromISO(movement.date).toFormat("yyyy-MM-dd") : "",
@@ -1452,6 +1467,12 @@ export default function AccountControl() {
     setStage("CREATE");
   };
 
+  /** Abre el movimiento pendiente con el estado en Pagado para completar el pago. */
+  const openRegisterPayment = (movement) => {
+    onEdit(movement);
+    setMovementPaymentPending(false);
+  };
+
   const onCancel = () => {
     fixedSuggestionResolvedRef.current = false;
     pendingSubmitRef.current = null;
@@ -1461,6 +1482,7 @@ export default function AccountControl() {
     setIncomeCategory("STANDARD");
     setExpenseCategory("FACTURA");
     setInvoicePayMode("pending");
+    setMovementPaymentPending(false);
     setIsLoadingSubmit(false);
     setIsCancellingOp(false);
     setSelectedMovement(null);
@@ -2067,7 +2089,7 @@ export default function AccountControl() {
                               const effectiveDate = effectiveMovementDate(m);
                               const kind = m.movement_kind || "UNICA VEZ";
                               const rowKindBg =
-                                m.invoice_payment_pending
+                                m.invoice_payment_pending || m.payment_pending
                                   ? "bg-yellow-100 hover:bg-yellow-200/80"
                                   : kind === "FIJO"
                                     ? "bg-sky-100 hover:bg-sky-200/80"
@@ -2110,6 +2132,11 @@ export default function AccountControl() {
                                         {m.has_payment_order && m.invoice_remaining_amount > 0.009
                                           ? `Saldo pendiente: ${utils.formatAmount(m.invoice_remaining_amount)}`
                                           : "Factura pendiente de pago"}
+                                      </span>
+                                    )}
+                                    {m.payment_pending && (
+                                      <span className="block text-[10px] text-amber-700 font-medium">
+                                        Pendiente de pago
                                       </span>
                                     )}
                                     {m.invoice_credit_amount > 0.009 && (
@@ -2165,12 +2192,14 @@ export default function AccountControl() {
                                     "!text-xs text-right border-b border-slate-100 p-3 font-medium",
                                     m.type === "INGRESO" ? "text-green-600" : "text-red-600",
                                     m.excludes_from_balance &&
+                                      !m.payment_pending &&
                                       m.expense_category === TRANSFER_EXPENSE_CATEGORY &&
                                       "opacity-60"
                                   )}>
                                     {m.type === "INGRESO" ? "+" : "-"}
                                     {utils.formatAmount(m.amount)}
                                     {m.excludes_from_balance &&
+                                      !m.payment_pending &&
                                       m.expense_category === TRANSFER_EXPENSE_CATEGORY && (
                                       <span className="block text-[10px] font-normal text-slate-400">
                                         no cambia el saldo total
@@ -2240,6 +2269,20 @@ export default function AccountControl() {
                                           onClick={() => openPaymentOrderDialog(m)}
                                           title="Crear orden de pago"
                                           aria-label="Crear orden de pago"
+                                        >
+                                          <Receipt className="w-5 h-5" />
+                                        </button>
+                                      )}
+                                      {m.payment_pending && (
+                                        <button
+                                          type="button"
+                                          className={utils.cn(
+                                            ROW_ACTION_BTN,
+                                            "text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900"
+                                          )}
+                                          onClick={() => openRegisterPayment(m)}
+                                          title="Registrar pago"
+                                          aria-label="Registrar pago"
                                         >
                                           <Receipt className="w-5 h-5" />
                                         </button>
@@ -2641,7 +2684,46 @@ export default function AccountControl() {
                 />
               )}
 
-              {requiresPaymentMethod && (
+              {canMarkPaymentPending && (
+                <div>
+                  <label className="text-xs font-sans text-gray-900 mb-2 block">
+                    Estado del pago
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={utils.cn(
+                        "flex-1 py-2 rounded text-sm font-medium border transition-colors",
+                        paymentPending
+                          ? "bg-amber-500 text-white border-amber-500"
+                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                      )}
+                      onClick={() => setMovementPaymentPending(true)}
+                    >
+                      Pendiente
+                    </button>
+                    <button
+                      type="button"
+                      className={utils.cn(
+                        "flex-1 py-2 rounded text-sm font-medium border transition-colors",
+                        !paymentPending
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                      )}
+                      onClick={() => setMovementPaymentPending(false)}
+                    >
+                      Pagado
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    {paymentPending
+                      ? "No descuenta del saldo hasta que registres el pago desde la fila del movimiento."
+                      : "Impacta el saldo al guardar."}
+                  </p>
+                </div>
+              )}
+
+              {collectsPaymentMethod && (
                 <PaymentOrderFields
                   key={`egreso-pay-${selectedMovement?.id ?? "new"}-${expenseCategory}`}
                   ref={egresoPaymentFieldsRef}
