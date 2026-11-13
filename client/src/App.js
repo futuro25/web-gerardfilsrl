@@ -41,6 +41,7 @@ import RetentionCalculator from "./components/RetentionCalculator";
 import FiscalExports from "./components/FiscalExports";
 import AccountControl from "./components/AccountControl";
 import AccountControl2 from "./components/AccountControl2";
+import CreditCardExpenses from "./components/CreditCardExpenses";
 import SupplierCurrentAccounts from "./components/SupplierCurrentAccounts";
 import PendingInvoicesList from "./components/PendingInvoicesList";
 import PurchaseInvoices from "./components/PurchaseInvoices";
@@ -74,7 +75,7 @@ export default function App() {
 
   // Christian Mastronardi: acceso a todo excepto Control y Control 2.
   const blockedRoutes =
-    username === "cmastronardi" ? ["control", "control2"] : null;
+    username === "cmastronardi" ? ["control", "control2", "tarjeta-credito"] : null;
 
   if (user === undefined || user === null) {
     return (
@@ -138,6 +139,7 @@ export default function App() {
           <Route path="libros-selector" element={<BooksNavigation />} />
           <Route path="exportacion-fiscal" element={<FiscalExports />} />
           <Route path="control" element={<AccountControl />} />
+          <Route path="tarjeta-credito" element={<CreditCardExpenses />} />
           {username === "lgedeon" && (
             <Route path="control2" element={<AccountControl2 />} />
           )}

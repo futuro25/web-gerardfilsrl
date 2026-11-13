@@ -41,6 +41,7 @@ const TABLE_BY_ENTITY = {
   aportes: "aportes",
   cashflow: "cashflow",
   clients: "clients",
+  "credit-card-expenses": "credit_card_expenses",
   deliveries: "deliveries",
   deliverynotes: "deliverynotes",
   "fixed-expenses": "fixed_expenses",

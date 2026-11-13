@@ -58,6 +58,22 @@ const FiscalExports = () => {
       : str.padStart(length, "0");
   };
 
+  const SICORE_RETENCIONES_LENGTH = 197;
+
+  // Importe con 2 decimales y coma decimal, relleno con ceros a la izquierda
+  // (ej: 1234.5 -> "00000001234,50" para longitud 14).
+  const formatSicoreAmount = (value, length) => {
+    const fixed = Math.abs(parseFloat(value) || 0).toFixed(2).replace(".", ",");
+    return fixed.padStart(length, "0");
+  };
+
+  // Fecha en formato dd/mm/aaaa.
+  const formatSicoreDate = (isoDate) => {
+    if (!isoDate) return pad("", 10);
+    const [y, m, d] = new Date(isoDate).toISOString().slice(0, 10).split("-");
+    return `${d}/${m}/${y}`;
+  };
+
   const getTipoComprobante = (ref) => {
     const letra = ref?.charAt(0);
     if (letra === "A") return "001";
@@ -379,54 +395,71 @@ const FiscalExports = () => {
       const lines = data
         .filter((item) => parseFloat(item.retention_amount) > 0)
         .map((item) => {
-          const codigoComprobante = "06";
-          const fechaEmision = formatDate(item.issue_date);
-          const numeroComprobante = pad(item.invoice_number || "", 16);
-          const importeComprobante = formatNumber(item.total_amount, 16);
+          // Diseño "Estándar Retenciones Versión 8.0/9.0" de SICORE:
+          // registro de longitud fija de 197 caracteres, fechas dd/mm/aaaa
+          // e importes con coma como separador decimal.
+          const codigoComprobante = "06"; // Orden de pago
+          const fechaEmision = formatSicoreDate(item.issue_date);
+          const numeroComprobante = pad(
+            (item.invoice_number || "").toString().slice(0, 16),
+            16
+          );
+          const importeComprobante = formatSicoreAmount(item.total_amount, 16);
           const codigoImpuesto = "217";
           const codigoRegimen = pad(item.category_code || "0", 3, "number");
-          const codigoOperacion = "1";
-          const baseCalculo = formatNumber(item.net_amount, 14);
-          const fechaEmisionRetencion = formatDate(item.issue_date);
+          const codigoOperacion = "1"; // Retención
+          const baseCalculo = formatSicoreAmount(item.net_amount, 14);
+          const fechaEmisionRetencion = formatSicoreDate(item.issue_date);
           const codigoCondicion = item.profits_condition === "Inscripto" ? "01" : "02";
           const retencionPracticadaSuspendidos = "0";
-          const importeRetencion = formatNumber(item.retention_amount, 14);
-          const porcentajeExclusion = "000.00";
-          const fechaEmisionBoletin = "00000000";
-          const tipoDocRetenido = "80";
-          const cuitRetenido = pad(item.supplier_cuit?.toString().replace(/-/g, "") || "", 11, "number");
-          const numeroCertificadoOriginal = pad("", 14);
+          const importeRetencion = formatSicoreAmount(item.retention_amount, 14);
+          const porcentajeExclusion = "000,00";
+          const fechaEmisionBoletin = pad("", 10);
+          const tipoDocRetenido = "80"; // CUIT
+          const cuitRetenido = pad(
+            item.supplier_cuit?.toString().replace(/\D/g, "") || "",
+            20
+          );
+          const numeroCertificadoOriginal = pad("", 14, "number");
           const denominacionOrdenante = pad("", 30);
           const acrecentamiento = "0";
-          const cuitPaisOrdenante = pad("", 11, "number");
-          const denominacionPaisOrdenante = pad("", 30);
+          const cuitPaisRetenido = pad("", 11, "number");
+          const cuitOrdenante = pad("", 11, "number");
 
-          return [
-            codigoComprobante,
-            fechaEmision,
-            numeroComprobante,
-            importeComprobante,
-            codigoImpuesto,
-            codigoRegimen,
-            codigoOperacion,
-            baseCalculo,
-            fechaEmisionRetencion,
-            codigoCondicion,
-            retencionPracticadaSuspendidos,
-            importeRetencion,
-            porcentajeExclusion,
-            fechaEmisionBoletin,
-            tipoDocRetenido,
-            cuitRetenido,
-            numeroCertificadoOriginal,
-            denominacionOrdenante,
-            acrecentamiento,
-            cuitPaisOrdenante,
-            denominacionPaisOrdenante,
+          const line = [
+            codigoComprobante, // 1-2
+            fechaEmision, // 3-12
+            numeroComprobante, // 13-28
+            importeComprobante, // 29-44
+            codigoImpuesto, // 45-47
+            codigoRegimen, // 48-50
+            codigoOperacion, // 51
+            baseCalculo, // 52-65
+            fechaEmisionRetencion, // 66-75
+            codigoCondicion, // 76-77
+            retencionPracticadaSuspendidos, // 78
+            importeRetencion, // 79-92
+            porcentajeExclusion, // 93-98
+            fechaEmisionBoletin, // 99-108
+            tipoDocRetenido, // 109-110
+            cuitRetenido, // 111-130
+            numeroCertificadoOriginal, // 131-144
+            denominacionOrdenante, // 145-174
+            acrecentamiento, // 175
+            cuitPaisRetenido, // 176-186
+            cuitOrdenante, // 187-197
           ].join("");
+
+          if (line.length !== SICORE_RETENCIONES_LENGTH) {
+            throw new Error(
+              `Registro SICORE con longitud ${line.length} (se esperaban ${SICORE_RETENCIONES_LENGTH}) para el comprobante ${item.invoice_number || "-"}`
+            );
+          }
+          return line;
         });
 
-      const blob = new Blob([lines.join("\n")], {
+      // SICORE es una aplicación Windows: usar CRLF como fin de registro.
+      const blob = new Blob([lines.join("\r\n") + "\r\n"], {
         type: "text/plain;charset=utf-8",
       });
       saveAs(blob, `SICORE_RETENCIONES_${selectedYear}.txt`);

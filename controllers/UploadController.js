@@ -52,6 +52,30 @@ self.uploadDeliveryDocument = async (req, res) => {
   }
 };
 
+self.uploadCreditCardDocument = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No se envió ningún archivo" });
+    }
+
+    const key = await r2.uploadBuffer({
+      buffer: req.file.buffer,
+      contentType: req.file.mimetype,
+      originalName: req.file.originalname,
+      prefix: "tarjeta-credito/",
+    });
+
+    return res.status(201).json({
+      key,
+      content_type: req.file.mimetype,
+      original_name: req.file.originalname,
+    });
+  } catch (e) {
+    console.error("uploadCreditCardDocument error:", e.message);
+    return res.status(500).json({ error: e.message });
+  }
+};
+
 self.getInvoiceImageUrl = async (req, res) => {
   try {
     const key = req.query.key;

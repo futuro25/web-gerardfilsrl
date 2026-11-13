@@ -1587,9 +1587,16 @@ export default function AccountControl() {
             <div>Control</div>
           </div>
           {stage === "LIST" && (
+            <div className="flex items-center gap-2 ml-auto">
+            <Button
+              variant="outlined"
+              size="sm"
+              onClick={() => navigate("/tarjeta-credito")}
+            >
+              Tarjeta de Crédito
+            </Button>
             <Button
               variant="alternative"
-              className="ml-auto"
               size="sm"
               onClick={() => {
                 setSelectedMovement(null);
@@ -1616,6 +1623,7 @@ export default function AccountControl() {
             >
               Nuevo Movimiento
             </Button>
+            </div>
           )}
         </div>
       </div>

@@ -1621,6 +1621,15 @@ export default function AccountControl2() {
             </div>
             {stage === "LIST" && (
               <Button
+                variant="outlined"
+                size="sm"
+                onClick={() => navigate("/tarjeta-credito")}
+              >
+                Tarjeta de Crédito
+              </Button>
+            )}
+            {stage === "LIST" && (
+              <Button
                 variant="alternative"
                 size="sm"
                 onClick={() => {

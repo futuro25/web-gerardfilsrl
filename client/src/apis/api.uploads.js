@@ -44,3 +44,18 @@ export const fetchInvoiceImageUrl = async (key) => {
   }
   return res.json();
 };
+
+export const uploadCreditCardDocument = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${BASE_URL}/credit-card-document`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Error al subir el comprobante");
+  }
+  return res.json();
+};

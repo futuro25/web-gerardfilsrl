@@ -23,6 +23,7 @@ const ENTITY_LABELS = {
   aportes: "Aportes",
   cashflow: "Cashflow",
   clients: "Clientes",
+  "credit-card-expenses": "Tarjeta de crédito",
   deliveries: "Facturas ventas",
   deliverynotes: "Remitos",
   "fixed-expenses": "Gastos fijos",

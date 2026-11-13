@@ -24,6 +24,7 @@ const AccountMovementController = require("../controllers/AccountMovementControl
 const FixedExpenseController = require("../controllers/FixedExpenseController.js");
 const AporteController = require("../controllers/AporteController.js");
 const VepController = require("../controllers/VepController.js");
+const CreditCardExpenseController = require("../controllers/CreditCardExpenseController.js");
 const SupplierAccountController = require("../controllers/SupplierAccountController.js");
 const SupplierInvoiceController = require("../controllers/SupplierInvoiceController.js");
 const CronController = require("../controllers/CronController.js");
@@ -576,6 +577,10 @@ router.post("/uploads/delivery-document", upload.single("file"), (req, res, next
   UploadController.uploadDeliveryDocument(req, res, next)
 );
 
+router.post("/uploads/credit-card-document", upload.single("file"), (req, res, next) =>
+  UploadController.uploadCreditCardDocument(req, res, next)
+);
+
 router.get("/uploads/invoice-image-url", (req, res, next) =>
   UploadController.getInvoiceImageUrl(req, res, next)
 );
@@ -605,6 +610,23 @@ router.patch("/veps/:id/mark-paid", (req, res, next) =>
   VepController.markVepAsPaid(req, res, next)
 );
 router.delete("/veps/:id", (req, res, next) => VepController.deleteVep(req, res, next));
+
+// TARJETA DE CRÉDITO (gastos aparte de Control)
+router.get("/credit-card-expenses", (req, res, next) =>
+  CreditCardExpenseController.getCreditCardExpenses(req, res, next)
+);
+router.post("/credit-card-expenses", (req, res, next) =>
+  CreditCardExpenseController.createCreditCardExpense(req, res, next)
+);
+router.patch("/credit-card-expenses/:id/image", (req, res, next) =>
+  CreditCardExpenseController.setCreditCardExpenseImage(req, res, next)
+);
+router.patch("/credit-card-expenses/:id", (req, res, next) =>
+  CreditCardExpenseController.updateCreditCardExpense(req, res, next)
+);
+router.delete("/credit-card-expenses/:id", (req, res, next) =>
+  CreditCardExpenseController.deleteCreditCardExpense(req, res, next)
+);
 
 // CRON (Heroku Scheduler o llamada manual con CRON_SECRET)
 router.post("/cron/pending-movements-report", (req, res, next) =>

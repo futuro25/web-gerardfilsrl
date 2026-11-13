@@ -75,3 +75,4 @@ export const queryPaymentOrdersByInvoiceKey = (supplierInvoiceId) => [
   "payment-orders-by-invoice",
   supplierInvoiceId,
 ];
+export const queryCreditCardExpensesKey = (filters = {}) => ["credit-card-expenses", filters];
