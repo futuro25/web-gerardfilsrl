@@ -184,11 +184,14 @@ self.deleteCashflowById = async (req, res) => {
 
     if (error) throw error;
 
-    // El cheque cargado junto con el movimiento no debe quedar vivo en el listado
+    // El cheque cargado junto con el movimiento no debe quedar vivo en el listado.
+    // Si el cheque ya está unificado con uno de Control (movement_id), conserva
+    // cashflow_id solo como referencia histórica y no se da de baja.
     const { error: paycheckError } = await supabase
       .from("paychecks")
       .update(update)
       .eq("cashflow_id", cashflow_id)
+      .is("movement_id", null)
       .is("deleted_at", null);
 
     if (paycheckError) {
