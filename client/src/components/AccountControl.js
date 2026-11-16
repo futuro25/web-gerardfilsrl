@@ -581,6 +581,10 @@ export default function AccountControl() {
   });
 
   const upcomingVeps = upcomingVepsRes?.data || [];
+  const todayIso = DateTime.now().toISODate();
+  const isVepOverdue = (v) =>
+    Boolean(v.due_date) && v.due_date.slice(0, 10) < todayIso;
+  const overdueVepsCount = upcomingVeps.filter(isVepOverdue).length;
 
   const markVepPaidMutation = useMutation({
     mutationFn: markVepAsPaid,
@@ -1965,8 +1969,11 @@ export default function AccountControl() {
                 >
                   <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">
                     {upcomingVeps.length === 1
-                      ? "Hay 1 VEP por vencer en los próximos 15 días"
-                      : `Hay ${upcomingVeps.length} VEPs por vencer en los próximos 15 días`}
+                      ? "Hay 1 VEP pendiente de pago"
+                      : `Hay ${upcomingVeps.length} VEPs pendientes de pago`}
+                    {overdueVepsCount > 0
+                      ? ` (${overdueVepsCount} vencido${overdueVepsCount === 1 ? "" : "s"})`
+                      : " en los próximos 15 días"}
                   </p>
                   <Button
                     type="button"
@@ -2005,6 +2012,11 @@ export default function AccountControl() {
                                       "dd/MM/yyyy"
                                     )
                                   : "—"}
+                                {isVepOverdue(v) && (
+                                  <span className="ml-2 text-[10px] font-semibold uppercase text-red-700 bg-red-50 border border-red-200 rounded px-1.5 py-0.5">
+                                    Vencido
+                                  </span>
+                                )}
                               </td>
                               <td className="px-4 py-2 text-slate-800">
                                 {v.display_category || v.category || "—"}

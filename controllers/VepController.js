@@ -94,15 +94,15 @@ self.getVeps = async (req, res) => {
 self.getUpcomingVeps = async (req, res) => {
   try {
     const days = Math.min(Math.max(parseInt(req.query.days, 10) || 15, 1), 90);
-    const today = DateTime.now().toISODate();
     const until = DateTime.now().plus({ days }).toISODate();
 
+    // Sin límite inferior: los VEPs vencidos siguen apareciendo hasta que se
+    // marcan como pagados.
     const { data, error } = await supabase
       .from("veps")
       .select("*")
       .is("deleted_at", null)
       .is("paid_at", null)
-      .gte("due_date", today)
       .lte("due_date", until)
       .order("due_date", { ascending: true });
 

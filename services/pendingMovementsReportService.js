@@ -100,6 +100,14 @@ function vepDueDate(vep) {
   return d.isValid ? d.toFormat("dd/MM/yyyy") : "—";
 }
 
+function vepIsOverdue(vep) {
+  if (!vep.due_date) return false;
+  const today = DateTime.now()
+    .setZone("America/Argentina/Buenos_Aires")
+    .toISODate();
+  return vep.due_date.slice(0, 10) < today;
+}
+
 function vepAmount(vep) {
   return Math.abs(parseFloat(vep.amount) || 0);
 }
@@ -114,7 +122,7 @@ async function fetchUpcomingVeps(days = VEPS_DUE_DAYS) {
     .select("*")
     .is("deleted_at", null)
     .is("paid_at", null)
-    .gte("due_date", today.toISODate())
+    // Sin límite inferior: los vencidos siguen hasta que se marcan como pagados.
     .lte("due_date", until.toISODate())
     .order("due_date", { ascending: true });
 
@@ -270,13 +278,13 @@ function buildChequesSectionHtml(cheques, chequesSummary) {
 function buildVepsSectionHtml(veps, vepsSummary) {
   const rowsHtml =
     veps.length === 0
-      ? `<tr><td colspan="3" style="padding:16px;text-align:center;color:#64748b;">No hay VEPs por vencer en los próximos ${VEPS_DUE_DAYS} días.</td></tr>`
+      ? `<tr><td colspan="3" style="padding:16px;text-align:center;color:#64748b;">No hay VEPs vencidos ni por vencer en los próximos ${VEPS_DUE_DAYS} días.</td></tr>`
       : veps
           .map((v) => {
             const amount = vepAmount(v);
             return `<tr>
               <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${escapeHtml(vepDisplayCategory(v))}</td>
-              <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${escapeHtml(vepDueDate(v))}</td>
+              <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;">${escapeHtml(vepDueDate(v))}${vepIsOverdue(v) ? ' <span style="color:#b91c1c;font-weight:600;">(vencido)</span>' : ""}</td>
               <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:600;">${formatAmount(amount)}</td>
             </tr>`;
           })
@@ -284,7 +292,7 @@ function buildVepsSectionHtml(veps, vepsSummary) {
 
   return `
     <div style="margin-top:28px;padding-top:24px;border-top:2px solid #e2e8f0;">
-      <h2 style="margin:0 0 8px;font-size:18px;color:#92400e;">VEPs por vencer (próximos ${VEPS_DUE_DAYS} días)</h2>
+      <h2 style="margin:0 0 8px;font-size:18px;color:#92400e;">VEPs vencidos y por vencer (próximos ${VEPS_DUE_DAYS} días)</h2>
       <p style="margin:0 0 16px;font-size:14px;"><strong>${vepsSummary.count}</strong> VEP(s) pendiente(s) por un total de <strong>${formatAmount(vepsSummary.total)}</strong>.</p>
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
         <thead>
@@ -479,13 +487,13 @@ function buildReportText(movements, summary, cheques, chequesSummary, veps, veps
   lines.push("");
   lines.push(`Total cheques: ${formatAmount(chequesSummary.total)}`);
   lines.push("");
-  lines.push(`VEPs por vencer (próximos ${VEPS_DUE_DAYS} días)`);
+  lines.push(`VEPs vencidos y por vencer (próximos ${VEPS_DUE_DAYS} días)`);
   lines.push(`Cantidad: ${vepsSummary.count}`);
   lines.push("");
 
   veps.forEach((v, i) => {
     lines.push(
-      `${i + 1}. ${vepDisplayCategory(v)} | Vence ${vepDueDate(v)} | ${formatAmount(vepAmount(v))}`
+      `${i + 1}. ${vepDisplayCategory(v)} | Vence ${vepDueDate(v)}${vepIsOverdue(v) ? " (vencido)" : ""} | ${formatAmount(vepAmount(v))}`
     );
   });
 
