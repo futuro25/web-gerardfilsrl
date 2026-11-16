@@ -42,6 +42,11 @@ const {
 } = require("../services/accountMovementVep");
 const { assertNoDuplicateSupplierInvoice } = require("../services/supplierInvoiceDuplicate");
 const {
+  normalizeChequeNumber,
+  normalizeBankName,
+  assertChequeNotDuplicated,
+} = require("../services/paycheckDuplicate");
+const {
   isCreditNoteIncome,
   applyIngresoCreditNoteFields,
   resolveCreditNoteInvoice,
@@ -836,6 +841,12 @@ self.createMovement = async (req, res) => {
 
     // If it's an egreso cheque, also create in paychecks table
     if (movement.is_cheque && movement.type === "EGRESO") {
+      movement.cheque_number = normalizeChequeNumber(movement.cheque_number);
+      await assertChequeNotDuplicated({
+        number: movement.cheque_number,
+        bank: movement.cheque_bank,
+      });
+
       const paycheck = {
         number: movement.cheque_number,
         bank: movement.cheque_bank,
@@ -898,7 +909,7 @@ self.createMovement = async (req, res) => {
 
     return res.json(newMovement);
   } catch (e) {
-    if (e.code === "DUPLICATE_INVOICE") {
+    if (e.code === "DUPLICATE_INVOICE" || e.code === "DUPLICATE_PAYCHECK") {
       return res.json({ error: e.message });
     }
     console.error("createMovement error:", e.message);
@@ -992,6 +1003,32 @@ self.updateMovement = async (req, res) => {
       nextKind: update.movement_kind,
     });
     if (link !== undefined) update.fixed_expense_id = link;
+
+    // Un cheque emitido no puede repetirse. Solo se valida si cambia el número o
+    // el banco, o si el movimiento pasa a tener cheque: editar otros datos de un
+    // movimiento con un duplicado viejo no debe quedar bloqueado.
+    if (update.is_cheque && update.type === "EGRESO") {
+      update.cheque_number = normalizeChequeNumber(update.cheque_number);
+      const chequeChanged =
+        !existing.paycheck_id ||
+        normalizeChequeNumber(existing.cheque_number) !== update.cheque_number ||
+        normalizeBankName(existing.cheque_bank) !==
+          normalizeBankName(update.cheque_bank);
+      if (chequeChanged) {
+        try {
+          await assertChequeNotDuplicated({
+            number: update.cheque_number,
+            bank: update.cheque_bank,
+            excludePaycheckIds: [existing.paycheck_id],
+          });
+        } catch (dupErr) {
+          if (dupErr.code === "DUPLICATE_PAYCHECK") {
+            return res.json({ error: dupErr.message });
+          }
+          throw dupErr;
+        }
+      }
+    }
 
     // Handle paycheck sync for cheque egresos
     if (existing.paycheck_id) {

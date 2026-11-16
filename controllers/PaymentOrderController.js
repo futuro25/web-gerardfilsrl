@@ -22,6 +22,10 @@ const {
   validateOwnBank,
   normalizeBank,
 } = require("../services/accountMovementPayment");
+const {
+  normalizeChequeNumber,
+  assertChequeNotDuplicated,
+} = require("../services/paycheckDuplicate");
 
 const PAYMENT_METHODS = new Set([
   "TRANSFERENCIA",
@@ -253,6 +257,10 @@ self.getPaymentOrders = async (req, res) => {
 };
 
 self.createPaymentOrder = async (req, res) => {
+  // Si algo falla después de crear el cheque o actualizar el movimiento, se
+  // deshace: un cheque sin OP queda huérfano en el listado de Cheques.
+  let createdPaycheckId = null;
+  let movementRestore = null;
   try {
     const {
       supplier_invoice_id,
@@ -263,12 +271,16 @@ self.createPaymentOrder = async (req, res) => {
       payment_date,
       account_movement_id,
       source_movement_id,
-      cheque_number,
+      cheque_number: rawChequeNumber,
       cheque_bank,
       cheque_due_date,
       credit_note_number,
       bank,
     } = req.body;
+    const cheque_number =
+      payment_method === "CHEQUE"
+        ? normalizeChequeNumber(rawChequeNumber)
+        : rawChequeNumber;
 
     if (req.body.cashflow_id && !supplier_invoice_id) {
       return res.json({
@@ -349,6 +361,21 @@ self.createPaymentOrder = async (req, res) => {
       });
     }
 
+    if (isCheque) {
+      try {
+        await assertChequeNotDuplicated({
+          number: cheque_number,
+          bank: cheque_bank,
+          supplierInvoiceId: supplier_invoice_id,
+        });
+      } catch (dupErr) {
+        if (dupErr.code === "DUPLICATE_PAYCHECK") {
+          return res.json({ error: dupErr.message });
+        }
+        throw dupErr;
+      }
+    }
+
     const order_number = await generateNextOrderNumber();
 
     let supplierName = "";
@@ -378,7 +405,10 @@ self.createPaymentOrder = async (req, res) => {
         .select();
 
       if (paycheckError) throw paycheckError;
-      if (newPaycheck?.length) paycheckId = newPaycheck[0].id;
+      if (newPaycheck?.length) {
+        paycheckId = newPaycheck[0].id;
+        createdPaycheckId = paycheckId;
+      }
     }
 
     const documentDate =
@@ -419,6 +449,12 @@ self.createPaymentOrder = async (req, res) => {
       .select();
 
     if (movUpdateErr) throw movUpdateErr;
+    movementRestore = {
+      id: movementId,
+      fields: Object.fromEntries(
+        Object.keys(movementUpdate).map((k) => [k, movement[k] ?? null])
+      ),
+    };
 
     if (fullyPaid && paycheckId && isCheque) {
       await supabase
@@ -467,6 +503,17 @@ self.createPaymentOrder = async (req, res) => {
     });
   } catch (e) {
     console.error("createPaymentOrder error:", e.message);
+    try {
+      if (movementRestore) {
+        await supabase
+          .from("account_movements")
+          .update(movementRestore.fields)
+          .eq("id", movementRestore.id);
+      }
+      if (createdPaycheckId) await softDeletePaycheck(createdPaycheckId);
+    } catch (rollbackErr) {
+      console.error("createPaymentOrder rollback error:", rollbackErr.message);
+    }
     res.json({ error: e.message });
   }
 };

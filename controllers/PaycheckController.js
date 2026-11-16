@@ -6,6 +6,11 @@ const sendEmail = require("../utils/emails");
 const { DateTime } = require("luxon");
 
 const _ = require("lodash");
+const {
+  normalizeChequeNumber,
+  normalizeBankName,
+  assertChequeNotDuplicated,
+} = require("../services/paycheckDuplicate");
 
 // Resuelve el proveedor (y nº de orden) de cada cheque a partir del movimiento
 // de Control vinculado (movement_id): puede provenir de una orden de pago o de
@@ -212,6 +217,14 @@ self.createPaycheck = async (req, res) => {
       cashflow_id: req.body.cashflow_id || null,
     };
 
+    if (paycheck.type === "OUT") {
+      paycheck.number = normalizeChequeNumber(paycheck.number);
+      await assertChequeNotDuplicated({
+        number: paycheck.number,
+        bank: paycheck.bank,
+      });
+    }
+
     const { data: newPaycheck, error } = await supabase
       .from("paychecks")
       .insert(paycheck)
@@ -225,7 +238,7 @@ self.createPaycheck = async (req, res) => {
     return res.json(newPaycheck);
   } catch (e) {
     console.log("Paycheck creation error", e.message);
-    return res.json(e);
+    return res.json({ error: e.message });
   }
 };
 
@@ -236,6 +249,34 @@ self.getPaycheckByIdAndUpdate = async (req, res) => {
 
     if (update.id) {
       delete update.id;
+    }
+
+    const { data: current, error: currentError } = await supabase
+      .from("paychecks")
+      .select("id, number, bank, type")
+      .eq("id", paycheck_id)
+      .is("deleted_at", null)
+      .single();
+    if (currentError) throw currentError;
+
+    const nextType = update.type ?? current.type;
+    if (nextType === "OUT") {
+      if (update.number !== undefined) {
+        update.number = normalizeChequeNumber(update.number);
+      }
+      const nextNumber = update.number ?? current.number;
+      const nextBank = update.bank ?? current.bank;
+      const changed =
+        current.type !== "OUT" ||
+        normalizeChequeNumber(current.number) !== normalizeChequeNumber(nextNumber) ||
+        normalizeBankName(current.bank) !== normalizeBankName(nextBank);
+      if (changed) {
+        await assertChequeNotDuplicated({
+          number: nextNumber,
+          bank: nextBank,
+          excludePaycheckIds: [current.id],
+        });
+      }
     }
 
     const { data: updatedPaycheck, error } = await supabase

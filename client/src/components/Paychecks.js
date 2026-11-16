@@ -166,8 +166,9 @@ export default function Paychecks() {
     try {
       setIsLoadingSubmit(true);
 
+      let result;
       if (selectedPaycheck) {
-        await updateMutation.mutateAsync({
+        result = await updateMutation.mutateAsync({
           id: selectedPaycheck.id,
           number: data.number,
           bank: data.bank,
@@ -178,7 +179,7 @@ export default function Paychecks() {
           movement_id: selectedPaycheck.movement_id,
         });
       } else {
-        await createMutation.mutateAsync({
+        result = await createMutation.mutateAsync({
           number: data.number,
           bank: data.bank,
           amount: Number(data.amount),
@@ -187,6 +188,12 @@ export default function Paychecks() {
           client_id: data.client_id || null,
           movement_id: data.movement_id || null,
         });
+      }
+
+      if (result?.error) {
+        setIsLoadingSubmit(false);
+        window.alert(result.error);
+        return;
       }
 
       setIsLoadingSubmit(false);
